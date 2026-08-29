@@ -6,12 +6,17 @@
         "version": "0.26.5",
         "url": "https://anylearning-oss.nrl.ai/download",
         "download_urls": {
-          "macos": null,
-          "macos_zip": null,
-          "windows": null,
-          "linux": null
+          "macos": "https://cdn.anylearning.nrl.ai/releases/AnyLearning-macOS-arm64-0.26.5.dmg",
+          "macos_zip": "https://cdn.anylearning.nrl.ai/releases/AnyLearning-macOS-arm64-0.26.5.zip",
+          "windows": "https://cdn.anylearning.nrl.ai/releases/AnyLearning-GPU-Windows-Setup-0.26.5.zip",
+          "linux": "https://cdn.anylearning.nrl.ai/releases/AnyLearning-Linux-x86_64-0.26.5.tar.gz"
         },
-        "download_sizes": {}
+        "download_sizes": {
+          "macos": "2.8 GB",
+          "macos_zip": "2.7 GB",
+          "windows": "5.4 GB",
+          "linux": "5.6 GB"
+        }
       }
     ]
   }
