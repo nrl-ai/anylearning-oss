@@ -1,0 +1,17 @@
+# mediapipe 1.0.x ships a py3-none (ABI-agnostic) wheel and drops the numpy<2
+# pin that 0.10.x carried -- that pin was the last blocker for NumPy 2 across
+# the whole project.
+#
+# 1.0.1 is excluded because it *aborts the process* on macOS. Any graph
+# containing TensorsToDetectionsCalculator instantiates DrishtiMetalHelper,
+# which asks for a Metal graph service that wheel never registers, and the
+# failure is an absl FATAL check -- abort(), nothing to catch. Confirmed to be
+# mediapipe's own fault rather than ours: Google's blaze_face_short_range
+# example model aborts identically, while their efficientnet_lite0 classifier
+# (no such calculator) runs fine.
+#
+# 1.0.0 reads all 21 landmarks from real photographs on the same machine, is
+# the same py3-none wheel, and installs against numpy 2 -- so nothing the range
+# was buying is lost. Of every version available for Python 3.13, 1.0.1 is the
+# only broken one.
+mediapipe>=1.0.0,!=1.0.1,<2

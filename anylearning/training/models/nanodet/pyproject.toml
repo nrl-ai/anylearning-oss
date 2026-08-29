@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=42", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "nanodet"
+dynamic = ["version"]
+description = "NanoDet"
+authors = [
+    {name = "NRL.ai", email = "contact@nrl.ai"}
+]
+license = {text = "Apache License 2.0"}
+keywords = ["deep learning"]
+classifiers = [
+    "Development Status :: Beta",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+
+[tool.setuptools]
+packages = ["nanodet"]
+package-dir = {nanodet = "nanodet"}
+zip-safe = false

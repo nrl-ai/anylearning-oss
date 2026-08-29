@@ -1,0 +1,10 @@
+**/.next/
+**/node_modules/
+anylearning/frontend-dist/
+anylearning/training/models/nanodet/
+build-frontend-dist/
+LICENSES.md
+MODEL_LICENCES.md
+frontend/pnpm-lock.yaml
+website/pnpm-lock.yaml
+website/public/

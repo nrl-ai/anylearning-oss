@@ -1,0 +1,48 @@
+# RF-DETR Nano -- object detection.
+#
+# The keys here are a compatibility surface: inference reads the copy stored on
+# the model row, not this template, so a key renamed here still has to be
+# understood when it comes back off a model trained months ago.
+model:
+  # The rfdetr class this config builds, by name. Written down rather than
+  # derived from the model size, because it is also what
+  # `RFDETR.from_checkpoint` reads back out of the checkpoint to decide which
+  # architecture to rebuild -- the two have to agree.
+  variant: RFDETRNano
+  # Starting weights, as a file name inside the bundled `weights/rfdetr` folder.
+  # Not a URL and not an rfdetr model id: those download, and this application
+  # is sold on training without a network.
+  pretrained: rf-detr-nano-anylearning.pth
+  # Overwritten with the project's label count in prepare_config.
+  num_classes: 2
+  # Must be a multiple of patch_size * num_windows, which is 16 * 2 for Nano.
+  resolution: 384
+data:
+  class_names: []
+  dataset_dir: ""
+  augmentation:
+    horizontal_flip: true
+training:
+  epochs: 30
+  batch_size: 4
+  # RF-DETR fine-tunes at an effective batch of batch_size * grad_accum_steps.
+  # Keeping the accumulation separate is what lets a small GPU train at the
+  # batch size the recipe expects.
+  grad_accum_steps: 4
+  learning_rate: 0.0001
+  # The DINOv2 backbone takes its own, higher rate; this is upstream's default
+  # ratio and moving one without the other is how fine-tuning stops converging.
+  lr_encoder: 0.00015
+  weight_decay: 0.0001
+  # 0 means "let the machine's performance mode decide" -- see
+  # anylearning/settings.py.
+  num_workers: 0
+  # Mixed precision, resolved per machine by anylearning/training/precision.py.
+  fp16: true
+  early_stopping: false
+  # How often a resumable checkpoint is written. Every epoch would double the
+  # disk a run costs for a file nothing here reads.
+  checkpoint_interval: 10
+inference:
+  threshold: 0.35
+output_dir: ""

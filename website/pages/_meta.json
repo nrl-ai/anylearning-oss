@@ -1,0 +1,18 @@
+{
+  "index": {
+    "type": "page",
+    "title": "AnyLearning",
+    "display": "hidden",
+    "theme": {
+      "layout": "raw"
+    }
+  },
+  "docs": {
+    "type": "page",
+    "title": "Documentation"
+  },
+  "github-link": {
+    "href": "https://github.com/nrl-ai/anylearning-oss",
+    "title": "GitHub"
+  }
+}

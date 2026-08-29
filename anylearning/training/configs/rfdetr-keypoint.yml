@@ -1,0 +1,39 @@
+# RF-DETR Keypoint Preview -- one object class with a project-defined landmark
+# schema. The project's labels become keypoint names; the detected object class
+# is deliberately implicit because RF-DETR supports one skeleton per project
+# in this integration.
+model:
+  variant: RFDETRKeypointPreview
+  pretrained: rf-detr-keypoint-preview-anylearning.pth
+  num_classes: 1
+  num_keypoints_per_class: []
+  # patch_size 12 * num_windows 2 = 24.
+  resolution: 576
+data:
+  class_names:
+    - object
+  class_colors:
+    - null
+  keypoint_names: []
+  dataset_dir: ""
+  augmentation:
+    horizontal_flip: true
+training:
+  epochs: 30
+  batch_size: 4
+  grad_accum_steps: 4
+  learning_rate: 0.0001
+  lr_encoder: 0.00015
+  weight_decay: 0.0001
+  num_workers: 0
+  fp16: true
+  early_stopping: false
+  checkpoint_interval: 10
+  keypoint_flip_pairs: []
+  # COCO's human-pose sigmas are anatomy-specific. Until a project has measured
+  # its own annotator variance, use the strict end of COCO's published range.
+  keypoint_oks_sigmas: []
+inference:
+  threshold: 0.35
+  keypoint_threshold: 0.25
+output_dir: ""

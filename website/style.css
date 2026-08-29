@@ -1,0 +1,302 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* --- Nextra on the Bench tokens ------------------------------------------
+   Nextra ships a blue-tinted slate palette. This product's whole premise is
+   that chrome stays chromatically neutral so it never shifts how the
+   screenshots and photographs beside it read, so the docs chrome is pulled
+   onto the same tokens as the app. Utilities are one class (0,1,0); these
+   selectors are 0,1,1 or better, so they win without !important.
+   ------------------------------------------------------------------------ */
+:root {
+  --nextra-primary-hue: 196deg;
+  --nextra-primary-saturation: 90%;
+}
+
+/* Nextra paints the body via `:is(html[class~="dark"] body)` — specificity
+   (0,1,2). A bare `body` selector never stood a chance, so the docs rendered on
+   Nextra's #111 while every other page used the graphite ground, and the two
+   were visibly different shades of dark. `html[class][class] body` is (0,2,2)
+   and wins outright, in both themes, without reaching for !important. The
+   attribute is doubled on <html> rather than qualifying <body>, because Nextra
+   renders <body> with no class attribute at all. */
+html[class][class] body,
+html body {
+  background-color: var(--background);
+  color: var(--foreground);
+}
+
+.nextra-content p,
+.nextra-content li,
+.nextra-content td,
+.nextra-content blockquote {
+  color: var(--foreground);
+}
+
+.nextra-content h1,
+.nextra-content h2,
+.nextra-content h3,
+.nextra-content h4 {
+  font-family: var(--font-display), ui-sans-serif, system-ui, sans-serif;
+  color: var(--foreground);
+  letter-spacing: -0.02em;
+}
+
+/* Sidebar, TOC and breadcrumb are navigation, not content: one step quieter. */
+.nextra-sidebar-container a,
+.nextra-toc a,
+.nextra-breadcrumb {
+  color: var(--muted-foreground);
+}
+
+.nextra-sidebar-container a:hover,
+.nextra-toc a:hover {
+  color: var(--foreground);
+}
+
+/* Code is data, so it sits in a sunken well like every other data surface. */
+.nextra-content pre,
+.nextra-content :not(pre) > code {
+  background-color: var(--surface-sunken) !important;
+  border-color: var(--border) !important;
+}
+
+/* Mermaid ships its own purple/grey theme inside every SVG. Keep diagrams in
+   the same visual system as the rest of the docs instead: a quiet framed
+   canvas, blue annotation accents, amber decisions, and high-contrast type.
+   The embedded Mermaid selectors are scoped by an SVG id, so these deliberate
+   `!important` declarations are required to override that generated theme. */
+.nextra-content div:has(> svg[aria-roledescription]) {
+  --mermaid-edge: var(--muted-foreground);
+  --mermaid-node-fill: var(--surface);
+  --mermaid-node-stroke: var(--mark-border);
+
+  margin: 1.75rem 0;
+  padding: clamp(1rem, 2.5vw, 1.75rem);
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid var(--border);
+  border-radius: calc(var(--radius) * 2);
+  background-color: var(--surface-sunken);
+  box-shadow:
+    inset 0 1px 0 color-mix(in oklch, var(--surface) 80%, transparent),
+    0 12px 28px -24px color-mix(in oklch, var(--foreground) 45%, transparent);
+  scrollbar-color: var(--mark-border) transparent;
+}
+
+.nextra-content div:has(> svg[aria-roledescription]) > svg {
+  display: block;
+  width: auto;
+  max-width: 100% !important;
+  height: auto;
+  margin: 0 auto !important;
+  font-family: var(--font-sans) !important;
+}
+
+/* Ordinary steps are white cards with the product's annotation-blue edge. */
+.nextra-content svg[aria-roledescription] .node rect,
+.nextra-content svg[aria-roledescription] .node circle,
+.nextra-content svg[aria-roledescription] .node ellipse {
+  fill: var(--mermaid-node-fill) !important;
+  stroke: var(--mermaid-node-stroke) !important;
+  stroke-width: 1.5px !important;
+}
+
+.nextra-content svg[aria-roledescription] .node rect {
+  rx: 10px;
+  ry: 10px;
+}
+
+/* The first node is the entry point; tinting it gives every diagram a clear
+   place to begin without assigning arbitrary colours to unrelated steps. */
+.nextra-content svg[aria-roledescription] .nodes > .node:first-child rect,
+.nextra-content svg[aria-roledescription] .nodes > .node:first-child circle,
+.nextra-content svg[aria-roledescription] .nodes > .node:first-child ellipse {
+  fill: var(--mark-soft) !important;
+  stroke: var(--mark) !important;
+  stroke-width: 2px !important;
+}
+
+/* Mermaid uses polygons for decision diamonds. Amber is reserved for an
+   active decision in the AnyLearning palette, so branching points scan fast. */
+.nextra-content svg[aria-roledescription] .node polygon {
+  fill: var(--run-surface) !important;
+  stroke: var(--run) !important;
+  stroke-width: 1.5px !important;
+  stroke-linejoin: round;
+}
+
+.nextra-content svg[aria-roledescription] .nodeLabel,
+.nextra-content svg[aria-roledescription] .label,
+.nextra-content svg[aria-roledescription] .label text,
+.nextra-content svg[aria-roledescription] .label foreignObject,
+.nextra-content svg[aria-roledescription] .label span,
+.nextra-content svg[aria-roledescription] .label p {
+  color: var(--foreground) !important;
+  fill: var(--foreground) !important;
+  font-family: var(--font-sans) !important;
+  font-weight: 550;
+}
+
+.nextra-content svg[aria-roledescription] .flowchart-link,
+.nextra-content svg[aria-roledescription] .edgePath path {
+  stroke: var(--mermaid-edge) !important;
+  stroke-width: 1.6px !important;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.nextra-content svg[aria-roledescription] marker path {
+  fill: var(--mermaid-edge) !important;
+  stroke: var(--mermaid-edge) !important;
+}
+
+/* Edge captions sit on compact pills so labels stay readable where lines
+   cross the sunken diagram canvas. Do not add padding or borders here:
+   Mermaid measures each foreignObject before our CSS runs, so changing its
+   box dimensions clips longer labels. A shadow creates the same visual gap
+   without participating in layout. */
+.nextra-content svg[aria-roledescription] .edgeLabel,
+.nextra-content svg[aria-roledescription] .edgeLabel p,
+.nextra-content svg[aria-roledescription] .edgeLabel span {
+  color: var(--foreground) !important;
+  background-color: var(--surface) !important;
+  border-radius: 0.35rem;
+}
+
+.nextra-content svg[aria-roledescription] .edgeLabel p {
+  padding: 0;
+  border: 0;
+  line-height: 1.25;
+  box-shadow: 0 0 0 4px var(--surface);
+}
+
+.nextra-content svg[aria-roledescription] .labelBkg {
+  fill: var(--surface) !important;
+  rx: 6px;
+  ry: 6px;
+}
+
+.nextra-content svg[aria-roledescription] .cluster rect {
+  fill: var(--muted) !important;
+  stroke: var(--border) !important;
+  rx: 12px;
+  ry: 12px;
+}
+
+.nextra-content svg[aria-roledescription] .cluster-label text,
+.nextra-content svg[aria-roledescription] .cluster-label span {
+  color: var(--muted-foreground) !important;
+  fill: var(--muted-foreground) !important;
+  font-weight: 600;
+}
+
+/* Mermaid's intrinsic canvas is wider than a phone for every non-trivial
+   flowchart. Let the framed region scroll instead of shrinking the whole SVG
+   until its labels become illegible. Desktop diagrams still fit and centre. */
+@media (max-width: 640px) {
+  .nextra-content div:has(> svg[aria-roledescription]) {
+    padding: 0.75rem;
+  }
+
+  .nextra-content div:has(> svg[aria-roledescription]) > svg {
+    min-width: 42rem;
+    max-width: none !important;
+  }
+}
+
+/* Deliberately no background override on the sidebar: Nextra's sidebar column
+   does not span the full viewport height, so painting it as a raised surface
+   left a visible seam and a detached-looking footer card. A flat ground with
+   the hairline divider Nextra already draws is correct here. */
+html[class][class] .nextra-nav-container .nextra-nav-container-blur {
+  background-color: var(--background);
+}
+
+/* The TOC/sidebar footers ship a hardcoded `nx-bg-white` plus a lift shadow,
+   so in light mode they read as a floating white card sitting on the paper
+   ground. Elevation here is a lightness step or nothing at all. */
+.nextra-toc [class*="nx-bg-white"],
+.nextra-sidebar-container [class*="nx-bg-white"] {
+  background-color: var(--background);
+  box-shadow: none;
+}
+
+/* With feedback and edit links disabled, Nextra still emits their empty sticky
+   TOC footer. In dark mode it appears as a solid black rectangle; it has no
+   content or interaction, so remove the empty shell. */
+html[class] .nextra-toc > div > div:empty {
+  display: none;
+}
+
+/* The sidebar's sticky theme/collapse bar. It is NOT inside
+   .nextra-sidebar-container, so the rule above never reached it, and it kept
+   Nextra's #fff / #111 background *and* a solid 16px glow of the same colour
+   used to fade scrolling content behind it. Against the graphite ground that
+   read as a lighter panel with a hard edge floating over the sidebar.
+   `html[class]` (0,2,0) outranks Nextra's `:is(html[class~="dark"] …)`. */
+html[class] [data-toggle-animation] {
+  background-color: var(--background);
+  border-top-color: var(--border);
+  /* Same idea as Nextra's, but in the token colour: a short fade so list items
+     scrolling underneath do not collide with the control. */
+  box-shadow: 0 -12px 16px var(--background);
+}
+
+html[class] [data-toggle-animation] button {
+  color: var(--muted-foreground);
+}
+
+html[class] [data-toggle-animation] button:hover {
+  background-color: var(--muted);
+  color: var(--foreground);
+}
+
+body {
+  font-feature-settings:
+    "rlig" 1,
+    "calt" 1;
+}
+
+.home-content p {
+  margin-top: 1.5em;
+  line-height: 1.75em;
+}
+
+.home-content a {
+  --tw-ring-color: hsl(var(--nextra-primary-hue) 100% 50%/0.3);
+  --tw-text-opacity: 1;
+  text-underline-position: under;
+  text-decoration-line: underline;
+  text-decoration-thickness: from-font;
+  color: hsl(var(--nextra-primary-hue) 100% 50% / var(--tw-text-opacity));
+}
+
+figcaption {
+  font-size: 0.85rem;
+  line-height: 1.5rem;
+  display: block;
+  text-align: center;
+  margin-top: 0.5rem;
+}
+
+code.text-\[\.9em\] {
+  font-size: 14px;
+}
+
+@media screen and (max-width: 1200px) {
+  .home-content .hide-medium {
+    display: none;
+  }
+}
+
+@media screen and (max-width: 720px) {
+  .home-content p {
+    font-size: 0.9rem;
+  }
+  .home-content .hide-small {
+    display: none;
+  }
+}

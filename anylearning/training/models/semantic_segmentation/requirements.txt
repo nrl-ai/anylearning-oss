@@ -1,0 +1,5 @@
+# smp 0.3.4 hard-pinned `timm==0.9.7` with an exact ==, which blocked every other
+# consumer of timm and kept timm's activations_jit.py in the tree -- the last user
+# of @torch.jit.script, deprecated in torch 2.11. smp 0.5 relaxes that pin.
+segmentation-models-pytorch>=0.5,<1
+timm>=1.0.28,<2

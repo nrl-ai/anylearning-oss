@@ -1,0 +1,34 @@
+save_dir: training_output
+seed: 67
+
+data:
+  train_dir: /path/to/train
+  val_dir: /path/to/val
+  test_dir: /path/to/test
+  class_names: [class1, class2, class3]
+  img_size: 416
+  num_workers: 0
+
+model:
+  arch: resnet18
+  pretrained: DEFAULT
+  num_classes: 3
+
+training:
+  gradient_checkpointing: false
+  scheduler: cosine
+  resume: false
+  resume_key: None
+  epochs: 40
+  optim:
+    name: AdamW
+    lr: 1.0e-4
+    weight_decay: 0.01
+    betas: [0.9, 0.999]
+  min_lr: 1.0e-6
+  eps: 1.0e-6
+  batch_size: 8
+  fp16: true
+
+  clip_grad_norm: 10
+  accumulation_steps: 1

@@ -1,0 +1,81 @@
+# Computer vision training without the upload step
+
+![Computer Vision Training](/computer-vision.jpeg)
+
+Most computer vision work is split across two tools. You annotate in one, export
+a dataset, then move it into a training script or a hosted service. The handoff
+is where the time goes: reconciling class lists, rewriting export formats,
+rebuilding an environment, and discovering three days later that half the masks
+were saved in the wrong convention.
+
+AnyLearning puts both halves in one desktop application, and runs the whole
+thing on the machine in front of you.
+
+## What it actually does
+
+- **Labelling.** Boxes, polygons, keypoints and whole-image classes. Segment
+  Anything (SAM and SAM2) runs locally, so you can pre-label an object with one
+  click and correct the outline instead of drawing it.
+- **Training.** Eight project types: object detection, instance segmentation,
+  image segmentation, image classification, handpose classification, keypoint
+  detection, Tabular AI and Text AI. You pick a model size and an epoch count.
+  The run happens in a separate process, on your GPU if you have one and on the
+  CPU if you do not.
+- **Export.** Datasets go out as YOLO, COCO, LabelMe or AnyLabeling. Trained
+  models go out as ONNX, with the config the run used, so whatever runs them
+  next does not need AnyLearning installed.
+
+Because the labels and the training share one project database, the class list
+you draw with is the class list the model trains on. There is no export step
+between them to get wrong.
+
+## What "offline" means here, precisely
+
+Python, PyTorch and the pretrained weights are inside the installer. Nothing is
+fetched after installation, and a machine with no network can label, train,
+evaluate and export.
+
+One honest exception: the app makes a single outbound request on startup, a
+version check against a static JSON file on our website. It sends nothing about
+you or your data, and it fails silently when there is no network. That is the
+only connection the application opens.
+
+Your images, annotations and trained weights are read from and written to local
+disk. There is no bucket, no ingest, no account and no activation key.
+
+## When this is the right shape of tool
+
+Local training earns its place when the data cannot be uploaded. Patient scans,
+factory-floor footage, defence imagery, anything under NDA, anything a
+data-protection officer has an opinion about. For that work the upload step is
+not an inconvenience, it is a blocker, and no amount of encryption-at-rest
+messaging gets you past it.
+
+It also changes the cost shape. Training uses hardware you already own, so a
+longer run costs time rather than money, and there is no per-seat or per-hour
+meter running while you experiment.
+
+## When it is not
+
+If you need to train on hardware you do not own, or coordinate annotation across
+a team with review queues and per-annotator assignment, a hosted platform or a
+self-hosted server tool is a better fit. AnyLearning is a single-user desktop
+application. It has no collaboration features, no shared project server and no
+cloud sync, and adding those is not the direction it is going.
+
+Tools like Label Studio and CVAT are built around that team annotation problem
+and are worth using when that is the problem you have.
+
+## Current limits worth knowing
+
+- Single user, one machine. Projects are local files.
+- On macOS, training runs on the CPU. Apple's GPU backend is not wired up yet.
+- Model selection is deliberately narrow. Each project type ships a small set of
+  variants with sensible defaults rather than an open-ended model zoo.
+
+## Getting started
+
+[Install AnyLearning](/docs/installation), then work through the tutorial for
+the task you have. [Object detection](/docs/object-detection) is the usual
+starting point, and [auto labeling](/docs/auto-labeling) is worth reading early
+because it removes most of the tedium.

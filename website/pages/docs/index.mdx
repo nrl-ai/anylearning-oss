@@ -1,0 +1,91 @@
+# AnyLearning - Privacy-First Image Labeling & ML Training Desktop App
+
+<div className="my-6 flex flex-wrap items-center gap-3 rounded-lg border border-line bg-surface p-4">
+  <a
+    href="/download"
+    className="rounded-md bg-mark px-5 py-2.5 text-sm font-medium !text-white no-underline transition-colors visited:!text-white hover:bg-mark-strong hover:!text-white focus:!text-white"
+  >
+    Download AnyLearning OSS
+  </a>
+  <span className="text-sm text-muted-foreground">
+    Apache-2.0 for Windows, macOS and Linux, with no account or activation.
+  </span>
+</div>
+
+![AnyLearning](/ai-flow.png)
+
+**Label data and train computer vision models on your own machine. No cloud, no
+account, no subscription.**
+
+AnyLearning is a desktop application that does the labelling and the training in
+one place, on hardware you control. It is built for work where the dataset
+cannot be uploaded: confidential medical images, proprietary industrial designs,
+footage under NDA, anything a data-protection officer has an opinion about.
+
+## What "offline" means here, precisely
+
+Python, PyTorch and the pretrained weights are inside the installer. Nothing is
+fetched after installation, and a machine with no network can label, train,
+evaluate and export.
+
+The one exception, stated plainly: on startup the app requests a static JSON
+file from our website to see whether a newer version exists. It sends nothing
+about you or your data, and it fails silently with no network. That is the only
+connection the application opens.
+
+Your images, annotations and trained weights are read from and written to local
+disk. There is no bucket, no ingest, no telemetry and no analytics.
+
+On regulated work: because your data never reaches us, there is no third-party
+processor to add to a data-processing agreement. That removes one common
+obstacle, but compliance is a property of your whole process rather than of any
+single tool, so treat this as one input to your assessment and not as an answer
+to it.
+
+## What it does
+
+- **Label** with boxes, polygons, keypoints and whole-image classes, with
+  Segment Anything (SAM and SAM2) running locally to pre-label.
+- **Train** eight project types: object detection, instance segmentation, image
+  segmentation, image classification, handpose classification, keypoint
+  detection, Tabular AI and Text AI. Runs on your GPU if you have one, on the
+  CPU if you do not.
+- **Export** datasets as YOLO, COCO, LabelMe or AnyLabeling, and trained models
+  as ONNX with the config the run used.
+
+Labels and training share one project database, so the class list you draw with
+is the class list the model trains on.
+
+## Built for
+
+- Research teams with private datasets
+- Healthcare and clinical imaging projects
+- Industrial computer vision
+- Teaching and academic research
+- Individual ML engineers
+- Small teams that cannot use hosted tools
+
+## Current limits
+
+Worth knowing before you install:
+
+- Single user, one machine. There are no collaboration features, no shared
+  project server and no cloud sync.
+- Dataset size is bounded by your own disk and memory. It is comfortable at
+  hundreds or thousands of images, not millions.
+- On macOS, training runs on the CPU. Apple's GPU backend is not wired up yet.
+- Updates are downloaded from the website and installed by you. There is no
+  background updater.
+
+## Start here
+
+[Install AnyLearning](/docs/installation), then take one task end to end.
+[Choosing an ML task](/docs/choosing-an-ml-task) helps if you are not sure which
+one fits the decision you are trying to support.
+
+---
+
+> "AnyLearning empowers developers to build powerful AI models while maintaining complete control over their data. It's the perfect solution for privacy-conscious teams and individuals."
+> _- Andrew Nguyen, Leader of AnyLearning project._
+
+---

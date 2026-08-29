@@ -1,0 +1,56 @@
+name: Pre-commit
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pre-commit-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pre-commit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # The full-history Gitleaks pass needs every commit reachable from HEAD.
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 11.21.0
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v10.0.1
+        with:
+          enable-cache: true
+
+      - name: Install frontend formatting tools
+        working-directory: frontend
+        run: pnpm install --frozen-lockfile
+
+      - name: Run repository checks
+        run: >-
+          uvx --from pre-commit==4.6.2 pre-commit run
+          --all-files --show-diff-on-failure
+
+      - name: Scan Git history for secrets
+        run: >-
+          uvx --from pre-commit==4.6.2 pre-commit run gitleaks-history
+          --hook-stage manual --all-files --show-diff-on-failure

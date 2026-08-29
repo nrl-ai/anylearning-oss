@@ -1,0 +1,8 @@
+recursive-include anylearning/frontend-dist *
+recursive-include anylearning/migrations *
+include anylearning/training/configs/*.yml
+include anylearning/configs/auto_labeling/*.yaml
+include anylearning/configs/*.yaml
+include anylearning/configs/*/*.yaml
+recursive-include anylearning/models *
+include LICENSE LICENSES.md MODEL_LICENCES.md NOTICE

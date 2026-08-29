@@ -1,0 +1,18 @@
+{
+  "anylearning_oss": {
+    "latest_version": "0.26.5",
+    "versions": [
+      {
+        "version": "0.26.5",
+        "url": "https://anylearning-oss.nrl.ai/download",
+        "download_urls": {
+          "macos": null,
+          "macos_zip": null,
+          "windows": null,
+          "linux": null
+        },
+        "download_sizes": {}
+      }
+    ]
+  }
+}

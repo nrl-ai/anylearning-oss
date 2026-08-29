@@ -1,0 +1,11 @@
+title = "AnyLearning Gitleaks configuration"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Deterministic non-secret values used by self-test regression fixtures"
+paths = [
+  '''^tests/selftest/test_driver\.py$''',
+  '''^tests/selftest/test_synthetic_keypoints\.py$''',
+]

@@ -1,0 +1,97 @@
+minimum_pre_commit_version: "4.0.0"
+default_install_hook_types: [pre-commit, pre-push]
+default_stages: [pre-commit]
+fail_fast: false
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: check-added-large-files
+        args: [--maxkb=5120]
+        exclude: ^anylearning/models/hand_landmarker\.task$
+      - id: check-ast
+      - id: check-case-conflict
+      - id: check-executables-have-shebangs
+      - id: check-json
+      - id: check-merge-conflict
+      - id: check-shebang-scripts-are-executable
+      - id: check-symlinks
+      - id: check-toml
+      - id: check-yaml
+      - id: destroyed-symlinks
+      - id: detect-private-key
+      - id: end-of-file-fixer
+        exclude: ^(LICENSES\.md|MODEL_LICENCES\.md)$
+      - id: fix-byte-order-marker
+      - id: mixed-line-ending
+        args: [--fix=lf]
+      - id: trailing-whitespace
+        exclude: ^(LICENSES\.md|MODEL_LICENCES\.md)$
+
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.30.1
+    hooks:
+      # Fast local guard: inspect exactly what is about to be committed.
+      - id: gitleaks
+        stages: [pre-commit]
+      # CI/manual audit: inspect every commit reachable from the checked-out HEAD.
+      - id: gitleaks
+        name: Detect secrets in Git history
+        alias: gitleaks-history
+        entry: gitleaks git --redact --verbose --log-opts=HEAD
+        pass_filenames: false
+        stages: [manual]
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.16.5
+    hooks:
+      - id: ruff-check
+        args: [--fix, --exit-non-zero-on-fix]
+      - id: ruff-format
+        types_or: [python, pyi, jupyter]
+
+  - repo: https://github.com/rbubley/mirrors-prettier
+    rev: v3.9.6
+    hooks:
+      - id: prettier
+        files: \.(cjs|css|html|js|json|jsx|md|mdx|mjs|scss|ts|tsx|yaml|yml)$
+        exclude: ^(LICENSES\.md|MODEL_LICENCES\.md|docs/TODO\.md|frontend/|website/pnpm-lock\.yaml|anylearning/training/models/nanodet/)
+
+  - repo: local
+    hooks:
+      - id: prettier-frontend
+        name: Format frontend with its pinned Prettier plugins
+        entry: scripts/prettier_frontend.sh
+        language: system
+        files: ^frontend/.*\.(cjs|css|html|js|json|jsx|md|mdx|mjs|scss|ts|tsx|yaml|yml)$
+      - id: oxlint
+        name: Lint JavaScript and TypeScript with Oxlint
+        entry: oxlint -D correctness -A no-unused-vars -A no-unused-expressions
+        language: node
+        additional_dependencies: [oxlint@1.78.0]
+        files: \.(cjs|js|jsx|mjs|ts|tsx)$
+
+  - repo: https://github.com/adrienverge/yamllint.git
+    rev: v1.38.0
+    hooks:
+      - id: yamllint
+
+  - repo: https://github.com/shellcheck-py/shellcheck-py
+    rev: v0.11.0.1-1
+    hooks:
+      - id: shellcheck
+
+  - repo: https://github.com/rhysd/actionlint
+    rev: v1.7.12
+    hooks:
+      - id: actionlint
+
+  - repo: local
+    hooks:
+      - id: python-tests
+        name: Run fast Python tests before push
+        entry: pytest -q tests --ignore=tests/e2e --ignore=tests/nanodet
+        language: system
+        pass_filenames: false
+        stages: [pre-push]

@@ -1,0 +1,14 @@
+extends: relaxed
+
+ignore: |
+  anylearning/training/models/nanodet/
+  frontend/pnpm-lock.yaml
+  tests/nanodet/
+  website/pnpm-lock.yaml
+
+rules:
+  document-start: disable
+  line-length:
+    max: 160
+  truthy:
+    allowed-values: ["true", "false", "on"]

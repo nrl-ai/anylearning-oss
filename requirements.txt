@@ -1,0 +1,25 @@
+# Development and packaging requirements.
+#
+# Runtime dependencies live in setup.py (`pip install -e .`) and are NOT
+# repeated here. Listing them in both files is what let the two drift apart:
+# requirements.txt pinned torch==2.5.1 while install_env.sh reinstalled an
+# unpinned torch a few lines later.
+
+# Platform support for pywebview's GTK backend (Linux only).
+PyGObject>=3.48,<4; sys_platform == "linux"
+
+# Build-time only, and easy to mistake for dead weight: nothing imports imageio,
+# but Nuitka shells out to it on macOS to convert app_icon.png into the .icns
+# that --macos-app-icon requires. Removing it fails the macOS build with
+# "Need to install 'imageio' to automatically convert the non native icon image".
+imageio>=2.37,<3; sys_platform == "darwin"
+
+# Development
+pre-commit>=4.0.1,<5
+# Nuitka gained NumPy 2 support in 2.3.7, and newer releases fix compiler
+# crashes on recent torch -- 2.8.10 aborted with a NuitkaOptimizationError while
+# optimising torch._dynamo.pgo on torch 2.11. Track the 4.x line.
+nuitka>=4.1.3,<5
+mock>=5.1.0,<6
+coverage>=7.6.9,<8
+pytest>=7.4.0,<9

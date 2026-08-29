@@ -1,0 +1,22 @@
+allowBuilds:
+  "@swc/core": true
+  canvas: true
+  esbuild: true
+  msw: true
+  unrs-resolver: true
+minimumReleaseAgeExclude:
+  - "@faker-js/faker@10.6.0"
+  - "@swc/core-darwin-arm64@1.16.0"
+  - "@swc/core-darwin-x64@1.16.0"
+  - "@swc/core-linux-arm-gnueabihf@1.16.0"
+  - "@swc/core-linux-arm64-gnu@1.16.0"
+  - "@swc/core-linux-arm64-musl@1.16.0"
+  - "@swc/core-linux-ppc64-gnu@1.16.0"
+  - "@swc/core-linux-s390x-gnu@1.16.0"
+  - "@swc/core-linux-x64-gnu@1.16.0"
+  - "@swc/core-linux-x64-musl@1.16.0"
+  - "@swc/core-win32-arm64-msvc@1.16.0"
+  - "@swc/core-win32-ia32-msvc@1.16.0"
+  - "@swc/core-win32-x64-msvc@1.16.0"
+  - "@swc/core@1.16.0"
+  - konva@10.3.1

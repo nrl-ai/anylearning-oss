@@ -1,0 +1,143 @@
+# Object Detection Guide
+
+Object detection finds and classifies objects with bounding boxes. This guide
+uses construction-safety images to show the complete workflow: define the
+classes, import and label data, train a detector, inspect predictions, and
+export the model.
+
+## Step 1: Create a Project
+
+First, create a new project specifically for object detection:
+
+1. Click **Create project**
+2. Pick **Object Detection** as the task
+3. Give your project a meaningful name and description
+
+![Creating an object-detection project](/object_detection/project-creation-helmet.png)
+
+## Step 2: Data Preparation
+
+### 2.1. Create the Label Set
+
+The label set defines all possible object classes that your model will learn to detect. For our safety equipment detection example, your classes might be `safety_helmet` and `reflective_jacket`.
+
+To create your label set:
+
+1. Navigate to the "Overview" tab
+2. Enter each object class name individually in the input field
+3. Click "+" after each class name
+4. Ensure class names are descriptive and consistent
+
+![Defining safety-equipment object classes](/object_detection/edit-class-names.png)
+
+### 2.2. Upload the Datasets
+
+Go to the "Dataset" tab to manage your datasets.
+
+For effective model training, you need to split your data into three sets:
+
+- **Training set**: The largest portion (typically 70-80%) used to train the model
+- **Validation set**: A smaller portion (typically 10-15%) used to tune hyperparameters and prevent overfitting
+- **Test set**: The remaining portion (typically 10-15%) used to evaluate the final model performance
+
+![Importing an annotated object-detection dataset](/object_detection/upload-dataset.png)
+
+**Upload Process:**
+
+1. Go to the **Dataset** tab and choose the **Training**, **Validation** or **Test** set.
+2. Click **Choose images or a .zip**, or drop files straight onto the panel. Several images at once is fine, and so is one .zip per split.
+3. If your images are already annotated, upload the archive as it is: COCO, YOLO, LabelMe and AnyLabeling are all read, and the annotations come in with the images. Ticking **Create classes from folder names** takes the class list from the archive rather than needing step 2.1 first.
+4. Wait for the upload to finish. The image and label counts under the panel update as it goes.
+
+**Trial dataset:** Download the prepared helmet-and-jacket splits from
+[Hugging Face](https://huggingface.co/datasets/nrl-ai/anylearning-data/tree/main/helmet_jacket).
+
+> **Important**: Use different images for training, validation, and testing to ensure accurate model evaluation.
+
+### 2.3. Label the Data
+
+After uploading your datasets, you'll need to label the objects in your images:
+
+1. Click **Start labelling** on the dataset split.
+2. Use the rectangle tool to draw a tight box around one object.
+3. Select the appropriate class for the box.
+4. Repeat until every relevant object is labelled.
+
+![Labeling Interface](/object_detection/labeling-interface.png)
+
+**Labeling Tips:**
+
+- Draw tight bounding boxes around objects
+- Be consistent in your labeling approach
+- Label all instances of objects in each image
+- Use keyboard shortcuts to speed up labeling
+- Take breaks to maintain labeling quality
+
+> For larger datasets, use [auto-labelling](/docs/auto-labeling) to propose an
+> object mask or box, then correct it instead of starting from scratch.
+
+## Step 3: Model Training
+
+**Training Configuration:**
+
+1. Go to the "Training" tab
+2. Click **Start training**
+3. Configure the following hyperparameters:
+   - `Model variant`: **NanoDet-Lightweight**, **NanoDet-Medium** or **NanoDet-Large**
+   - `Starting weights`: **Default** starts from the pretrained weights that ship with AnyLearning; pick an earlier model of yours to continue training from it
+   - `Learning rate`: how far the model moves at each step (0.001 is a sensible start)
+   - `Batch size`: how many images are processed together (8 or 16). It must not exceed the number of images in a split, or the run trains on nothing
+   - `Epochs`: how many times the model sees the whole training set
+   - `Image size`: leave at **Model default** unless your objects are small, when a larger size helps and costs speed
+   - `Hardware`: **Automatic** uses the GPU when there is one. Choose CPU to leave the GPU free
+   - `Augmentation`: flips, rotation and colour jitter, generating variations of your images so the model sees more than it was given
+
+   Every setting has an ⓘ beside it that explains it in place.
+
+4. Click **Start training** in the dialog to begin
+
+![New Training](/object_detection/new-training.png)
+
+**Monitor Training Progress:**
+
+- View all training sessions in the **Training** tab.
+- Click **View details** on a run to inspect its metrics and logs.
+
+![Completed object-detection training runs](/object_detection/training.png)
+
+**Training Metrics and Logs:**
+
+- Monitor loss values (classification and localization losses)
+- ✅ Check mAP (mean Average Precision) metrics
+- View training logs for detailed progress information
+- Watch for signs of overfitting (validation metrics getting worse)
+
+![Object-detection losses and validation mAP](/object_detection/training-details.png)
+
+## Step 4: Test the Trained Model
+
+**After training completes, validate your model's performance:**
+
+1. Go to the **Models** tab
+2. Click **Try** on the model you want to check
+3. Choose **Use a test image** to take one from your test split, or **Upload an image** for a picture the model has never seen
+4. Analyze the model's predictions
+
+![Try Model](/object_detection/try-model.png)
+
+The model displays each predicted box with its class and confidence.
+
+![Safety-equipment predictions on a held-out image](/object_detection/try-model-result.png)
+
+## Step 5: Export the model and use with your code
+
+Use the download button on the model's row and pick **Raw Model** for the
+PyTorch checkpoint, or **ONNX Model** for the exported graph. The ONNX download
+arrives as a zip holding the `.onnx` file and the `config.yml` the run was
+trained with -- unzip it before using the code below.
+
+The inference code is shown below.
+
+![Downloading a raw or ONNX object detector](/object_detection/download-models.png)
+
+Use the source code from [Object Detection Example](https://github.com/nrl-ai/anylearning-py/tree/main/nanodet) to run the model.

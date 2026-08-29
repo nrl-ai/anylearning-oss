@@ -1,0 +1,84 @@
+name: Tests
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  checks: write
+  pull-requests: write
+
+env:
+  # CPU wheels: CI has no GPU, and the CUDA build adds ~3 GB per job.
+  PIP_EXTRA_INDEX_URL: https://download.pytorch.org/whl/cpu
+  # A stray package in the runner's user site-packages otherwise shadows the
+  # environment -- that is how a transformers/huggingface-hub conflict crept in.
+  PYTHONNOUSERSITE: "1"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v10.0.1
+        with:
+          # The ML dependency cache is several GB. Archiving it duplicates the
+          # data and exhausts the hosted runner's disk after an otherwise
+          # successful test run.
+          enable-cache: false
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libcairo2-dev libglib2.0-dev python3-dev gir1.2-gtk-3.0
+          sudo apt-get install -y libgirepository-2.0-dev \
+            || sudo apt-get install -y libgirepository1.0-dev
+
+      # Installed from the manifests rather than install_env.sh: that script also
+      # does desktop/GTK setup and pre-commit wiring that a test job does not need.
+      - name: Install Python dependencies
+        run: |
+          uv pip install --system -e .
+          uv pip install --system -r anylearning/training/models/nanodet/requirements.txt
+          uv pip install --system -r anylearning/training/models/handpose/requirements.txt
+          uv pip install --system -r anylearning/training/models/semantic_segmentation/requirements.txt
+          uv pip install --system -e anylearning/training/models/nanodet
+          uv pip install --system -e anylearning/training/models/handpose
+          uv pip install --system pytest pytest-cov coverage mock
+
+      - name: Install detectron2
+        env:
+          CUDA_VISIBLE_DEVICES: ""
+          FORCE_CUDA: "0"
+        run: |
+          DETECTRON2_COMMIT=b4a4a3bd136852dae5fb1de37978dee412653e31
+          uv pip install --system --no-build-isolation \
+            "git+https://github.com/facebookresearch/detectron2.git@${DETECTRON2_COMMIT}"
+
+      # The previous --ignore flags pointed at anylearning/training/models/detectron2,
+      # a vendored copy that no longer exists. pytest accepts absent --ignore paths
+      # silently, so they had quietly become no-ops.
+      - name: Run tests with coverage
+        shell: bash
+        run: |
+          set -o pipefail
+          pytest --junitxml=pytest.xml \
+            --cov-report=term-missing:skip-covered \
+            --cov=anylearning tests/ | tee pytest-coverage.txt
+
+      - name: Comment coverage
+        if: github.event_name == 'pull_request'
+        uses: MishaKav/pytest-coverage-comment@v1.11.2
+        with:
+          pytest-coverage-path: ./pytest-coverage.txt
+          junitxml-path: ./pytest.xml

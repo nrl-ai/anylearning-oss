@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" width="24" height="24" role="img" aria-label="AnyLearning">
+  <!-- Standalone copy of the in-app mark, for contexts that load the logo as a
+       plain image and so cannot inherit currentColor or the design tokens.
+       The frame follows the viewer's colour scheme; the handle is the mark. -->
+  <style>
+    .frame { stroke: #1b1e23; }
+    .handle { fill: #00738a; }
+    @media (prefers-color-scheme: dark) {
+      .frame { stroke: #f2f3f5; }
+      .handle { fill: #31becc; }
+    }
+  </style>
+  <path class="frame" d="M7.5 4H16.5A3.5 3.5 0 0 1 20 7.5V14" stroke-width="2" stroke-linecap="round"/>
+  <path class="frame" d="M14 20H7.5A3.5 3.5 0 0 1 4 16.5V7.5A3.5 3.5 0 0 1 7.5 4" stroke-width="2" stroke-linecap="round"/>
+  <rect class="handle" x="17" y="17" width="5.5" height="5.5" rx="1.5"/>
+</svg>

@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/nrl-ai/anylearning-oss/security/advisories/new
+    about: Report security issues privately.
+  - name: Questions and ideas
+    url: https://github.com/nrl-ai/anylearning-oss/discussions
+    about: Ask for help or discuss early ideas.

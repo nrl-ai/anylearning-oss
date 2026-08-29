@@ -1,0 +1,129 @@
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.coverage.run]
+source = ["anylearning"]
+omit = [
+    "config.py",
+    "config-3.py",
+    "_remote_module_non_scriptable.py",
+    # Vendored third-party code. It is covered by its own upstream test suite
+    # (which we run, under tests/nanodet/), but holding *our* coverage target
+    # hostage to ~5000 statements of someone else's code makes the number
+    # meaningless -- it hides movement in the code we actually write.
+    "anylearning/training/models/nanodet/*",
+    # Packaging shims with no runtime behaviour to exercise.
+    "*/setup.py",
+]
+
+[tool.coverage.report]
+exclude_also = [
+    # Defensive branches that only run on a broken install.
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "@(abc\\.)?abstractmethod",
+]
+show_missing = true
+skip_covered = true
+
+[tool.pytest.ini_options]
+# importlib mode + an explicit pythonpath, rather than pytest's legacy "prepend"
+# mode which inserts test directories into sys.path. That insertion put `tests/`
+# on the path, at which point `tests/nanodet/` (no __init__.py) became an
+# implicit namespace package named `nanodet` and shadowed the real installed
+# one -- so `from nanodet.data.collate import ...` failed inside pytest while
+# working fine outside it.
+addopts = "--import-mode=importlib"
+pythonpath = ["."]
+# Warnings are errors, so a new one cannot accumulate unnoticed. Everything
+# ignored below comes from a pinned third-party package and cannot be fixed from
+# this repository; each entry names what would unblock it. Do not add an ignore
+# for a warning raised by anylearning code -- fix the code instead.
+filterwarnings = [
+    "error",
+    # Raised from inside detectron2's model, not from our call.
+    "ignore:torch.meshgrid:UserWarning",
+    # fvcore (pulled in and version-pinned by detectron2) decorates its focal
+    # loss with @torch.jit.script, which torch 2.11 deprecates. fvcore is
+    # commit-frozen upstream; clears when detectron2 moves off it.
+    "ignore:`torch.jit.script` is deprecated:DeprecationWarning",
+    # Lightning's own device probe finds Apple MPS and calls it a GPU, then
+    # points out that the trainer was built with accelerator="cpu". It is right:
+    # device_utils.get_device() asks only about CUDA, so on Apple Silicon "GPU"
+    # means the CPU. That is a known gap rather than an oversight -- see the
+    # training matrix in CLAUDE.md -- and until an MPS path exists the warning
+    # has no action behind it. Clears when the trainers can select MPS.
+    #
+    # Worth knowing why it was invisible for so long: no CI runner has MPS, so
+    # this fires only on an Apple Silicon machine, where it turned three
+    # detection tests into failures.
+    "ignore:GPU available but not used:UserWarning",
+    # Lightning's model-summary table cannot price bf16-mixed, so it prints the
+    # estimated size in 32-bit and says so. It is about the size *printout* --
+    # the run itself trains in bfloat16 -- and it fires on every detection run
+    # on an Ampere card now that precision.py selects bf16 there. Clears if
+    # Lightning teaches ModelSummary the mixed dtypes.
+    "ignore:Precision bf16-mixed is not supported by the model summary",
+    # Lightning's advisory hint when a DataLoader has few workers. It fires on
+    # any low `workers_per_gpu`, which is a legitimate setting on a CPU-only box
+    # and the right setting in tests -- it reports a performance opinion, not a
+    # defect.
+    "ignore:The '.*dataloader' does not have many workers",
+    # pycocotools (mask.py) still calls np.array(..., copy=False) on an object
+    # whose __array__ does not take a copy keyword. NumPy 2 deprecates that.
+    # Raised entirely inside pycocotools; nothing here passes copy=False.
+    "ignore:__array__ implementation doesn't accept a copy keyword",
+    # torch.serialization extracts legacy tar-format checkpoints without passing
+    # tarfile's `filter=`, which Python 3.14 will require. Triggered by
+    # torch.hub downloads of pretrained backbones.
+    #
+    # It stopped being true that only torch does this: `routers/project.py`
+    # extracted user-supplied project archives unfiltered, and this ignore hid
+    # the warning that said so for as long as it was there. Both of our own
+    # extraction sites now pass filter="data" -- if this ever fires from
+    # anylearning code again, fix the code, do not widen the ignore.
+    "ignore:Python 3.14 will, by default, filter extracted tar archives",
+    # torch's own pytree, hit inside torch.onnx's decomposition pass. Nothing in
+    # this repository calls it. Verified separately that export still produces a
+    # valid graph that loads and runs in onnxruntime -- without this ignore the
+    # warning aborts the export as a ConversionError.
+    "ignore:`isinstance\\(treespec, LeafSpec\\)` is deprecated:FutureWarning",
+    # Every trainer exports with `dynamo=False` on purpose: the dynamo exporter
+    # routes through onnxscript, whose @script decorator calls
+    # inspect.getsource(), and a Nuitka-compiled binary has no source to give
+    # it. torch 2.11 deprecates the exporter we therefore have to use, so the
+    # warning is the price of a working packaged export, not a defect to fix.
+    # It appeared with the torch 2.11 pin -- an environment still on 2.5 will
+    # not see it, which is why this looked like a Windows-only failure.
+    "ignore:You are using the legacy TorchScript-based ONNX export:DeprecationWarning",
+    # detectron2's model_zoo imports pkg_resources; detectron2 is commit-pinned.
+    "ignore:pkg_resources is deprecated as an API:UserWarning",
+    # torchvision's adjust_hue (reached from ColorJitter in the segmentation
+    # augmentations) calls PIL's Image.fromarray with the positional `mode`
+    # argument that Pillow 11.3 deprecates. Raised entirely inside torchvision;
+    # nothing here passes `mode`. Clears when torchvision stops passing it --
+    # it has to before Pillow 13 removes the parameter in October 2026.
+    "ignore:'mode' parameter is deprecated:DeprecationWarning",
+    # fastapi's TestClient re-exports starlette's, which warns about httpx.
+    "ignore:Using `httpx` with `starlette.testclient` is deprecated",
+    # rfdetr's `from_checkpoint` enumerates every RFDETR* symbol in
+    # rfdetr.variants to work out which class a checkpoint belongs to, and two
+    # of those symbols -- RFDETRBase and RFDETRLargeDeprecated -- are wrapped in
+    # pyDeprecate's proxy, which warns on attribute access rather than on use.
+    # So loading *any* RF-DETR model warns about two classes nothing here
+    # touches, on every inference and every export. Nothing to fix from this
+    # repository; clears when rfdetr 2.0 removes the deprecated variants, or
+    # when its lookup stops walking the module.
+    "ignore:The `RFDETRBase` was deprecated:FutureWarning",
+    "ignore:The `RFDETRLargeDeprecated` was deprecated:FutureWarning",
+    "ignore:The `RFDETRSegPreview` was deprecated:FutureWarning",
+    # Every torch.onnx.export call passes dynamo=False, so all of them take the
+    # TorchScript path that torch 2.9 deprecated. That is deliberate and not
+    # optional: the dynamo exporter routes through onnxscript, whose @script
+    # decorator calls inspect.getsource() to parse a function's AST, and a
+    # Nuitka-compiled binary has no source -- so dynamo export cannot work in
+    # the packaged app at all. Tracked in docs/TODO.md.
+    "ignore:The feature will be removed. Please remove usage of this function:DeprecationWarning",
+]

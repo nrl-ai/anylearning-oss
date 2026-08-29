@@ -1,0 +1,39 @@
+save_dir: training_output
+seed: 67
+
+data:
+  train_dir: /path/to/train
+  val_dir: /path/to/val
+  test_dir: /path/to/test
+  class_names: [background, object] # Binary segmentation for SAM2 format
+  img_size: 512
+  normalize:
+    mean: [0.485, 0.456, 0.406]
+    std: [0.229, 0.224, 0.225]
+  num_workers: 4
+  ignore_index: 255
+  format: "sam2" # Specify data format
+
+model:
+  arch: resnet18
+  pretrained: imagenet
+  num_classes: 2 # Binary segmentation: background + object
+  output_stride: 16
+
+training:
+  gradient_checkpointing: false
+  scheduler: cosine
+  resume: false
+  epochs: 40
+  optim:
+    name: AdamW
+    lr: 1.0e-3
+    weight_decay: 0.01
+    betas: [0.9, 0.999]
+  min_lr: 1.0e-6
+  eps: 1.0e-6
+  batch_size: 4
+  fp16: true
+  clip_grad_norm: 10
+  accumulation_steps: 1
+  verbose_steps: 20

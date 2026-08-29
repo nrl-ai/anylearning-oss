@@ -1,0 +1,190 @@
+# Handpose Classification Guide
+
+Handpose classification turns the 21 landmarks of a detected hand into one
+gesture class. This guide uses American Sign Language letters to show the full
+workflow from folder-based import through local training and ONNX inference.
+
+## Step 1: Create a Project
+
+First, create a new project specifically for hand pose classification:
+
+1. Click **Create project**
+2. Pick **Handpose Classification** as the task
+3. Give your project a meaningful name and description
+
+![Project Creation](/handpose_classification/01_create_project.png)
+
+## Step 2: Data Preparation
+
+### 2.1. Create the Label Set
+
+The label set defines the gestures the model can distinguish. For an American
+Sign Language project, the classes might run from `"A"` to `"Z"`.
+
+To create your label set:
+
+1. Navigate to the "Overview" tab
+2. Enter each class name individually in the input field
+3. Click "+" after each class name
+4. Ensure class names are descriptive and consistent
+
+![Edit Class Names](/handpose_classification/02_edit_class_names.png)
+
+### 2.2. Upload the Datasets
+
+Go to the "Dataset" tab to manage your datasets.
+
+For effective model training, you need to split your data into three sets:
+
+- **Training set**: The largest portion (typically 70-80%) used to train the model
+- **Validation set**: A smaller portion (typically 10-15%) used to tune hyperparameters and prevent overfitting
+- **Test set**: The remaining portion (typically 10-15%) used to evaluate the final model performance
+
+![Folder Structure](/handpose_classification/03_folder_structure.png)
+
+**Upload Process:**
+
+1. Go to the **Dataset** tab and choose the **Training**, **Validation** or **Test** set.
+2. Click **Choose images or a .zip**, or drop files straight onto the panel. Several images at once is fine, and so is one .zip per split.
+3. Leave **Create classes from folder names** ticked to take the class list from the folders inside the zip -- one folder per class -- instead of typing each name yourself.
+4. Wait for the upload to finish. The image and label counts under the panel update as it goes.
+
+**Trial dataset:** Download the prepared American Sign Language splits from
+[Hugging Face](https://huggingface.co/datasets/nrl-ai/anylearning-data/tree/main/american_sign_language).
+
+> **Important**: Use different images for training, validation, and testing to ensure accurate model evaluation.
+
+## Step 3: Model Training
+
+**Training Configuration:**
+
+1. Go to the "Training" tab
+2. Click **Start training**
+3. Configure the following hyperparameters:
+   - `Model variant`: **MLP-Small**, **MLP-Medium** or **MLP-Large**
+   - `Starting weights`: **Default** starts from the pretrained weights that ship with AnyLearning; pick an earlier model of yours to continue training from it
+   - `Learning rate`: how far the model moves at each step (0.001 is a sensible start)
+   - `Batch size`: how many images are processed together (32 or 64). It must not exceed the number of images in a split, or the run trains on nothing
+   - `Epochs`: how many times the model sees the whole training set
+   - `Image size`: leave at **Model default** unless your objects are small, when a larger size helps and costs speed
+   - `Hardware`: **Automatic** uses the GPU when there is one. Choose CPU to leave the GPU free
+   - `Augmentation`: flips, rotation and colour jitter, generating variations of your images so the model sees more than it was given
+
+   Every setting has an ⓘ beside it that explains it in place.
+
+4. Click **Start training** in the dialog to begin
+
+![Create New Training](/handpose_classification/04_create_new_training.png)
+
+**Monitor Training Progress:**
+
+- View all training sessions in the **Training** tab.
+- Click **View details** on a run to inspect its metrics and logs.
+
+![Completed handpose-classification runs](/handpose_classification/05_all_trainings.png)
+
+**Training Metrics and Logs:**
+
+- Monitor loss values to ensure the model is learning
+- ✅ Check accuracy metrics on validation data
+- View training logs for detailed progress information
+- Watch for signs of overfitting (validation metrics getting worse)
+
+![View Training Detail](/handpose_classification/06_training_details.png)
+
+## Step 4: Test the Trained Model
+
+**After training completes, validate your model's performance:**
+
+1. Go to the **Models** tab
+2. Click **Try** on the model you want to check
+3. Choose **Use a test image** to take one from your test split, or **Upload an image** for a picture the model has never seen
+4. Analyze the model's predictions
+
+![Try model](/handpose_classification/07_try_model.png)
+
+The model displays the predicted gesture and its class confidence.
+
+![Handpose prediction and class confidence](/handpose_classification/08_try_model_result.png)
+
+## Step 5: Export the model and use with your code
+
+Use the download button on the model's row and pick **Raw Model** for the
+PyTorch checkpoint, or **ONNX Model** for the exported graph. The ONNX download
+arrives as a zip holding the `.onnx` file and the `config.yml` the run was
+trained with -- unzip it before using the code below.
+
+The inference code is shown below.
+
+### 5.1. Exported (ONNX) model usage
+
+- Install the necessary libraries:
+
+```bash
+pip install numpy torch onnxruntime opencv-python mediapipe
+```
+
+- Run the code:
+
+```python
+import onnxruntime as ort
+import mediapipe as mp
+import numpy as np
+import cv2
+import torch
+
+MODEL_PATH = "exported_model.onnx"
+HAND_LANDMARK_MODEL_DIR = "hand_landmarker.task"
+CLASS_NAMES = [
+    "A", "B", "C", "D", "E", "F", "G", "H", "I", "J",
+    "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T",
+    "U", "V", "W", "X", "Y", "Z"
+]
+IMAGE_PATH = "test_image.jpeg"
+
+def softmax(x):
+    max_x = np.max(x, axis=0)
+    return np.exp(x - max_x) / np.sum(np.exp(x - max_x), axis=0)
+
+# Load the ONNX model
+ort_session = ort.InferenceSession(MODEL_PATH)
+
+# Load Hand Landmarks Detection model
+BaseOptions = mp.tasks.BaseOptions
+HandLandmarkerOptions = mp.tasks.vision.HandLandmarkerOptions
+VisionRunningMode = mp.tasks.vision.RunningMode
+
+HandLandmarker = mp.tasks.vision.HandLandmarker
+options = HandLandmarkerOptions(
+    base_options = BaseOptions(model_asset_path=HAND_LANDMARK_MODEL_DIR),
+    running_mode = VisionRunningMode.IMAGE
+)
+
+detector = HandLandmarker.create_from_options(options)
+
+# Read and preprocess image
+img = cv2.imread(IMAGE_PATH)
+img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+mp_image = mp.Image(
+    image_format=mp.ImageFormat.SRGB, data=np.array(img)
+)
+
+# Detect landmarks
+landmarks_result = detector.detect(mp_image)
+if len(landmarks_result.hand_landmarks) > 0:
+    landmarks_list = []
+    for landmark in landmarks_result.hand_landmarks[0]:
+        landmarks_list.append([landmark.x, landmark.y, landmark.z])
+
+    landmarks_tensor = torch.Tensor(landmarks_list)
+    landmarks_tensor = landmarks_tensor.reshape(1, -1).numpy()
+
+    # Run inference
+    outputs = ort_session.run(None, {ort_session.get_inputs()[0].name: landmarks_tensor})
+    output = softmax(outputs[0][0])
+
+    result = CLASS_NAMES[np.argmax(output)]
+    print(result)
+else:
+    print("Cannot classify handpose because no landmarks detected")
+```

@@ -1,0 +1,5 @@
+Generic single-database configuration.
+Revision ``0002_project_data_sources`` is a no-op compatibility marker. Older
+AnyLearning databases can carry that stamp even though the open-source schema
+does not use the optional data-source feature. Keep the revision identifier so
+those databases remain readable; do not add the retired feature's schema here.

@@ -1,0 +1,34 @@
+# Vendored NanoDet requirements.
+#
+# torch/torchvision are deliberately NOT listed here. The parent package
+# (../../../../setup.py) owns those pins; repeating them in this file is how the
+# two drifted apart before, and install_env.sh installs the parent first.
+#
+# Lower bound = the version this is tested against, upper bound = the next major.
+# These were previously exact-pinned to 2024 releases, which quietly held the
+# whole environment back -- scipy 1.12 alone blocked NumPy 2 for everything.
+
+# Lightning 2.x. nanodet/trainer/task.py was migrated off the removed
+# training_epoch_end / validation_epoch_end / test_epoch_end hooks and now
+# accumulates step outputs itself -- see docs/dependency_upgrade.md.
+#
+# This also removed the `setuptools<81` shim that used to live here: Lightning
+# 1.9's lightning_fabric called pkg_resources.declare_namespace() at import
+# time, which no longer exists in current setuptools. Lightning 2 does not.
+pytorch-lightning>=2.6,<3
+
+Cython>=3.2,<4
+imagesize>=2.0,<3
+matplotlib>=3.11,<4
+numpy>=2,<3
+omegaconf>=2.3,<3
+onnx>=1.22,<2
+opencv-python-headless>=4.11,<6
+pyaml>=26,<27
+pycocotools>=2.0.11,<3
+tabulate>=0.10,<1
+tensorboard>=2.21,<3
+termcolor>=3.3,<4
+torchmetrics>=1.9,<2
+tqdm>=4.70,<5
+scipy>=1.16,<2

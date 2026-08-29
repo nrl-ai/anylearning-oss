@@ -1,0 +1,41 @@
+.il-svg {
+    overflow-y: scroll;
+    margin: 0 auto;
+    display: block;
+    /* Neutral, theme-aware surround. A hardcoded white canvas glared against
+       the dark theme and, more importantly, shifted how the photograph or scan
+       on top of it reads. */
+    background-color: var(--surface-sunken, #e6e6e6);
+}
+
+.il-hid {
+    display: none;
+}
+
+.seg-point {
+    cursor: pointer;
+}
+
+.grabbable {
+    cursor: move;
+    cursor: grab;
+}
+
+.grabbable:active {
+    cursor: grabbing;
+}
+
+.grabbable + .move-icon,
+.grabbable + .rot-icon {
+    opacity: 0.4;
+}
+
+.grabbable:hover + .move-icon,
+.grabbable:hover + .rot-icon,
+.rot-icon:hover {
+    opacity: 0.9;
+}
+
+.class-names {
+    user-select: none;
+}

@@ -1,0 +1,36 @@
+line-length = 88
+indent-width = 4
+target-version = "py311"
+
+extend-exclude = [
+    "anylearning/frontend-dist",
+    "anylearning/training/models/handpose",
+    "anylearning/training/models/instance_segmentation",
+    "anylearning/training/models/nanodet",
+    "build-frontend-dist",
+    "tests/nanodet",
+]
+
+[lint]
+# Core correctness, deterministic imports, and common Python bug patterns.
+select = ["B", "E4", "E7", "E9", "F", "I"]
+ignore = [
+    # FastAPI intentionally declares dependencies and request objects this way.
+    "B008",
+    # Existing exception boundaries predate explicit exception chaining.
+    "B904",
+    # These callbacks and zip calls intentionally preserve their current API.
+    "B027",
+    "B905",
+]
+fixable = ["ALL"]
+unfixable = []
+dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
+
+[format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "lf"
+docstring-code-format = true
+docstring-code-line-length = "dynamic"
