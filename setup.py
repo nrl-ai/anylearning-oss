@@ -62,7 +62,7 @@ def get_install_requires():
         "pandas>=2.3,<4",
         "openpyxl>=3.1.5,<4",
         "xlrd>=2.0.2,<3",
-        "pyarrow>=18,<24",
+        "pyarrow>=18,<26",
         # Vectorized, out-of-core scans keep table paging, filtering and export
         # bounded even when the canonical Parquet dataset is much larger than
         # available RAM. DuckDB is embedded and does not start a server.
