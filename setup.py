@@ -74,7 +74,7 @@ def get_install_requires():
         "scikit-learn>=1.8,<2",
         # --- ML runtime (pinned, see docstring) -------------------------
         "onnxruntime>=1.28,<2",
-        "torch==2.11.0",
+        "torch==2.13.0",
         "torchvision==0.26.0",
         # Required by torch.onnx.export: from torch 2.6 the default exporter is
         # the dynamo one, which imports onnxscript at module load. Without it
