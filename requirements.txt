@@ -15,7 +15,7 @@ PyGObject>=3.48,<4; sys_platform == "linux"
 imageio>=2.37,<3; sys_platform == "darwin"
 
 # Development
-pre-commit>=4.0.1,<5
+pre-commit>=4.6.2,<5
 # Nuitka gained NumPy 2 support in 2.3.7, and newer releases fix compiler
 # crashes on recent torch -- 2.8.10 aborted with a NuitkaOptimizationError while
 # optimising torch._dynamo.pgo on torch 2.11. Track the 4.x line.
