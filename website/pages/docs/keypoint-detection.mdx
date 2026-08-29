@@ -1,0 +1,182 @@
+# Keypoint Detection Guide
+
+Keypoint detection finds **named landmarks** and keeps the points belonging to
+one object together. A pose might use `head`, `left_hand` and `right_hand`; a
+manufacturing project might use four alignment corners instead. AnyLearning
+0.26.2 supports arbitrary landmark names rather than assuming a human skeleton.
+
+![Real vertebral landmark instances in the AnyLearning labeller](/keypoint_detection/03_label_instances.png)
+
+The walkthrough screenshots use a real, multi-instance spine X-ray dataset,
+not generated figures. Each vertebra has four named corner landmarks. The
+bounded project shown here contains 64 training and 16 validation images from
+[Spondylolisthesis Vertebral Landmark v1](https://data.mendeley.com/datasets/5jdfdgp762/1),
+whose dataset-level licence is CC BY 4.0.
+
+## Step 1: Create a project
+
+1. Click **Create project**.
+2. Pick **Keypoint Detection**.
+3. Give the project a name and description.
+
+AnyLearning uses the project's ordered label list as the landmark schema. The
+order matters: the first point in every instance must mean the same thing in
+every image and split.
+
+![A real keypoint project with four ordered landmarks](/keypoint_detection/01_project_overview.png)
+
+## Step 2: Import a dataset
+
+For the real vertebral example shown in these screenshots, prepare the fixed
+dataset version from the main AnyLearning repository:
+
+```bash
+python prepare_vertebral_keypoints.py \
+  --download \
+  --output-dir /tmp/vertebral-keypoints
+```
+
+Upload `vertebral-keypoints-train.zip` to **Training** and
+`vertebral-keypoints-valid.zip` to **Validation**. The complete conversion has
+494 training and 204 validation images. The bounded screenshot/test project
+uses a deterministic 64/16 subset while preserving every vertebra instance.
+
+You can download that exact attributed subset from the AnyLearning CDN:
+[64-image training ZIP](https://cdn.anylearning.nrl.ai/datasets/vertebral_keypoints/v1/vertebral-keypoints-train-64.zip)
+and [16-image validation ZIP](https://cdn.anylearning.nrl.ai/datasets/vertebral_keypoints/v1/vertebral-keypoints-valid-16.zip).
+Both archives contain `ATTRIBUTION.md`, the fixed DOI, licence link and
+conversion notes.
+
+![Imported real X-rays in the Dataset screen](/keypoint_detection/02_dataset_imported.png)
+
+### Quick CC0 starter download
+
+Download the example directly from the CDN: [train.zip](https://cdn.anylearning.nrl.ai/datasets/keypoint_stick_figures/train.zip)
+and [valid.zip](https://cdn.anylearning.nrl.ai/datasets/keypoint_stick_figures/valid.zip). Its source and
+licence notes live in the
+[AnyLearning dataset collection](https://huggingface.co/datasets/nrl-ai/anylearning-data/tree/main/keypoint_stick_figures).
+The training archive contains 24 images and the validation archive contains 8.
+
+1. Open the **Dataset** tab.
+2. Upload `train.zip` to **Training** and `valid.zip` to **Validation**.
+3. AnyLearning reads the COCO schema and creates these labels in order:
+   `head`, `left_hand`, `right_hand`, `left_foot`, `right_foot`.
+4. Open an image and confirm that both figure instances and their points are
+   present.
+
+The archives contain ordinary COCO keypoints: `categories[].keypoints`, a
+one-based `skeleton`, and `[x, y, visibility]` triplets on each annotation.
+COCO, LabelMe and AnyLabeling can all preserve keypoints in AnyLearning. YOLO
+export is intentionally unavailable because the app's box-only YOLO format
+cannot represent this information without silently losing it.
+
+![Two generated keypoint instances](/keypoint_detection/stick-figures.png)
+
+## Step 3: Label your own landmarks
+
+1. Add the landmark names on **Overview** in the exact order you want the model
+   to predict them.
+2. Click **Start labelling**, select the point tool, and pick the landmark name.
+3. Give every object an **instance number**. All points with instance `1`
+   belong together; instance `2` is a different object in the same image.
+4. Mark a point **Occluded** when its position is known but the pixel is hidden.
+   Leave absent points out rather than inventing a coordinate.
+5. Save, reopen the image, and verify both instance numbers and visibility.
+
+Use **Display** to control canvas detail without changing the saved annotation:
+
+- **Landmark names** shows the semantic name beside every colored point.
+- **Instance IDs** shows which points form one object.
+- **Occlusion status** adds the state when a point is marked occluded.
+- **Dim occluded points** reduces the opacity of occluded landmarks.
+
+The choices persist in the browser. The screenshot below has landmark names,
+instance IDs, occlusion status and dimming enabled. Label chips use a dark,
+high-contrast background with the landmark color retained as the border, so
+they remain readable over both bone and dark image regions.
+
+Use one consistent rule for ambiguous points. A model cannot learn whether
+`left` means the subject's left or the viewer's left if the annotations switch
+between the two.
+
+![Four corner landmarks grouped into separate vertebra instances](/keypoint_detection/03_label_instances.png)
+
+## Step 4: Train RF-DETR keypoints
+
+Open **Training**, click **Start training**, and choose
+**RF-DETR-Keypoint-Preview**.
+
+- Keep the learning rate at its architecture default, **0.0001**.
+- Start with batch size 2. On Apple Metal, AnyLearning caps this preview model
+  at 2 to avoid exhausting shared memory; CUDA users can increase it only when
+  GPU memory allows.
+- Use the model default image size for a quality run. Lower sizes and a handful
+  of epochs are useful package checks, not accuracy experiments.
+- Watch **validation keypoint mAP**, **box mAP**, and the losses together. A
+  falling loss with zero held-out mAP proves that training ran, not that the
+  model is useful.
+
+The upstream checkpoint is Apache-2.0. Its filename says `xlarge`, but the
+encoder is the DINOv2 windowed-small family used by RF-DETR Nano; the preview
+name describes the checkpoint line, not an XL encoder.
+
+When training finishes, a model appears only after the checkpoint has also
+exported to ONNX. A finished run with no registered model is therefore an
+export failure and should be treated as an error.
+
+![RF-DETR keypoint training settings](/keypoint_detection/04_training_settings.png)
+
+The shown 64/16 engineering run used 15 epochs, batch size 2 and 576-pixel
+inputs on an RTX 3090. Training, ONNX export and model registration finished in
+5 minutes 1 second. Its held-out metrics were:
+
+| Metric | Result |
+|---|---:|
+| Box mAP | 0.5430 |
+| Box mAP@50 | 0.7637 |
+| Keypoint mAP | 0.2169 |
+| Keypoint mAP@50 | 0.5775 |
+| Keypoint mAP (EMA) | 0.2583 |
+
+![Completed 15-epoch real X-ray training run](/keypoint_detection/05_training_results.png)
+
+## Step 5: Inspect and export
+
+1. Open **Models** and click **Try**.
+2. Select a validation or genuinely unseen image.
+3. Check the rendered points as well as the JSON: every result contains a box,
+   confidence, and landmarks with their names and visibility.
+4. Download **Raw Model** for the RF-DETR checkpoint or **ONNX Model** for the
+   portable graph and its configuration.
+
+Visual inspection is part of evaluation. Aggregate mAP can hide a systematic
+left/right swap, points attached to the wrong instance, or a landmark that is
+always placed on the box edge.
+
+On the held-out X-ray below the annotation contains 6 vertebrae and this bounded
+run predicts 8. The landmarks generally follow the lumbar bodies, but the two
+extra instances and overlapping labels show why this is an integration and
+engineering example rather than a clinical-quality model.
+
+![Held-out vertebral X-ray prediction and structured keypoint result](/keypoint_detection/06_inference_result.png)
+
+## Real-world vertebral example
+
+The main AnyLearning repository also provides a reproducible validation on the
+[Spondylolisthesis Vertebral Landmark v1](https://data.mendeley.com/datasets/5jdfdgp762/1)
+dataset: 698 sagittal lumbar-spine X-rays with four corner landmarks per
+vertebra. It is a useful non-human, multi-instance test:
+
+```bash
+python prepare_vertebral_keypoints.py \
+  --download \
+  --output-dir /tmp/vertebral-keypoints
+```
+
+This writes upload-ready training and validation ZIPs. The dataset-level
+licence is [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). The
+complete pixels are fetched from the fixed DOI and are not committed to Git;
+the small CDN subset preserves attribution inside every archive.
+
+This is an engineering example, not clinical validation. No result from it
+makes AnyLearning or a trained model suitable for medical diagnosis.

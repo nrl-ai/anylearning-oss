@@ -1,0 +1,79 @@
+# Using AnyLearning to teach machine learning
+
+![AI in Modern Education](/ai-edu.jpeg)
+
+Teaching applied machine learning has a setup problem. Before a student trains
+anything, someone has to get CUDA working on a lab machine, or hand out cloud
+credits, or collect consent for uploading images, or debug why one laptop
+resolves a package differently from the other twenty-nine. The interesting part
+of the lesson arrives late, if it arrives at all.
+
+AnyLearning is a desktop application with the runtime and the pretrained weights
+inside the installer. Installing it is the setup.
+
+## Why local matters in a classroom specifically
+
+- **No accounts.** There is nothing to sign into and no activation key, so you
+  are not creating logins for students, and for under-18 students you are not
+  creating them at a third party either.
+- **No data-processing agreement.** Student photographs, coursework images and
+  anything recorded in the lab stay on the lab machine. There is no vendor to
+  add to your institution's data agreements, because there is no vendor.
+- **No per-seat cost.** It is Apache-2.0 and there is no usage meter, so a class
+  of forty costs the same as a class of one, and a student who wants to keep
+  experimenting after the lab closes can install it at home.
+
+## What a first session looks like
+
+A workable ninety-minute lab: students label around fifty images of two classes,
+train an image classification model, and read the validation accuracy. Then they
+look at what the model got wrong.
+
+That last step is the lesson. Almost always the errors trace back to the
+labelling: an ambiguous class boundary, a class with eight examples against
+another with forty, images that all share a background the model learned
+instead of the object. Students fix the labels and train again, and the number
+moves. The loop from *decision about data* to *measured consequence* is short
+enough to fit in one sitting, which is what makes it stick.
+
+This is difficult to teach from a slide and easy to teach from a training run
+that a student caused to fail.
+
+## Mapping to a course
+
+The tutorials are ordered so they can be taken as a sequence:
+
+- Start with the conceptual material: [what machine learning
+  is](/docs/machine-learning-basics), [choosing a
+  task](/docs/choosing-an-ml-task), and [train, validate and
+  test](/docs/evaluating-ml-models). The third one is the one students skip and
+  the one that matters most, because it is where the difference between a good
+  number and a real number lives.
+- Then a task per session: [image classification](/docs/image-classification) is
+  the gentlest start, [object detection](/docs/object-detection) is the most
+  recognisable, and [handpose classification](/docs/handpose-classification)
+  reliably gets a reaction because the input is the student's own hand.
+- [Auto labeling](/docs/auto-labeling) is worth introducing once students have
+  felt how long manual annotation takes. Introducing it earlier removes the
+  experience that makes them appreciate it.
+
+For non-CS courses, [Tabular AI](/docs/tabular-ai) and [Text
+AI](/docs/text-llm) cover spreadsheet and text data without asking students to
+write code.
+
+## Honest limits
+
+It is a single-user desktop application. There is no class management, no
+per-student accounts, no grading integration and no way to see a student's
+project from your own machine. Every install is standalone, so distributing a
+starter dataset means distributing files.
+
+If you need submission tracking or shared review, that will have to sit outside
+the app.
+
+## Getting started
+
+[Install it](/docs/installation) on one machine first and run through a task
+end to end before the lab. It is a few gigabytes because the models ship with
+it, which is worth knowing if thirty machines will download it over the same
+campus connection. Prepare a mirrored copy on a share if that is a concern.

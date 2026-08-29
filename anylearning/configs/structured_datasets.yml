@@ -1,0 +1,57 @@
+version: 1
+datasets:
+  - slug: bank-marketing
+    name: UCI Bank Marketing
+    description: 45,211 real bank marketing calls with mixed numeric and categorical columns; predict term-deposit subscription.
+    task: classification
+    rows: 45211
+    bytes: 3751306
+    sha256: 157a73ceb5751483b3d8f5aab5505f255ffa5b72f244d173739cbae760fc3bdb
+    target: y
+    license: CC BY 4.0
+    source_url: https://archive.ics.uci.edu/dataset/222/bank+marketing
+    citation: Moro, Rita & Cortez (2014), doi:10.24432/C5K306
+    filename: bank-marketing.csv
+    url: https://cdn.anylearning.nrl.ai/datasets/structured/v1/bank-marketing.csv
+  - slug: concrete-strength
+    name: UCI Concrete Compressive Strength
+    description: 1,030 concrete mixes with eight measured inputs and compressive strength in MPa.
+    task: regression
+    rows: 1030
+    bytes: 57876
+    sha256: 93167e81cb5161494f84af7b15b4bf665d934d51183f22c474e9c39b71c65d55
+    target: Concrete compressive strength
+    license: CC BY 4.0
+    source_url: https://archive.ics.uci.edu/dataset/165/concrete+compressive+strength
+    citation: Yeh (1998), doi:10.24432/C5PK67
+    filename: concrete-strength.csv
+    url: https://cdn.anylearning.nrl.ai/datasets/structured/v1/concrete-strength.csv
+  - slug: banking77
+    name: Banking77 customer-support intents
+    description: 13,083 online banking questions labelled with 77 fine-grained intents.
+    task: text_classification
+    rows: 13083
+    bytes: 1154448
+    sha256: 621ad24c36f4d7b7d344608b2d6070a6450d7353dbe2709177af03d2c371a461
+    target: intent
+    text_column: text
+    license: CC BY 4.0
+    source_url: https://github.com/PolyAI-LDN/task-specific-datasets/tree/master/banking_data
+    citation: Casanueva et al. (2020), arXiv:2003.04807
+    filename: banking77.csv
+    url: https://cdn.anylearning.nrl.ai/datasets/structured/v1/banking77.csv
+  - slug: truthfulqa-evaluation
+    name: TruthfulQA response evaluation
+    description: 790 adversarial questions with reference answers and plausible incorrect candidate responses for testing response evaluation.
+    task: llm_evaluation
+    rows: 790
+    bytes: 199532
+    sha256: c4c90ebc69dd7892befced347e05a0d5638e4428027c4908d8321431fe6c8773
+    prompt_column: question
+    response_column: candidate_response
+    reference_column: reference_answer
+    license: Apache 2.0
+    source_url: https://github.com/sylinrl/TruthfulQA
+    citation: Lin, Hilton & Evans (2022), doi:10.18653/v1/2022.acl-long.229
+    filename: truthfulqa-evaluation.csv
+    url: https://cdn.anylearning.nrl.ai/datasets/structured/v1/truthfulqa-evaluation.csv

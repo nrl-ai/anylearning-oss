@@ -1,0 +1,38 @@
+save_dir: training_output
+detectron2_cfg_file: detectron2_cfg.pkl
+seed: 67
+
+data:
+  train_dir: /path/to/train
+  val_dir: /path/to/val
+  test_dir: /path/to/test
+
+  train_ann_file: /path/to/coco_train_annotations.json
+  val_ann_file: /path/to/coco_val_annotations.json
+  test_ann_file: /path/to/coco_test_annotations.json
+
+  img_size: 512
+  num_workers: 4
+
+model:
+  arch: maskrcnn
+  backbone: resnet50 # resnet50, resnet101
+  pretrained: coco_lsj
+  num_classes: 1  # Number of foreground classes
+  resume_from:
+
+training:
+  scheduler: WarmupCosineLR
+  epochs: 40
+  optim:
+    name: AdamW
+    lr: 1.0e-3
+    weight_decay: 0.001
+    betas: [0.9, 0.999]
+  min_lr: 1.0e-7
+  batch_size: 4
+  verbose_steps: 20
+  # Mixed precision: what it means here is decided per machine, in
+  # anylearning/training/precision.py -- bfloat16 on an Ampere card, float16 on
+  # an older one, float32 on a CPU. Set false to pin this model to float32.
+  fp16: True

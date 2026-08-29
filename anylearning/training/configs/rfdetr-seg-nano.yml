@@ -1,0 +1,32 @@
+# RF-DETR Seg Nano -- instance segmentation.
+#
+# The keys here are a compatibility surface: inference reads the copy stored on
+# the model row, not this template, so a key renamed here still has to be
+# understood when it comes back off a model trained months ago.
+model:
+  variant: RFDETRSegNano
+  pretrained: rf-detr-seg-nano-anylearning.pth
+  num_classes: 2
+  # The segmentation variants use patch_size 12. Nano runs one window, so its
+  # own constraint is a multiple of 12 -- but the trainer rounds to 24 so that
+  # one image-size rule covers both segmentation variants.
+  resolution: 312
+data:
+  class_names: []
+  dataset_dir: ""
+  augmentation:
+    horizontal_flip: true
+training:
+  epochs: 30
+  batch_size: 4
+  grad_accum_steps: 4
+  learning_rate: 0.0001
+  lr_encoder: 0.00015
+  weight_decay: 0.0001
+  num_workers: 0
+  fp16: true
+  early_stopping: false
+  checkpoint_interval: 10
+inference:
+  threshold: 0.35
+output_dir: ""

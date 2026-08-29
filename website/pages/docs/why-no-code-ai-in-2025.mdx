@@ -1,0 +1,87 @@
+# Why train models on your own machine
+
+![Local model training](/future-ai.jpeg)
+
+The default answer to "how do I train a model" is now a hosted service. Upload
+the data, pick a model, pay per hour. For a lot of work that is the right
+answer, and this post is not an argument that it never is.
+
+But three situations keep coming up where the upload step is the thing that
+stops the project, and they are worth naming clearly.
+
+## 1. Data that cannot be uploaded
+
+Some datasets are not blocked by preference. They are blocked by a contract, a
+regulation, or a review board: patient imaging, defence and security footage,
+customer data under an NDA that does not permit third-party processing,
+pre-release hardware photographed on a factory floor.
+
+For this work, "the vendor encrypts data at rest" does not resolve anything,
+because the problem is the transfer and the third-party processor, not the
+storage. A tool that trains where the data already sits removes the question
+instead of answering it.
+
+This is the case AnyLearning is built for. Python, PyTorch and the pretrained
+weights ship inside the installer, nothing is fetched after installation, and a
+machine with no network can label, train, evaluate and export. The single
+exception is a version check against a static JSON file on our website, which
+sends nothing about you and fails silently when there is no network.
+
+## 2. Cost that is time instead of subscription
+
+Hosted training bills per hour, per seat, or per prediction. That is fine when
+usage is predictable and unpleasant when it is exploratory, which is exactly
+what early model work is. The meter discourages the fourth and fifth attempt,
+and the fourth and fifth attempt are usually where the model starts working.
+
+Training on hardware you already own inverts that. A longer run costs patience
+rather than budget, and nobody has to approve anything to try one more
+configuration.
+
+## 3. Not being locked in
+
+AnyLearning is Apache-2.0, and trained models export to ONNX along with the
+config the run used. Whatever runs the model next does not need AnyLearning
+installed, and does not need us to still exist. Datasets export to YOLO, COCO,
+LabelMe and AnyLabeling, so the labelling work is portable too.
+
+The test for lock-in is simple: if you stopped using the tool tomorrow, what
+would you lose? Here the answer should be the interface, not the work.
+
+## When the cloud is the better call
+
+Being honest about this is more useful than pretending otherwise:
+
+- **You need hardware you do not own.** If the model needs multiple GPUs or a
+  week of compute, renting beats buying.
+- **The dataset is large.** Local training is comfortable at hundreds or
+  thousands of images. It is not the right shape for millions.
+- **Annotation is a team activity.** Review queues, per-annotator assignment and
+  agreement metrics are real problems that a single-user desktop app does not
+  solve. AnyLearning has no collaboration features and is not adding them.
+
+If you are in one of those, use a hosted platform or a self-hosted server tool.
+Choosing correctly is worth more than being ideologically local.
+
+## What "no-code" does and does not remove
+
+It removes the plumbing: environment setup, data loaders, training loops, export
+scripts. That is a genuine saving, and it is most of what stops non-programmers
+from trying at all.
+
+It does not remove the judgment. You still have to decide what the classes are,
+whether the training and validation splits are actually independent, whether the
+metric you are reading corresponds to the decision the model will support, and
+whether a model that scores well on your test set will hold up on next month's
+data. A tool that hid those from you would be producing numbers you should not
+trust.
+
+The [Learn section](/docs/machine-learning-basics) covers the parts that stay
+your job, and [train, validate and test](/docs/evaluating-ml-models) is the one
+to read before believing any result.
+
+## Getting started
+
+[Install AnyLearning](/docs/installation) and take one task end to end. If you
+are not sure which, [choosing an ML task](/docs/choosing-an-ml-task) starts from
+the decision you want to support rather than from the model.

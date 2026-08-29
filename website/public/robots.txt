@@ -1,0 +1,9 @@
+# *
+User-agent: *
+Allow: /
+
+# Host
+Host: https://anylearning-oss.nrl.ai
+
+# Sitemaps
+Sitemap: https://anylearning-oss.nrl.ai/sitemap.xml

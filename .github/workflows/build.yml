@@ -1,0 +1,374 @@
+name: Build executables
+
+# Packaging is slow (Nuitka compiles the whole dependency graph to C), so this
+# does not run on every push. It runs on demand, on release tags, and nightly so
+# a break in the packaged build is caught within a day rather than at release.
+on:
+  workflow_dispatch:
+    inputs:
+      platforms:
+        description: Which platforms to build
+        type: choice
+        default: all
+        options: [all, linux, windows, macos, linux+windows]
+      upload_artifacts:
+        description: Upload the built applications as workflow artifacts
+        type: boolean
+        default: true
+  push:
+    tags: ['v*']
+    # Packaging branches build on push. workflow_dispatch is not offered until
+    # the workflow exists on the default branch, so without this there is no way
+    # to exercise a packaging change before merging it -- which is precisely
+    # when you want to know whether Windows and macOS still compile.
+    #
+    # The branch name picks the platform, because a full matrix is expensive:
+    # GitHub bills Windows at 2x and macOS at 10x, so one all-platform run costs
+    # ~830 billable minutes even when it fails. Push to ci/macos/... to build
+    # only macOS; ci/... alone still builds everything.
+    branches: ['ci/**']
+    paths-ignore:
+      - 'docs/**'
+      - 'tests/**'
+      - '**/*.md'
+  schedule:
+    - cron: '0 3 * * *'
+
+permissions:
+  contents: read
+
+# Superseded builds are pointless: only the newest commit on a branch is worth
+# packaging, and three overlapping matrix runs starve the runner pool.
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # CPU wheels only. The CUDA build is ~3 GB of extra download per job and CI has
+  # no GPU to exercise it; GPU packaging is a separate, manual flow documented in
+  # GPU_SUPPORT.md.
+  PIP_EXTRA_INDEX_URL: https://download.pytorch.org/whl/cpu
+  # Never pick up a runner's user site-packages -- a stray package there shadows
+  # the environment and produces failures that do not reproduce locally.
+  PYTHONNOUSERSITE: '1'
+
+jobs:
+  # Picks the platforms before spending a runner on any of them. A full matrix
+  # is ~830 billable minutes because of the 2x/10x multipliers, so the default
+  # for an iteration is one platform, not three.
+  select:
+    name: Select platforms
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.pick.outputs.matrix }}
+    steps:
+      - id: pick
+        shell: bash
+        env:
+          # For a manual run the input decides. For a push, the branch name
+          # does: ci/macos/fix-rpath builds only macOS. A tag, or a branch that
+          # names no platform, builds everything -- a release has to.
+          REQUESTED: ${{ inputs.platforms }}
+          REF_NAME: ${{ github.ref_name }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          choice="${REQUESTED:-}"
+          if [ -z "$choice" ]; then
+            if [ "$EVENT" = "push" ] && [ "${GITHUB_REF_TYPE:-branch}" = "branch" ]; then
+              case "$REF_NAME" in
+                *macos*)   choice=macos ;;
+                *windows*) choice=windows ;;
+                *linux*)   choice=linux ;;
+                *)         choice=all ;;
+              esac
+            else
+              choice=all
+            fi
+          fi
+
+          linux='{"os":"ubuntu-latest","name":"Linux (x86_64)","artifact":"AnyLearning-linux-x86_64","nuitka_cache":"~/.cache/Nuitka"}'
+          windows='{"os":"windows-latest","name":"Windows (x86_64)","artifact":"AnyLearning-windows-x86_64","nuitka_cache":"~/AppData/Local/Nuitka/Nuitka"}'
+          macos='{"os":"macos-latest","name":"macOS (arm64)","artifact":"AnyLearning-macos-arm64","nuitka_cache":"~/Library/Caches/Nuitka"}'
+
+          case "$choice" in
+            linux)          include="[$linux]" ;;
+            windows)        include="[$windows]" ;;
+            macos)          include="[$macos]" ;;
+            linux+windows)  include="[$linux,$windows]" ;;
+            *)              include="[$linux,$windows,$macos]" ;;
+          esac
+
+          echo "Building: $choice"
+          echo "matrix={\"include\":$include}" >> "$GITHUB_OUTPUT"
+
+  build:
+    name: ${{ matrix.name }}
+    needs: select
+    runs-on: ${{ matrix.os }}
+    # A cold build does not fit in 180: the run before ccache landed was still
+    # compiling at 2h45m and was killed by the cap without ever reporting. The
+    # first run here still pays full price to populate the cache; later ones
+    # should come in far under this.
+    timeout-minutes: 350
+    strategy:
+      # One platform failing should not cancel the others -- knowing whether a
+      # break is platform-specific is most of the diagnosis.
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.select.outputs.matrix) }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      # Nuitka compiles the whole dependency graph to C, and nearly all of it --
+      # torch, sympy, numpy -- is identical between our runs. Without a compiler
+      # cache every run pays for all of it again: the run before this landed
+      # spent 2h45m in "Build application" and was still going when the job
+      # timed out. Nuitka picks ccache up automatically when it is on PATH.
+      # Not installed on Windows: Nuitka builds with MSVC there, which a
+      # chocolatey ccache would not be wired into. Windows instead caches
+      # Nuitka's own cache directory, which is where it keeps the compiler
+      # artefacts it manages itself.
+      - name: Install ccache
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          case "${{ runner.os }}" in
+            Linux) sudo apt-get update && sudo apt-get install -y ccache ;;
+            macOS) brew install ccache ;;
+          esac
+          ccache --version | head -1
+
+      - name: Cache Nuitka's compiler cache
+        uses: actions/cache@v4
+        with:
+          # Nuitka's whole cache root, not just ccache: it also holds
+          # module-cache and adapted_headers, which cut the Python-compilation
+          # phase that runs before any C is emitted. Locally that phase dropped
+          # from ~54 to ~13 minutes once those were warm.
+          #
+          # Note Nuitka *overrides* CCACHE_DIR to <cache root>/ccache, so
+          # caching ccache's own default location stores nothing.
+          path: ${{ matrix.nuitka_cache }}
+          # The key rotates per run so each one writes a fresh entry, while
+          # restore-keys falls back to the newest previous cache for this
+          # platform -- otherwise the first run to save a cache would pin it and
+          # later runs could never add newly-compiled objects to it.
+          key: nuitka-cache-${{ matrix.os }}-${{ github.run_id }}
+          restore-keys: |
+            nuitka-cache-${{ matrix.os }}-
+
+      # After the restore, so the numbers reported at the end describe this run
+      # rather than every run that fed the cache.
+      - name: Configure ccache
+        if: runner.os != 'Windows'
+        shell: bash
+        env:
+          CCACHE_DIR: ${{ matrix.nuitka_cache }}/ccache
+        run: |
+          # GitHub allows 10 GB of cache per repository across every key, and a
+          # full build's object cache is a couple of GB on its own. Capped so
+          # three platforms can hold a cache at once instead of evicting each
+          # other -- ccache's own 5 GB default would not fit.
+          ccache --max-size=2.5G
+          ccache --zero-stats
+
+      # pywebview needs a GTK/WebKit backend on Linux, and Nuitka needs patchelf
+      # to rewrite RPATHs when producing a standalone tree.
+      - name: Install Linux system dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            patchelf \
+            libcairo2-dev \
+            libglib2.0-dev \
+            python3-dev \
+            gir1.2-gtk-3.0
+          # PyGObject >= 3.52 builds against girepository-2.0; fall back to 1.0
+          # on older images.
+          sudo apt-get install -y libgirepository-2.0-dev \
+            || sudo apt-get install -y libgirepository1.0-dev
+          sudo apt-get install -y gir1.2-webkit2-4.1 \
+            || sudo apt-get install -y gir1.2-webkit2-4.0 \
+            || true
+
+      - name: Install Python dependencies
+        shell: bash
+        run: |
+          uv pip install --system -e .
+          uv pip install --system -r requirements.txt
+          uv pip install --system -r anylearning/training/models/nanodet/requirements.txt
+          uv pip install --system -r anylearning/training/models/handpose/requirements.txt
+          uv pip install --system -r anylearning/training/models/semantic_segmentation/requirements.txt
+          uv pip install --system -e anylearning/training/models/nanodet
+          uv pip install --system -e anylearning/training/models/handpose
+
+      # detectron2 has no PyPI release and its setup.py imports torch, so the
+      # build must see the installed torch (--no-build-isolation). It is built
+      # CPU-only: detectron2's CUDA kernels do not compile against torch 2.11
+      # (its ATen headers are not nvcc-clean), and the standard Mask R-CNN path
+      # uses torchvision's ops, which have their own CUDA kernels.
+      - name: Install detectron2
+        shell: bash
+        env:
+          CUDA_VISIBLE_DEVICES: ''
+          FORCE_CUDA: '0'
+        run: |
+          DETECTRON2_COMMIT=b4a4a3bd136852dae5fb1de37978dee412653e31
+          uv pip install --system --no-build-isolation \
+            "git+https://github.com/facebookresearch/detectron2.git@${DETECTRON2_COMMIT}"
+
+      # detectron2's _C extension links against torch's dylibs through @rpath.
+      # Nuitka resolves @rpath relative to the package that owns the binary, so
+      # it looks for detectron2/libc10.dylib and aborts -- the real file lives
+      # in torch/lib. Point the load commands at torch/lib relative to the
+      # extension itself, a layout Nuitka preserves in the bundle.
+      #
+      # Deliberately not symlinking the dylibs into detectron2: that resolves
+      # the build error but leaves the bundle with two copies of libc10, and
+      # loading both registers torch's kernels twice.
+      - name: Point detectron2's _C at torch's dylibs
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -euo pipefail
+          d2=$(python -c 'import detectron2,os;print(os.path.dirname(detectron2.__file__))')
+          torch_lib=$(python -c 'import torch,os;print(os.path.join(os.path.dirname(torch.__file__),"lib"))')
+          ext=$(ls "$d2"/_C*.so 2>/dev/null | head -1 || true)
+          if [ -z "$ext" ]; then
+            echo "detectron2 has no compiled _C extension; nothing to do."
+            exit 0
+          fi
+          # detectron2 and torch are siblings in site-packages, so torch/lib is
+          # ../torch/lib from the extension's own directory.
+          otool -L "$ext" | awk '$1 ~ /^@rpath\/.*\.dylib$/ {print substr($1, 8)}' | sort -u |
+            while read -r lib; do
+              if [ -e "$torch_lib/$lib" ]; then
+                install_name_tool -change "@rpath/$lib" "@loader_path/../torch/lib/$lib" "$ext"
+                echo "repointed $lib -> @loader_path/../torch/lib/$lib"
+              else
+                echo "WARNING: $lib not found in $torch_lib" >&2
+              fi
+            done
+          # Editing the load commands invalidates the ad-hoc signature that
+          # arm64 macOS requires, so sign it again.
+          codesign --force --sign - "$ext"
+          otool -L "$ext"
+
+      - name: Build frontend
+        shell: bash
+        run: bash build_frontend.sh
+
+      # build_app.sh ships `weights/` so a user's first training run finds its
+      # backbone on disk rather than on the network, and Nuitka refuses to
+      # start when a --include-data-dir source is missing:
+      #
+      #   FATAL: Error, malformed '--include-data-dir' value, must specify
+      #   existing source data directory, not 'weights'
+      #
+      # Every run of this workflow had failed there since the weights landed,
+      # nightly included, because the step below was never added -- the macOS
+      # and Windows artefacts of 0.26.0 were built by hand on real machines,
+      # so nothing depended on CI and nobody read its logs.
+      #
+      # Deliberately not cached: ~1.6 GB per platform would take most of
+      # GitHub's 10 GB repository cache quota and evict the Nuitka caches,
+      # which are worth far more (they cut the C phase from ~73 to ~17
+      # minutes). Downloading it again each run costs a couple of minutes on a
+      # runner's network.
+      - name: Fetch pretrained weights
+        shell: bash
+        run: |
+          python fetch_weights.py
+          du -sh weights
+
+      - name: Build application
+        shell: bash
+        env:
+          # CI uses a standard CPython, not Anaconda's, so Nuitka's static
+          # libpython detection does not apply; and it must never wait on a
+          # prompt for its own toolchain downloads.
+          NUITKA_EXTRA_ARGS: --static-libpython=no --assume-yes-for-downloads
+        run: bash build_app.sh
+
+      # Reported even when the build fails, so a slow run can be diagnosed as
+      # "cache missed" rather than guessed at.
+      - name: Report ccache statistics
+        if: always() && runner.os != 'Windows'
+        shell: bash
+        run: CCACHE_DIR="${{ matrix.nuitka_cache }}/ccache" ccache --show-stats -v
+
+      - name: Package Windows installer
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          # Inno Setup ships on the windows-latest image.
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (Test-Path $iscc) {
+            & $iscc AnyLearning-Windows-Setup.iss
+          } else {
+            Write-Host "Inno Setup not found; shipping the raw dist instead."
+          }
+
+      - name: Collect build output
+        id: collect
+        shell: bash
+        run: |
+          mkdir -p dist-out
+          case "${{ runner.os }}" in
+            Linux)   cp -r app.dist dist-out/AnyLearning ;;
+            Windows) cp -r AnyLearning.App dist-out/AnyLearning 2>/dev/null || cp -r app.dist dist-out/AnyLearning
+                     cp -r Output/* dist-out/ 2>/dev/null || true ;;
+            macOS)   cp -r AnyLearning.app dist-out/ 2>/dev/null || cp -r app.dist dist-out/AnyLearning ;;
+          esac
+          echo "size=$(du -sh dist-out | cut -f1)" >> "$GITHUB_OUTPUT"
+
+      # A packaged app that cannot start is worse than a failed build, because it
+      # ships. Import the entry point from the built tree before publishing it.
+      - name: Smoke test the built application
+        shell: bash
+        run: |
+          set -euo pipefail
+          binary=dist-out/AnyLearning/app
+          [ "${{ runner.os }}" = "Windows" ] && binary=dist-out/AnyLearning/AnyLearning.exe
+          if [ ! -f "$binary" ]; then
+            echo "::error::no built binary at $binary"
+            ls -la dist-out/AnyLearning | head -20
+            exit 1
+          fi
+          # Runs the app for real -- starts the server, exercises the routes and
+          # imports the heavy modules in-process. --help alone called a binary
+          # healthy that died on startup, and the check was written to warn
+          # rather than fail, so it published the artefact anyway.
+          bash smoke_test_build.sh "$binary"
+          echo "Build size: ${{ steps.collect.outputs.size }}"
+
+      - name: Upload artifact
+        if: inputs.upload_artifacts != false
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: dist-out/
+          retention-days: 14
+          if-no-files-found: error

@@ -1,0 +1,478 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+/* ==========================================================================
+   AnyLearning design tokens — "Bench"
+   See frontend/DESIGN.md for the rules behind these values. In short:
+   the chrome is chromatically neutral so it never tints the photographs,
+   X-rays and micrographs the user is judging; saturated colour is spent
+   only on the mark (what you are working on), machine state, and label
+   classes. Elevation is a lightness step, not a shadow.
+   ========================================================================== */
+
+@theme inline {
+    /* Type roles. Loaded by next/font in app/layout.tsx. */
+    --font-display: var(--font-space-grotesk), var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+    --font-sans: var(--font-inter), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    --font-mono: var(--font-jetbrains-mono), ui-monospace, "SF Mono", Menlo, monospace;
+
+    /* shadcn surface + text roles, remapped onto the Bench palette. */
+    --color-background: var(--background);
+    --color-foreground: var(--foreground);
+    --color-card: var(--card);
+    --color-card-foreground: var(--card-foreground);
+    --color-popover: var(--popover);
+    --color-popover-foreground: var(--popover-foreground);
+    --color-primary: var(--primary);
+    --color-primary-foreground: var(--primary-foreground);
+    --color-secondary: var(--secondary);
+    --color-secondary-foreground: var(--secondary-foreground);
+    --color-muted: var(--muted);
+    --color-muted-foreground: var(--muted-foreground);
+    --color-accent: var(--accent);
+    --color-accent-foreground: var(--accent-foreground);
+    --color-destructive: var(--destructive);
+    --color-destructive-foreground: var(--destructive-foreground);
+    --color-border: var(--border);
+    --color-input: var(--input);
+    --color-ring: var(--ring);
+
+    /* Surfaces. Elevation runs sunken → background → surface → raised. */
+    --color-surface: var(--surface);
+    --color-surface-sunken: var(--surface-sunken);
+    --color-surface-raised: var(--surface-raised);
+
+    /* The mark: the annotation stroke, and the only decorative-looking
+       colour in the app. Same value drives the canvas selection stroke. */
+    --color-mark: var(--mark);
+    --color-mark-ink: var(--mark-ink);
+    --color-mark-strong: var(--mark-strong);
+    --color-mark-soft: var(--mark-soft);
+    --color-mark-border: var(--mark-border);
+
+    /* Machine state. Never used decoratively. */
+    --color-idle: var(--idle);
+    --color-idle-surface: var(--idle-surface);
+    --color-idle-border: var(--idle-border);
+    --color-run: var(--run);
+    --color-run-surface: var(--run-surface);
+    --color-run-border: var(--run-border);
+    --color-ok: var(--ok);
+    --color-ok-surface: var(--ok-surface);
+    --color-ok-border: var(--ok-border);
+    --color-warn: var(--warn);
+    --color-warn-surface: var(--warn-surface);
+    --color-warn-border: var(--warn-border);
+    --color-fail: var(--fail);
+    --color-fail-surface: var(--fail-surface);
+    --color-fail-border: var(--fail-border);
+
+    /* Label-class ramp. Equal lightness so no class shouts over another. */
+    --color-class-1: var(--class-1);
+    --color-class-2: var(--class-2);
+    --color-class-3: var(--class-3);
+    --color-class-4: var(--class-4);
+    --color-class-5: var(--class-5);
+    --color-class-6: var(--class-6);
+    --color-class-7: var(--class-7);
+    --color-class-8: var(--class-8);
+
+    /* Charts. 1–3 are one hue at three steps (dataset splits are parts of
+       one whole); 4–5 are contrasting accents for unrelated series. */
+    --color-chart-1: var(--chart-1);
+    --color-chart-2: var(--chart-2);
+    --color-chart-3: var(--chart-3);
+    --color-chart-4: var(--chart-4);
+    --color-chart-5: var(--chart-5);
+
+    --radius-xs: calc(var(--radius) - 4px);
+    --radius-sm: calc(var(--radius) - 2px);
+    --radius-md: var(--radius);
+    --radius-lg: calc(var(--radius) + 2px);
+    --radius-xl: calc(var(--radius) + 6px);
+
+    /* Shadows are hairline-quiet: in this app elevation is carried by the
+       surface lightness step, and a shadow only separates true overlays. */
+    --shadow-2xs: 0 1px 1px oklch(0.2 0.02 255 / 0.04);
+    --shadow-xs: 0 1px 2px oklch(0.2 0.02 255 / 0.05);
+    --shadow-sm: 0 1px 2px oklch(0.2 0.02 255 / 0.06);
+    --shadow-md: 0 2px 6px oklch(0.2 0.02 255 / 0.07);
+    --shadow-lg: 0 8px 24px oklch(0.2 0.02 255 / 0.1);
+    --shadow-xl: 0 16px 48px oklch(0.2 0.02 255 / 0.14);
+
+    --animate-accordion-down: accordion-down 0.2s ease-out;
+    --animate-accordion-up: accordion-up 0.2s ease-out;
+    --animate-breathe: breathe 2s ease-in-out infinite;
+}
+
+:root {
+    --radius: 0.5rem;
+
+    /* Motion. Two durations and one easing — state changes only. */
+    --ease-bench: cubic-bezier(0.22, 0.61, 0.36, 1);
+    --duration-quick: 120ms;
+    --duration-settle: 220ms;
+
+    /* Window chrome. The desktop window is frameless and the app draws the
+       title bar itself (`@/components/layout/desktop-chrome`), so the shell
+       has to leave room for whatever the platform still puts there. All zero
+       in a browser, where the window is not ours to draw.
+
+       Two insets rather than one because the traffic lights land in the
+       top-left corner of whatever is there: a tall bar takes them on the chin
+       and starts below (--titlebar-inset), a short one steps aside
+       (--titlebar-inset-left). */
+    --titlebar-inset: 0px;
+    --titlebar-inset-left: 0px;
+    --window-controls-width: 0px;
+
+    /* How tall the bar under the window controls is, so they sit on its
+       centre line. The labelling screen swaps in its own shorter bar. */
+    --titlebar-height: 3.75rem;
+
+    /* --- Light: paper on a bench ------------------------------------- */
+    --background: oklch(0.966 0.002 255);
+    --foreground: oklch(0.235 0.011 255);
+    --surface: oklch(1 0 0);
+    --surface-raised: oklch(1 0 0);
+    --surface-sunken: oklch(0.934 0.003 255);
+    --card: oklch(1 0 0);
+    --card-foreground: oklch(0.235 0.011 255);
+    --popover: oklch(1 0 0);
+    --popover-foreground: oklch(0.235 0.011 255);
+    --muted: oklch(0.945 0.003 255);
+    --muted-foreground: oklch(0.505 0.014 255);
+    --accent: oklch(0.945 0.003 255);
+    --accent-foreground: oklch(0.28 0.012 255);
+    --secondary: oklch(0.934 0.003 255);
+    --secondary-foreground: oklch(0.32 0.012 255);
+    --border: oklch(0.902 0.004 255);
+    --input: oklch(0.888 0.005 255);
+
+    --mark: oklch(0.505 0.108 214);
+    --mark-ink: oklch(0.99 0 0);
+    --mark-strong: oklch(0.44 0.1 214);
+    --mark-soft: oklch(0.958 0.022 214);
+    --mark-border: oklch(0.855 0.05 214);
+    --primary: var(--mark);
+    --primary-foreground: var(--mark-ink);
+    --ring: oklch(0.6 0.12 214);
+
+    --idle: oklch(0.5 0.012 255);
+    --idle-surface: oklch(0.945 0.003 255);
+    --idle-border: oklch(0.885 0.005 255);
+    --run: oklch(0.52 0.11 72);
+    --run-surface: oklch(0.963 0.035 78);
+    --run-border: oklch(0.87 0.07 78);
+    --ok: oklch(0.48 0.1 155);
+    --ok-surface: oklch(0.958 0.03 155);
+    --ok-border: oklch(0.865 0.06 155);
+    --warn: oklch(0.52 0.11 72);
+    --warn-surface: oklch(0.963 0.035 78);
+    --warn-border: oklch(0.87 0.07 78);
+    --fail: oklch(0.505 0.175 25);
+    --fail-surface: oklch(0.958 0.026 25);
+    --fail-border: oklch(0.87 0.06 25);
+    --destructive: var(--fail);
+    --destructive-foreground: oklch(0.99 0 0);
+
+    --class-1: oklch(0.63 0.17 25);
+    --class-2: oklch(0.7 0.15 68);
+    --class-3: oklch(0.62 0.14 145);
+    --class-4: oklch(0.65 0.11 195);
+    --class-5: oklch(0.58 0.15 250);
+    --class-6: oklch(0.58 0.16 300);
+    --class-7: oklch(0.62 0.17 345);
+    --class-8: oklch(0.66 0.13 110);
+
+    --chart-1: oklch(0.505 0.108 214);
+    --chart-2: oklch(0.645 0.088 210);
+    --chart-3: oklch(0.775 0.06 206);
+    --chart-4: oklch(0.62 0.13 72);
+    --chart-5: oklch(0.55 0.14 300);
+}
+
+.dark {
+    /* --- Dark: graphite bench under a lamp ---------------------------
+       Not near-black. A ~#1e1f22 ground keeps image edges from blooming,
+       which is why lightbox and PACS viewers sit in this range rather than
+       at true black. Note OKLCH lightness is roughly the cube root of
+       luminance, so these numbers run higher than they look: 0.245 is a
+       mid-graphite, not a mid-grey. */
+    --background: oklch(0.245 0.005 255);
+    --foreground: oklch(0.965 0.002 255);
+    --surface: oklch(0.285 0.006 255);
+    --surface-raised: oklch(0.315 0.007 255);
+    --surface-sunken: oklch(0.205 0.005 255);
+    --card: oklch(0.285 0.006 255);
+    --card-foreground: oklch(0.965 0.002 255);
+    --popover: oklch(0.3 0.007 255);
+    --popover-foreground: oklch(0.965 0.002 255);
+    --muted: oklch(0.32 0.007 255);
+    --muted-foreground: oklch(0.735 0.011 255);
+    --accent: oklch(0.34 0.008 255);
+    --accent-foreground: oklch(0.95 0.004 255);
+    --secondary: oklch(0.335 0.008 255);
+    --secondary-foreground: oklch(0.91 0.005 255);
+    --border: oklch(0.375 0.008 255);
+    --input: oklch(0.415 0.009 255);
+
+    --mark: oklch(0.735 0.115 205);
+    --mark-ink: oklch(0.21 0.025 220);
+    --mark-strong: oklch(0.8 0.12 203);
+    --mark-soft: oklch(0.355 0.048 210);
+    --mark-border: oklch(0.47 0.07 208);
+    --primary: var(--mark);
+    --primary-foreground: var(--mark-ink);
+    --ring: oklch(0.7 0.11 207);
+
+    --idle: oklch(0.72 0.011 255);
+    --idle-surface: oklch(0.34 0.008 255);
+    --idle-border: oklch(0.42 0.009 255);
+    --run: oklch(0.79 0.13 80);
+    --run-surface: oklch(0.365 0.055 75);
+    --run-border: oklch(0.49 0.085 75);
+    --ok: oklch(0.77 0.14 155);
+    --ok-surface: oklch(0.355 0.055 155);
+    --ok-border: oklch(0.47 0.085 155);
+    --warn: oklch(0.79 0.13 80);
+    --warn-surface: oklch(0.365 0.055 75);
+    --warn-border: oklch(0.49 0.085 75);
+    --fail: oklch(0.72 0.16 25);
+    --fail-surface: oklch(0.375 0.08 25);
+    --fail-border: oklch(0.5 0.12 25);
+    --destructive: var(--fail);
+    --destructive-foreground: oklch(0.19 0.02 25);
+
+    --class-1: oklch(0.71 0.16 25);
+    --class-2: oklch(0.79 0.14 68);
+    --class-3: oklch(0.75 0.14 145);
+    --class-4: oklch(0.78 0.11 195);
+    --class-5: oklch(0.7 0.14 250);
+    --class-6: oklch(0.7 0.15 300);
+    --class-7: oklch(0.72 0.16 345);
+    --class-8: oklch(0.78 0.13 110);
+
+    /* Held a step below --mark: a dataset split is reference information,
+       not the thing you are acting on, and at full mark brightness the donut
+       glowed louder than every control on the screen. */
+    --chart-1: oklch(0.66 0.1 207);
+    --chart-2: oklch(0.545 0.08 210);
+    --chart-3: oklch(0.435 0.058 213);
+    --chart-4: oklch(0.75 0.12 78);
+    --chart-5: oklch(0.68 0.14 300);
+}
+
+/* Set on <html> by `<DesktopChrome>` once it knows which window it is in.
+
+   macOS keeps its traffic lights — nothing we could draw would be as familiar
+   — so the top-left corner of the window is not ours: the sidebar starts
+   below them. Windows and Linux get the app's own controls at the top-right
+   instead, and the bars there stop short of them. */
+[data-desktop="macos"] {
+    --titlebar-inset: 1.5rem;
+    --titlebar-inset-left: 4.5rem;
+}
+
+[data-desktop="windows"],
+[data-desktop="linux"] {
+    --window-controls-width: 6.5rem;
+}
+
+/* The labelling screen replaces the whole shell with its own 40px bar. */
+[data-titlebar="compact"] {
+    --titlebar-height: 2.5rem;
+}
+
+/* Round corners.
+
+   macOS and Windows 11 round the window themselves — AppKit because the
+   window is still a titled one, DWM because window_chrome/win32.py asks it to.
+   GTK will not round an undecorated window at all, so on Linux the window is
+   given an alpha channel and the corners are cut here instead: <body> goes
+   transparent, which is what reaches the compositor, and the app's ground
+   moves onto the shell inside it.
+
+   The cut is a clip-path on <body> rather than a radius on the shell, because
+   a radius only clips what flows inside it. The screens that cover the window
+   — the labelling view, dialog overlays, the toaster — are all positioned
+   against the viewport and would square the corners back off; clipping the
+   body catches those too. */
+.window-shell {
+    height: 100dvh;
+    overflow: hidden;
+}
+
+[data-desktop="linux"] body {
+    background: transparent;
+    clip-path: inset(0 round 0.75rem);
+}
+
+[data-desktop="linux"] .window-shell {
+    background: var(--background);
+}
+
+@layer base {
+    * {
+        @apply border-border;
+    }
+
+    body {
+        @apply bg-background text-foreground box-border antialiased;
+        font-family: var(--font-sans);
+        font-feature-settings: "cv05" 1; /* single-storey l — fewer 1/l/I collisions in filenames */
+        text-rendering: optimizeLegibility;
+    }
+
+    /* The instrument voice: display face, tight, never for body copy. */
+    h1,
+    h2,
+    h3 {
+        font-family: var(--font-display);
+        letter-spacing: -0.015em;
+    }
+
+    /* Numbers are read by comparison, so they get the mono face and fixed
+       advance widths wherever they appear in a series. */
+    code,
+    kbd,
+    samp,
+    pre {
+        font-family: var(--font-mono);
+        font-variant-numeric: tabular-nums;
+    }
+
+    ::selection {
+        background: var(--mark-soft);
+        color: var(--foreground);
+    }
+
+    :focus-visible {
+        outline: 2px solid var(--ring);
+        outline-offset: 2px;
+        border-radius: var(--radius-xs);
+    }
+
+    /* Thin, tokenised scrollbars — a dense tool shows a lot of them. */
+    * {
+        scrollbar-width: thin;
+        scrollbar-color: var(--border) transparent;
+    }
+
+    ::-webkit-scrollbar {
+        width: 10px;
+        height: 10px;
+    }
+
+    ::-webkit-scrollbar-track {
+        background: transparent;
+    }
+
+    ::-webkit-scrollbar-thumb {
+        background-color: var(--border);
+        border: 3px solid transparent;
+        border-radius: 999px;
+        background-clip: content-box;
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+        background-color: var(--input);
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+        *,
+        *::before,
+        *::after {
+            scroll-behavior: auto !important;
+            animation-duration: 0.01ms !important;
+            animation-iteration-count: 1 !important;
+            transition-duration: 0.01ms !important;
+        }
+    }
+}
+
+@layer components {
+    /* Type roles. Use these instead of ad-hoc size/weight pairs so headings
+       stay comparable across screens. */
+    .t-title {
+        font-family: var(--font-display);
+        @apply text-xl leading-tight font-semibold tracking-tight;
+    }
+
+    .t-section {
+        font-family: var(--font-display);
+        @apply text-sm leading-snug font-semibold tracking-tight;
+    }
+
+    /* Small caps eyebrow: names a region without competing with a title. */
+    .t-eyebrow {
+        font-family: var(--font-display);
+        @apply text-[0.6875rem] leading-none font-semibold tracking-[0.09em] uppercase;
+        color: var(--muted-foreground);
+    }
+
+    /* Any number the user compares or scans. */
+    .t-data {
+        font-family: var(--font-mono);
+        font-variant-numeric: tabular-nums;
+        @apply text-sm;
+    }
+
+    .t-meta {
+        @apply text-xs leading-normal;
+        color: var(--muted-foreground);
+    }
+
+    /* Filenames, paths, IDs, hex values. */
+    .t-ident {
+        font-family: var(--font-mono);
+        @apply text-xs;
+    }
+}
+
+@keyframes accordion-down {
+    from {
+        height: 0;
+    }
+    to {
+        height: var(--radix-accordion-content-height);
+    }
+}
+
+@keyframes accordion-up {
+    from {
+        height: var(--radix-accordion-content-height);
+    }
+    to {
+        height: 0;
+    }
+}
+
+/* Used only to show that a machine process is alive (training, importing). */
+@keyframes breathe {
+    0%,
+    100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.45;
+    }
+}
+
+@layer utilities {
+    .min-h-screen {
+        min-height: 100vh; /* Fallback */
+        min-height: 100dvh;
+    }
+    .h-screen {
+        height: 100vh; /* Fallback */
+        height: 100dvh;
+    }
+
+    /* Tabular figures on demand, for tables that already set their own size. */
+    .tabular {
+        font-variant-numeric: tabular-nums;
+    }
+}

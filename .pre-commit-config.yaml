@@ -1,0 +1,33 @@
+files: ^(.*\.(py|json|md|sh|yaml|cfg|txt))$
+exclude: ^(\.[^/]*cache/.*|.*/_user.py|source_documents/|anylearning/frontend-dist/|anylearning/training/models/detectron2/)$
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.4.0
+    hooks:
+      - id: check-yaml
+        args: [--unsafe]
+      - id: end-of-file-fixer
+        exclude: ^LICENSES\.md$
+      - id: trailing-whitespace
+        exclude: ^LICENSES\.md$
+      - id: check-json
+      - id: mixed-line-ending
+      - id: check-merge-conflict
+      - id: fix-byte-order-marker
+      - id: check-case-conflict
+  - repo: https://github.com/adrienverge/yamllint.git
+    rev: v1.29.0
+    hooks:
+      - id: yamllint
+        args:
+          - --no-warnings
+          - -d
+          - "{extends: relaxed, rules: {line-length: {max: 160}}}"
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.11.8
+    hooks:
+      # Run the linter
+      - id: ruff
+        args: [ --fix ]
+      # Run the formatter
+      - id: ruff-format

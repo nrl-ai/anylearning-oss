@@ -1,0 +1,49 @@
+{
+  "Learn": {
+    "type": "separator",
+    "title": "Learn machine learning"
+  },
+  "machine-learning-basics": "What is Machine Learning?",
+  "choosing-an-ml-task": "Choosing an ML Task",
+  "evaluating-ml-models": "Train, Validate and Test",
+
+  "Tutorials": {
+    "type": "separator",
+    "title": "Tutorials"
+  },
+  "index": "Introduction to AnyLearning",
+  "installation": "1. Installation",
+  "image-classification": "2. Image Classification",
+  "object-detection": "3. Object Detection",
+  "handpose-classification": "4. Handpose Classification",
+  "semantic-segmentation": "5. Image Segmentation",
+  "instance-segmentation": "6. Instance Segmentation",
+  "keypoint-detection": "7. Keypoint Detection",
+  "auto-labeling": "8. Auto Labeling",
+  "tabular-ai": "9. Tabular AI",
+  "text-llm": "10. Text AI (NLP)",
+
+  "Blog": {
+    "type": "separator",
+    "title": "Blog"
+  },
+  "blog": {
+    "title": "All Posts",
+    "type": "page",
+    "theme": {
+      "collapsed": true
+    }
+  },
+  "anylearning-for-education": "Teaching with AnyLearning",
+  "why-no-code-ai-in-2025": "Why Train on Your Own Machine",
+  "computer-vision-training-offline": "Training Without the Upload Step",
+  "More": {
+    "type": "separator",
+    "title": "More"
+  },
+  "next.js-link": {
+    "title": "AnyLabeling ↗",
+    "href": "https://anylabeling.nrl.ai",
+    "newWindow": true
+  }
+}

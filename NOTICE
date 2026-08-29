@@ -1,0 +1,10 @@
+AnyLearning
+Copyright 2024-2026 AnyLearning contributors
+
+This product includes software developed by the AnyLearning contributors.
+
+The interactive auto-labeling subsystem was originally developed by Viet Anh
+Nguyen and has appeared in other labeling projects. Code accepted into this
+repository is licensed under Apache License 2.0 by its applicable copyright
+holders. Third-party components and model artifacts remain under their own
+licenses, as documented in LICENSES.md and MODEL_LICENCES.md.

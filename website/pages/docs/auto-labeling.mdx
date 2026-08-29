@@ -1,0 +1,97 @@
+import { AiOutlineWarning } from 'react-icons/ai';
+
+# Auto-label images with SAM 2
+
+Auto-labeling turns a point or box prompt into a segmentation mask. It is most
+useful as a fast first pass: prompt the object, inspect the preview, refine its
+edges, then assign a class and save. The three short recordings below use the
+current AnyLearning interface and a real construction-safety photograph.
+
+## Step 1: Turn on AI and choose a model
+
+Open an **Object Detection** or **Image Segmentation** project, start labelling,
+then select the brain-shaped **AI** tool in the left toolbar. Choose a model in
+the new toolbar at the top of the canvas.
+
+<video
+  aria-label="Turning on auto-labeling and choosing SAM 2 Hiera-Small"
+  className="my-4 w-full rounded-lg border shadow-sm"
+  controls
+  playsInline
+  preload="none"
+  poster="/auto_labeling/01_enable_and_choose_model.poster.jpg"
+>
+  <source src="/auto_labeling/01_enable_and_choose_model.mp4" type="video/mp4" />
+  Your browser does not support embedded MP4 video.
+</video>
+
+- **SAM 2 Hiera-Small** is the recommended default for the cleanest masks.
+- **SAM 2 Hiera-Tiny** is a faster SAM 2 option on slower CPUs.
+- **MobileSAM** is the fastest and smallest choice when responsiveness matters
+  more than boundary detail.
+- **SAM 2 Hiera-Base+** and **Hiera-Large** are the slowest, largest options.
+
+MobileSAM, Hiera-Tiny and Hiera-Small ship with AnyLearning and work offline.
+Base+ and Large are downloaded the first time you select them.
+
+## Step 2: Prompt and refine the object
+
+Start with **Include box** when the object has a clear extent. Drag a box around
+the object, then use **Include point** on a missing region or **Exclude point**
+on unwanted background. Every new prompt updates the preview; in this example,
+a single exclusion point removes the worker's temple while keeping the helmet
+rim.
+
+<video
+  aria-label="Prompting a safety helmet with a box and exclude point"
+  className="my-4 w-full rounded-lg border shadow-sm"
+  controls
+  playsInline
+  preload="none"
+  poster="/auto_labeling/02_prompt_and_refine.poster.jpg"
+>
+  <source src="/auto_labeling/02_prompt_and_refine.mp4" type="video/mp4" />
+  Your browser does not support embedded MP4 video.
+</video>
+
+The prompt controls also have keyboard shortcuts:
+
+- **Include point**: `A`
+- **Exclude point**: `D`
+- **Include box**: `R`
+- **Clear prompts**: `C`
+- **Finish object**: `F`
+
+Choose **Polygon** to keep the generated outline, or **Rectangle** when your
+project only needs a bounding box. **Clear** removes the current prompts and
+preview without deleting labels you already finished.
+
+## Step 3: Assign a class and save
+
+When the preview follows the object, select **Finish object**, choose its class,
+and save the annotations. The generated mask then uses the class color and name
+like a manually drawn shape. Inspect the boundary before moving to the next
+image; auto-labeling accelerates annotation, but it does not replace review.
+
+<video
+  aria-label="Assigning the safety helmet class and saving the generated mask"
+  className="my-4 w-full rounded-lg border shadow-sm"
+  controls
+  playsInline
+  preload="none"
+  poster="/auto_labeling/03_assign_and_save.poster.jpg"
+>
+  <source src="/auto_labeling/03_assign_and_save.mp4" type="video/mp4" />
+  Your browser does not support embedded MP4 video.
+</video>
+
+## First-run behavior
+
+<div className="my-4 border-l-4 border-yellow-400 bg-yellow-50 p-4 dark:bg-yellow-900/30">
+  <AiOutlineWarning className="mb-1 inline text-yellow-600 dark:text-yellow-400" /> The first prediction on an image is slower because the model computes an image embedding. Later prompts on that image reuse it and normally respond much faster. Wait for the status line to say the model is ready before drawing your first prompt.
+</div>
+
+The demonstration image comes from the Safety Helmet and Reflective Jacket
+dataset and is used under the Apache-2.0 license. The recording shows SAM 2
+Hiera-Small's real output in AnyLearning; the outline is not hand-drawn or
+composited for the guide.

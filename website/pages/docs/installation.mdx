@@ -1,0 +1,93 @@
+# Installation
+
+AnyLearning OSS runs on Windows, macOS and Linux. Everything it needs is in
+the download (Python, PyTorch and the pretrained weights included), so it has
+nothing to fetch after installation and works on a machine with no network.
+
+## Step 1: Download AnyLearning
+
+1. Visit the [AnyLearning download page](https://anylearning-oss.nrl.ai/download).
+2. Download the build for your operating system.
+3. Wait for the file to finish downloading. It is a few gigabytes, because the
+   models ship with it.
+
+## Step 2: Install AnyLearning
+
+**For Windows**
+
+1. For GPU training, install the [NVIDIA driver](https://www.nvidia.com/en-us/drivers/) for your card first.
+2. Run the downloaded `AnyLearning-Setup-*.exe`.
+3. Follow the installer. It offers a Desktop shortcut and a Start menu entry.
+4. Launch AnyLearning from the shortcut.
+
+**For macOS**
+
+1. Open the downloaded `.dmg`.
+2. Drag **AnyLearning** into your Applications folder.
+3. Eject the disk image.
+
+macOS blocks applications that are not from the App Store, and the first launch
+may report the app as damaged. To clear that, open Terminal and run:
+
+```bash
+xattr -cr /Applications/AnyLearning.app
+```
+
+<img src="/installation/warning.png" width="300" alt="Damaged Warning" />
+
+Then launch it again, and choose **Open** if macOS asks you to confirm.
+
+**For Linux**
+
+1. For GPU training, install the NVIDIA driver from your distribution.
+2. Extract the archive:
+
+```bash
+tar -xzf AnyLearning-*-linux-x86_64.tar.gz
+```
+
+3. Run it:
+
+```bash
+./AnyLearning/AnyLearning
+```
+
+The archive is self-contained and can live anywhere you can write to: no
+system packages are installed and nothing needs root.
+
+## Step 3: Start a project
+
+Open AnyLearning and create a project. The open-source edition includes local
+training and does not require an account, license key, or online activation.
+
+## Where your data is kept
+
+Projects, images, annotations, databases and trained models are written to
+`~/anylearning-data` (`C:\Users\<you>\anylearning-data` on Windows). Installing
+a new version does not touch it, and uninstalling does not delete it.
+
+## System requirements
+
+| | |
+|---|---|
+| Windows | 10 or later, 64-bit |
+| macOS | 11 or later, Apple Silicon or Intel |
+| Linux | glibc 2.31 or later (Ubuntu 20.04+), 64-bit |
+| Memory | 8 GB, 16 GB for training larger models |
+| Disk | 10 GB for the application, plus room for your datasets |
+| GPU (optional) | NVIDIA with CUDA, on Windows and Linux |
+
+Training works without a GPU: it is slower, not unavailable. On macOS,
+training runs on the CPU: Apple's GPU backend is not used yet.
+
+## Troubleshooting
+
+- **macOS says the app is damaged**: run the `xattr` command in Step 2.
+- **Blank window on first launch**: close and reopen the app. The frontend is
+  unpacked on the first run, which takes a few seconds.
+- **Training ends immediately with "No model found in training output"**: your
+  batch size is larger than the number of images in a split. Lower it, or add
+  images.
+
+For anything else, visit our [contact page](https://www.nrl.ai/contact) or
+email support@nrl.ai.
