@@ -25,7 +25,7 @@ from ..runtime import (
     SessionState,
 )
 from .efficient_sam_onnx import EfficientSAMONNX
-from .onnx_session import create_checked_onnx_session
+from .onnx_session import create_checked_onnx_session, release_unused_cpu_memory
 from .sam import SamOnnxConfig, _legacy_prompts, mask_shapes
 
 _MAX_IMAGE_PIXELS = 16_000_000
@@ -176,6 +176,8 @@ class EfficientSamSession(BaseInferenceSession):
         self._embedding_cache.clear()
         self._model = None
         self._provider_warnings = ()
+        if self.config.release_cpu_memory_on_unload:
+            release_unused_cpu_memory()
 
 
 class EfficientSamBackend(InferenceBackend):

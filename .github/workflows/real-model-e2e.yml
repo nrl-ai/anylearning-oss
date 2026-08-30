@@ -475,6 +475,174 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
+  sam-vit-b:
+    name: SAM ViT-B aspect ratios / ${{ matrix.os }}
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    env:
+      ASSET_DIR: tests/fixtures/inference/real_models
+      ENCODER_SHA256: 810993f3ab13c1ab647a78e8cf576ea7c5d8b860dded9dc1cf3b06cb4fd430a9
+      DECODER_SHA256: 46e8dea9f428525c3dd7ae1288e406306e165912d8c2bc7300bb1ebf116c0334
+      IMAGE_SHA256: 5a9522051c3cec2bbd2f6323fccba32e8fbf3ddcc2b3e2fd46b04c720bc6f866
+      OPENBLAS_NUM_THREADS: "1"
+      OMP_NUM_THREADS: "1"
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v10.0.1
+        with:
+          enable-cache: true
+
+      - name: Install isolated inference test dependencies
+        run: >-
+          uv pip install --system
+          "numpy>=2,<3" "opencv-python-headless>=4.11,<6"
+          "pydantic>=2.13,<3" "onnx>=1.16,<2" "onnxruntime>=1.29,<2"
+          "psutil>=7.2,<8" "pytest>=9,<10" "Pillow>=12,<13"
+          "fastapi>=0.141,<1" "httpx>=0.28,<1" "argon2-cffi>=25.1,<26"
+
+      - name: Download immutable SAM ViT-B test assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/download_verified_file.py \
+            "https://huggingface.co/nrl-ai/samexporter-onnx-models/resolve/3c4a5640a91ea73235d78f1b79b4613f64b768b6/sam_vit_b/sam_vit_b.encoder.onnx" \
+            "$ASSET_DIR/sam_vit_b.encoder.onnx" \
+            --sha256 "$ENCODER_SHA256" --max-bytes 419430400 \
+            --timeout-seconds 900
+          python scripts/download_verified_file.py \
+            "https://huggingface.co/nrl-ai/samexporter-onnx-models/resolve/3c4a5640a91ea73235d78f1b79b4613f64b768b6/sam_vit_b/sam_vit_b.decoder.onnx" \
+            "$ASSET_DIR/sam_vit_b.decoder.onnx" \
+            --sha256 "$DECODER_SHA256" --max-bytes 52428800 \
+            --timeout-seconds 300
+          python scripts/download_verified_file.py \
+            "https://raw.githubusercontent.com/Megvii-BaseDetection/YOLOX/6ddff4824372906469a7fae2dc3206c7aa4bbaee/assets/dog.jpg" \
+            "$ASSET_DIR/dog.jpg" --sha256 "$IMAGE_SHA256" \
+            --max-bytes 10485760
+
+      - name: Create portrait case
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          from PIL import Image
+
+          root = Path(os.environ["ASSET_DIR"])
+          with Image.open(root / "dog.jpg") as image:
+              image.transpose(Image.Transpose.ROTATE_270).save(
+                  root / "dog_portrait.png", format="PNG", optimize=False
+              )
+          PY
+
+      - name: Run real portrait and landscape validation
+        run: >-
+          python scripts/validate_real_model.py
+          tests/fixtures/inference/real_models/sam_vit_b_official.json
+          --output-root validation-results/${{ runner.os }}/sam-vit-b
+
+      - name: Run authenticated server with real SAM ViT-B
+        run: >-
+          python scripts/validate_real_server.py
+          tests/fixtures/inference/real_models/sam_vit_b_official.json
+          --output-root validation-results/${{ runner.os }}/server-sam-vit-b
+
+      - name: Retain visual and machine-readable evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: sam-vit-b-real-model-validation-${{ runner.os }}
+          path: validation-results/
+          if-no-files-found: error
+          retention-days: 30
+
+  efficient-sam-s:
+    name: EfficientSAM-S / ${{ matrix.os }}
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    env:
+      ASSET_DIR: tests/fixtures/inference/real_models
+      ENCODER_SHA256: 3eea4544db4647570ca5bea8ab6bbe057f2fc767ad089c14b8f67f482a2493ed
+      DECODER_SHA256: d40a537f617c8ced3b2034b6971bc16cc291c49d3d80f740a394cdb78f0e1d06
+      IMAGE_SHA256: 5a9522051c3cec2bbd2f6323fccba32e8fbf3ddcc2b3e2fd46b04c720bc6f866
+      OPENBLAS_NUM_THREADS: "1"
+      OMP_NUM_THREADS: "1"
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v10.0.1
+        with:
+          enable-cache: true
+
+      - name: Install isolated inference test dependencies
+        run: >-
+          uv pip install --system
+          "numpy>=2,<3" "opencv-python-headless>=4.11,<6"
+          "pydantic>=2.13,<3" "onnx>=1.16,<2" "onnxruntime>=1.29,<2"
+          "psutil>=7.2,<8" "pytest>=9,<10" "Pillow>=12,<13"
+          "fastapi>=0.141,<1" "httpx>=0.28,<1" "argon2-cffi>=25.1,<26"
+
+      - name: Download immutable EfficientSAM-S test assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/download_verified_file.py \
+            "https://huggingface.co/nrl-ai/samexporter-onnx-models/resolve/5050a79cd4b912dd745fff83047c4ef6fbd97be5/efficient_sam_s/efficientsam_s_encoder.onnx" \
+            "$ASSET_DIR/efficientsam_s_encoder.onnx" \
+            --sha256 "$ENCODER_SHA256" --max-bytes 104857600 \
+            --timeout-seconds 600
+          python scripts/download_verified_file.py \
+            "https://huggingface.co/nrl-ai/samexporter-onnx-models/resolve/5050a79cd4b912dd745fff83047c4ef6fbd97be5/efficient_sam_s/efficientsam_s_decoder.onnx" \
+            "$ASSET_DIR/efficientsam_s_decoder.onnx" \
+            --sha256 "$DECODER_SHA256" --max-bytes 52428800 \
+            --timeout-seconds 300
+          python scripts/download_verified_file.py \
+            "https://raw.githubusercontent.com/Megvii-BaseDetection/YOLOX/6ddff4824372906469a7fae2dc3206c7aa4bbaee/assets/dog.jpg" \
+            "$ASSET_DIR/dog.jpg" --sha256 "$IMAGE_SHA256" \
+            --max-bytes 10485760
+
+      - name: Run real promptable ONNX validation
+        run: >-
+          python scripts/validate_real_model.py
+          tests/fixtures/inference/real_models/efficient_sam_s_official.json
+          --output-root validation-results/${{ runner.os }}/efficient-sam-s
+
+      - name: Run authenticated server with real EfficientSAM-S
+        run: >-
+          python scripts/validate_real_server.py
+          tests/fixtures/inference/real_models/efficient_sam_s_official.json
+          --output-root validation-results/${{ runner.os }}/server-efficient-sam-s
+
+      - name: Retain visual and machine-readable evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: efficient-sam-s-real-model-validation-${{ runner.os }}
+          path: validation-results/
+          if-no-files-found: error
+          retention-days: 30
+
   sam3-vit-h:
     name: SAM3 ViT-H text and geometry / ${{ matrix.os }}
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'

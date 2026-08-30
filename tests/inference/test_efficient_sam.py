@@ -189,9 +189,13 @@ def test_efficient_backend_reuses_embedding_and_releases_model(tmp_path):
         assert first.shapes == second.shapes
         assert first.shapes[0].type is ShapeType.RECTANGLE
         assert session._model.encode_calls == 1
-        session.unload()
+        with patch(
+            "anylearning.inference.backends.efficient_sam.release_unused_cpu_memory"
+        ) as release_memory:
+            session.unload()
         assert session._model is None
         assert len(session._embedding_cache) == 0
+        release_memory.assert_called_once_with()
 
 
 def test_efficient_backend_bounds_candidate_output_before_encoding(tmp_path):
