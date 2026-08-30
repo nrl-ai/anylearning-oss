@@ -49,14 +49,21 @@ require a written maintainer decision recorded in `LICENSES.md` before merge.
 | **D-FINE published checkpoints** | Unconfirmed         | Source code is Apache-2.0, but checkpoint redistribution and ONNX conversion rights are not separately confirmed. Objects365-derived variants also inherit dataset-term uncertainty. Keep user-exported ONNX artifacts local until clarified. |
 | **RapidOCR PP-OCR weights**      | Unconfirmed         | RapidOCR's engineering code is Apache-2.0, but its README identifies Baidu as the model copyright holder. Official ONNX URLs and hashes are reusable as download metadata; do not mirror the weights until their grant is recorded.           |
 
-## Tier C — rejected
+## Tier C — rejected for bundling or runtime dependencies
 
-Do not integrate. Do not add as an optional extra. Do not add "just for benchmarking" —
-a benchmark script in the repo is still distribution.
+Do not copy or vendor these implementations, depend on them at runtime, bundle
+their configuration, or distribute their weights. Do not add them as optional
+extras or "just for benchmarking". A license-neutral adapter for a documented
+public ONNX tensor contract is allowed when users supply their own artifact and
+accept responsibility for its license; this does not make the implementation or
+weights eligible for distribution by AnyLearning.
 
 | Component                                                                | License                     | Why rejected                                                                                                                                                                        |
 | ------------------------------------------------------------------------ | --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Ultralytics YOLO26 / YOLO11 / YOLOv12 / YOLOv8                           | AGPL-3.0 or paid enterprise | AGPL terms are incompatible with distributing the combined work as Apache-2.0.                                                                                                      |
+| Ultralytics YOLO26 / YOLO11 / YOLOv8                                     | AGPL-3.0 or paid enterprise | AGPL terms are incompatible with distributing the combined work as Apache-2.0.                                                                                                      |
+| YOLOv12 official implementation                                          | AGPL-3.0                    | Copyleft implementation and weights are not bundled; only its user-supplied ONNX tensor contract is supported.                                                                      |
+| YOLOv10 official implementation                                          | AGPL-3.0                    | Copyleft implementation and weights are not bundled; only its user-supplied ONNX tensor contract is supported.                                                                      |
+| YOLOv9 official implementation                                           | GPL-3.0                     | Copyleft implementation and weights are not bundled; only its user-supplied ONNX tensor contract is supported.                                                                      |
 | YOLO-World                                                               | GPL-3.0                     | Copyleft, same problem.                                                                                                                                                             |
 | EdgeSAM                                                                  | S-Lab License 1.0           | **Non-commercial only.** "Redistribution and use for non-commercial purpose… are permitted". Verified directly against the repository's LICENSE file. Use EfficientViT-SAM instead. |
 | SegFormer (original NVIDIA weights)                                      | NVIDIA Source Code License  | Non-commercial. The _architecture_ is fine to reimplement; those checkpoints are not.                                                                                               |

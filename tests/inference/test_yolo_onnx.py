@@ -15,7 +15,12 @@ from anylearning.inference.backends.onnx_safety import (
 from anylearning.inference.backends.yolo_onnx import (
     DecodedDetection,
     YoloOnnxBackend,
+    YoloOnnxConfig,
+    _prepare_yolox_image,
+    _request_options,
+    decode_end_to_end_yolo_tensor,
     decode_yolo_tensor,
+    decode_yolox_tensor,
     non_maximum_suppression,
     normalize_yolo_tensor,
 )
@@ -85,6 +90,137 @@ def test_v5_and_v8_layouts_decode_their_distinct_confidence_rules():
     assert len(decoded_v8) == 1
     assert decoded_v8[0].confidence == pytest.approx(0.8)
     assert decoded_v8[0].class_id == 0
+
+
+@pytest.mark.parametrize("layout", ["yolov9", "yolov10", "yolo11", "yolo12", "yolo26"])
+def test_later_raw_yolo_exports_share_the_v8_plus_layout(layout):
+    output = np.asarray([[[10], [10], [4], [4], [0.8], [0.2]]], dtype=np.float32)
+
+    decoded = decode_yolo_tensor(
+        output,
+        class_count=2,
+        confidence=0.5,
+        layout=layout,
+    )
+
+    assert len(decoded) == 1
+    assert decoded[0].box == pytest.approx((8, 8, 12, 12))
+    assert decoded[0].class_id == 0
+
+
+def test_end_to_end_yolo_output_decodes_boxes_classes_and_mask_coefficients():
+    output = np.asarray(
+        [
+            [0, 1, 10, 11, 0.8, 1, 2.0, 3.0],
+            [5, 5, 9, 9, 0.9, 0, 4.0, 5.0],
+            [1, 1, 2, 2, 0.1, 1, 6.0, 7.0],
+        ],
+        dtype=np.float32,
+    )[None]
+
+    decoded = decode_end_to_end_yolo_tensor(
+        output,
+        class_count=2,
+        confidence=0.5,
+        class_ids=frozenset({1}),
+        mask_dim=2,
+    )
+
+    assert len(decoded) == 1
+    assert decoded[0].box == pytest.approx((0, 1, 10, 11))
+    assert decoded[0].class_id == 1
+    assert decoded[0].mask_coefficients == pytest.approx((2, 3))
+
+
+def test_end_to_end_yolo_output_rejects_fractional_or_out_of_range_classes():
+    fractional = np.asarray([[[0, 0, 10, 10, 0.9, 0.5]]], dtype=np.float32)
+    with pytest.raises(ValueError, match="class IDs must be integers"):
+        decode_end_to_end_yolo_tensor(fractional, class_count=2, confidence=0.25)
+
+    outside = np.asarray([[[0, 0, 10, 10, 0.9, 2]]], dtype=np.float32)
+    with pytest.raises(ValueError, match="outside configured classes"):
+        decode_end_to_end_yolo_tensor(outside, class_count=2, confidence=0.25)
+
+
+def test_yolox_grid_output_decodes_objectness_and_class_scores():
+    # A 32x32 P5 profile has 4x4 + 2x2 + 1x1 = 21 prediction cells.
+    output = np.zeros((1, 21, 7), dtype=np.float32)
+    output[0, 0] = [0.5, 0.5, 0, 0, 0.8, 0.25, 0.75]
+
+    decoded = decode_yolox_tensor(
+        output,
+        class_count=2,
+        input_height=32,
+        input_width=32,
+        confidence=0.5,
+    )
+
+    assert len(decoded) == 1
+    assert decoded[0].box == pytest.approx((0, 0, 8, 8))
+    assert decoded[0].confidence == pytest.approx(0.6)
+    assert decoded[0].class_id == 1
+
+
+def test_yolox_decoder_rejects_grid_mismatch_and_unsafe_dimension_logits():
+    with pytest.raises(ValueError, match="requires 21"):
+        decode_yolox_tensor(
+            np.zeros((1, 20, 6), dtype=np.float32),
+            class_count=1,
+            input_height=32,
+            input_width=32,
+            confidence=0.25,
+        )
+
+    unsafe = np.zeros((1, 21, 6), dtype=np.float32)
+    unsafe[0, 0, 2] = 100
+    with pytest.raises(ValueError, match="box dimensions exceed"):
+        decode_yolox_tensor(
+            unsafe,
+            class_count=1,
+            input_height=32,
+            input_width=32,
+            confidence=0.25,
+        )
+
+
+def test_yolox_preprocessing_is_top_left_bgr_and_unnormalized():
+    rgb = np.asarray([[[10, 20, 30], [40, 50, 60]]], dtype=np.uint8)
+
+    tensor, transform = _prepare_yolox_image(
+        rgb,
+        input_height=16,
+        input_width=16,
+        max_image_pixels=100,
+        dtype=np.dtype(np.float32),
+    )
+
+    assert tensor.shape == (1, 3, 16, 16)
+    assert tensor[0, :, 0, 0] == pytest.approx((30, 20, 10))
+    assert transform.pad_x == 0
+    assert transform.pad_y == 0
+
+
+def test_yolox_defaults_to_reference_class_agnostic_nms_and_allows_override():
+    config = YoloOnnxConfig(
+        name="fixture",
+        model_path="unused.onnx",
+        format="yolox",
+        class_names=("a", "b"),
+    )
+    request = InferenceRequest(
+        request_id="request-1",
+        source_id="image-sha256:fixture",
+        model_id="fixture",
+        model_revision="fixture",
+    )
+
+    assert _request_options(request, config)[3] is True
+    assert (
+        _request_options(
+            request.model_copy(update={"parameters": {"agnostic_nms": False}}), config
+        )[3]
+        is False
+    )
 
 
 def test_layout_diagnostics_reject_ambiguous_malformed_and_oversized_outputs():
@@ -276,6 +412,63 @@ def test_detection_session_preserves_identity_filters_and_letterbox_geometry(tmp
     session.unload()
     assert session.state is SessionState.CLOSED
     assert session._session is None
+
+
+def test_yolo26_end_to_end_session_skips_host_nms_and_preserves_geometry(tmp_path):
+    predictions = np.asarray(
+        [
+            [4, 12, 28, 20, 0.9, 0],
+            [8, 8, 24, 24, 0.8, 1],
+            [0, 0, 2, 2, 0.1, 1],
+        ],
+        dtype=np.float32,
+    )[None]
+    path = tmp_path / "yolo26-end-to-end.onnx"
+    _constant_model(path, {"predictions": predictions})
+    session = YoloOnnxBackend().create_session(
+        {
+            "name": "yolo26-end-to-end",
+            "model_path": path,
+            "model_revision": "fixture-1",
+            "format": "yolo26",
+            "class_names": ["cat", "dog"],
+        }
+    )
+    assert session.capabilities.metadata["end_to_end"] is True
+    session.load()
+
+    result = session.predict(
+        _request(session, confidence=0.5, iou=0.2, agnostic_nms=True),
+        np.zeros((32, 32, 3), dtype=np.uint8),
+    )
+
+    assert [shape.label for shape in result.shapes] == ["cat", "dog"]
+    assert result.shapes[0].points[0].x == pytest.approx(4)
+    assert result.shapes[0].points[0].y == pytest.approx(12)
+    assert result.shapes[0].points[1].x == pytest.approx(28)
+    assert result.shapes[0].points[1].y == pytest.approx(20)
+    assert any("Ignored request NMS settings" in item for item in result.warnings)
+
+
+def test_later_end_to_end_default_can_be_disabled_for_raw_export(tmp_path):
+    predictions = np.asarray([[[16], [16], [8], [8], [0.9], [0.1]]], dtype=np.float32)
+    path = tmp_path / "yolo26-raw.onnx"
+    _constant_model(path, {"predictions": predictions})
+    session = YoloOnnxBackend().create_session(
+        {
+            "name": "yolo26-raw",
+            "model_path": path,
+            "model_revision": "fixture-1",
+            "format": "yolo26",
+            "end_to_end": False,
+            "class_names": ["cat", "dog"],
+        }
+    )
+    assert session.capabilities.metadata["end_to_end"] is False
+    session.load()
+
+    result = session.predict(_request(session), np.zeros((32, 32, 3), dtype=np.uint8))
+    assert [shape.label for shape in result.shapes] == ["cat"]
 
 
 def test_segmentation_session_decodes_editable_polygon(tmp_path):

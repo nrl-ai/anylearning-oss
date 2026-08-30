@@ -35,6 +35,18 @@ from .onnx_safety import (
     validate_onnx_artifact,
 )
 
+YoloFormat = Literal[
+    "auto",
+    "yolov5",
+    "yolov8",
+    "yolov9",
+    "yolov10",
+    "yolo11",
+    "yolo12",
+    "yolo26",
+    "yolox",
+]
+
 _MAX_MODEL_BYTES = 20 * 1024**3
 _MAX_IMAGE_PIXELS = 100_000_000
 _MAX_OUTPUT_ELEMENTS = 25_000_000
@@ -95,7 +107,8 @@ class YoloOnnxConfig(BaseModel):
     model_revision: str | None = Field(default=None, min_length=1, max_length=512)
     sha256: str | None = Field(default=None, pattern=r"^[0-9a-fA-F]{64}$")
     task: Literal["detection", "instance_segmentation"] = "detection"
-    format: Literal["auto", "yolov5", "yolov8", "yolo11"] = "auto"
+    format: YoloFormat = "auto"
+    end_to_end: bool | None = None
     class_names: tuple[str, ...] = Field(min_length=1, max_length=10_000)
     input_size: tuple[int, int] | None = None
     prediction_output: str | None = Field(default=None, min_length=1, max_length=512)
@@ -121,6 +134,7 @@ class YoloOnnxConfig(BaseModel):
     allow_cpu_fallback: bool = True
     intra_op_threads: int = Field(default=0, ge=0, le=256)
     inter_op_threads: int = Field(default=0, ge=0, le=256)
+    yolox_p6: bool = False
 
     @field_validator("model_path", "config_file", mode="before")
     @classmethod
@@ -167,6 +181,12 @@ class YoloOnnxConfig(BaseModel):
     def validate_outputs(self) -> Self:
         if self.task == "detection" and self.prototype_output is not None:
             raise ValueError("prototype_output is only valid for instance segmentation")
+        if self.format == "yolox" and self.task != "detection":
+            raise ValueError("YOLOX currently supports detection only")
+        if self.yolox_p6 and self.format != "yolox":
+            raise ValueError("yolox_p6 is only valid when format='yolox'")
+        if self.format == "yolox" and self.end_to_end:
+            raise ValueError("YOLOX uses its raw grid output, not end-to-end output")
         return self
 
     @property
@@ -180,6 +200,12 @@ class YoloOnnxConfig(BaseModel):
             explicit_revision=self.model_revision,
             sha256=self.sha256,
         )
+
+    @property
+    def uses_end_to_end_output(self) -> bool:
+        if self.end_to_end is not None:
+            return self.end_to_end
+        return self.format in {"yolov10", "yolo26"}
 
 
 @dataclass(frozen=True)
@@ -235,7 +261,7 @@ def normalize_yolo_tensor(
     *,
     class_count: int,
     mask_dim: int = 0,
-    layout: Literal["auto", "yolov5", "yolov8", "yolo11"] = "auto",
+    layout: YoloFormat = "auto",
     max_output_elements: int = _MAX_OUTPUT_ELEMENTS,
     max_raw_predictions: int = _MAX_RAW_PREDICTIONS,
 ) -> tuple[np.ndarray, Literal["yolov5", "yolov8"]]:
@@ -258,7 +284,13 @@ def normalize_yolo_tensor(
             f"YOLO prediction output must be numeric; received {array.dtype}"
         )
 
-    requested = "yolov8" if layout == "yolo11" else layout
+    requested = (
+        "yolov8"
+        if layout in {"yolov9", "yolov10", "yolo11", "yolo12", "yolo26"}
+        else layout
+    )
+    if requested == "yolox":
+        raise ValueError("YOLOX tensors require the YOLOX grid decoder")
     candidates = _layout_candidates(tuple(array.shape), class_count, mask_dim)
     if requested != "auto":
         candidates = [item for item in candidates if item[0] == requested]
@@ -269,7 +301,7 @@ def normalize_yolo_tensor(
         raise ValueError(
             f"YOLO tensor layout has {detail}: shape={tuple(array.shape)}, "
             f"classes={class_count}, mask_channels={mask_dim}, expected channel "
-            f"counts v5={expected_v5} or v8/11={expected_v8}; set format explicitly "
+            f"counts v5={expected_v5} or v8+={expected_v8}; set format explicitly "
             "and verify the exported output"
         )
     resolved, transpose = candidates[0]
@@ -292,13 +324,13 @@ def decode_yolo_tensor(
     confidence: float,
     class_ids: frozenset[int] | None = None,
     mask_dim: int = 0,
-    layout: Literal["auto", "yolov5", "yolov8", "yolo11"] = "auto",
+    layout: YoloFormat = "auto",
     max_output_elements: int = _MAX_OUTPUT_ELEMENTS,
     max_raw_predictions: int = _MAX_RAW_PREDICTIONS,
     max_candidates: int = _MAX_NMS_CANDIDATES,
     max_coordinate_magnitude: float = _MAX_COORDINATE_MAGNITUDE,
 ) -> list[DecodedDetection]:
-    """Decode v5 or v8/11 rows before non-maximum suppression."""
+    """Decode v5 or v8+ raw rows before non-maximum suppression."""
     rows, resolved = normalize_yolo_tensor(
         output,
         class_count=class_count,
@@ -359,6 +391,198 @@ def decode_yolo_tensor(
                 class_id=int(class_indices[index]),
                 source_index=int(index),
                 mask_coefficients=coefficients,
+            )
+        )
+    return detections
+
+
+def decode_end_to_end_yolo_tensor(
+    output: Any,
+    *,
+    class_count: int,
+    confidence: float,
+    class_ids: frozenset[int] | None = None,
+    mask_dim: int = 0,
+    max_output_elements: int = _MAX_OUTPUT_ELEMENTS,
+    max_raw_predictions: int = _MAX_RAW_PREDICTIONS,
+    max_candidates: int = _MAX_NMS_CANDIDATES,
+    max_coordinate_magnitude: float = _MAX_COORDINATE_MAGNITUDE,
+) -> list[DecodedDetection]:
+    """Decode NMS-free ``xyxy, confidence, class_id[, masks...]`` outputs."""
+    array = np.asarray(output)
+    if array.size > max_output_elements:
+        raise ValueError(
+            f"YOLO output has {array.size} elements; limit is {max_output_elements}"
+        )
+    if array.ndim == 3:
+        if array.shape[0] != 1:
+            raise ValueError("YOLO backend currently requires an output batch of 1")
+        array = array[0]
+    expected_channels = 6 + mask_dim
+    if array.ndim != 2 or array.shape[1] != expected_channels:
+        raise ValueError(
+            "End-to-end YOLO output must have shape "
+            f"[batch,predictions,{expected_channels}]; received {array.shape}"
+        )
+    if array.shape[0] > max_raw_predictions:
+        raise ValueError(
+            f"YOLO output has {array.shape[0]} predictions; limit is "
+            f"{max_raw_predictions}"
+        )
+    if not np.issubdtype(array.dtype, np.number):
+        raise ValueError(
+            f"YOLO prediction output must be numeric; received {array.dtype}"
+        )
+    rows = np.asarray(array, dtype=np.float32)
+    if not np.isfinite(rows).all():
+        raise ValueError("YOLO output contains NaN or infinity")
+    if rows.size and np.max(np.abs(rows[:, :4])) > max_coordinate_magnitude:
+        raise ValueError("YOLO box coordinates exceed the configured magnitude limit")
+    scores = rows[:, 4]
+    if scores.size and (float(scores.min()) < 0 or float(scores.max()) > 1):
+        raise ValueError("YOLO confidence scores must be in the range [0, 1]")
+    raw_class_ids = rows[:, 5]
+    rounded_class_ids = np.rint(raw_class_ids)
+    if not np.allclose(raw_class_ids, rounded_class_ids, rtol=0, atol=1e-4):
+        raise ValueError("YOLO end-to-end class IDs must be integers")
+    resolved_class_ids = rounded_class_ids.astype(np.int64)
+    if resolved_class_ids.size and (
+        int(resolved_class_ids.min()) < 0
+        or int(resolved_class_ids.max()) >= class_count
+    ):
+        raise ValueError("YOLO end-to-end class ID is outside configured classes")
+
+    selected = scores >= confidence
+    if class_ids is not None:
+        selected &= np.isin(resolved_class_ids, tuple(class_ids))
+    selected_indices = np.flatnonzero(selected)
+    order = np.argsort(-scores[selected_indices], kind="stable")
+    selected_indices = selected_indices[order[:max_candidates]]
+    detections: list[DecodedDetection] = []
+    for index in selected_indices:
+        x1, y1, x2, y2 = rows[index, :4]
+        if x2 <= x1 or y2 <= y1:
+            continue
+        detections.append(
+            DecodedDetection(
+                box=(float(x1), float(y1), float(x2), float(y2)),
+                confidence=float(scores[index]),
+                class_id=int(resolved_class_ids[index]),
+                source_index=int(index),
+                mask_coefficients=(
+                    rows[index, 6 : 6 + mask_dim].copy() if mask_dim else None
+                ),
+            )
+        )
+    return detections
+
+
+def decode_yolox_tensor(
+    output: Any,
+    *,
+    class_count: int,
+    input_height: int,
+    input_width: int,
+    confidence: float,
+    class_ids: frozenset[int] | None = None,
+    p6: bool = False,
+    max_output_elements: int = _MAX_OUTPUT_ELEMENTS,
+    max_raw_predictions: int = _MAX_RAW_PREDICTIONS,
+    max_candidates: int = _MAX_NMS_CANDIDATES,
+    max_coordinate_magnitude: float = _MAX_COORDINATE_MAGNITUDE,
+) -> list[DecodedDetection]:
+    """Decode the documented YOLOX grid/stride ONNX output contract."""
+    array = np.asarray(output)
+    if array.size > max_output_elements:
+        raise ValueError(
+            f"YOLOX output has {array.size} elements; limit is {max_output_elements}"
+        )
+    if array.ndim == 3:
+        if array.shape[0] != 1:
+            raise ValueError("YOLOX backend currently requires an output batch of 1")
+        array = array[0]
+    expected_channels = 5 + class_count
+    if array.ndim != 2 or array.shape[1] != expected_channels:
+        raise ValueError(
+            "YOLOX output must have shape "
+            f"[batch,predictions,{expected_channels}]; received {array.shape}"
+        )
+    if array.shape[0] > max_raw_predictions:
+        raise ValueError(
+            f"YOLOX output has {array.shape[0]} predictions; limit is "
+            f"{max_raw_predictions}"
+        )
+    if not np.issubdtype(array.dtype, np.number):
+        raise ValueError(
+            f"YOLOX prediction output must be numeric; received {array.dtype}"
+        )
+    rows = np.asarray(array, dtype=np.float32)
+    if not np.isfinite(rows).all():
+        raise ValueError("YOLOX output contains NaN or infinity")
+
+    strides = (8, 16, 32, 64) if p6 else (8, 16, 32)
+    grids: list[np.ndarray] = []
+    expanded_strides: list[np.ndarray] = []
+    for stride in strides:
+        grid_height = input_height // stride
+        grid_width = input_width // stride
+        x_coordinates, y_coordinates = np.meshgrid(
+            np.arange(grid_width, dtype=np.float32),
+            np.arange(grid_height, dtype=np.float32),
+        )
+        grid = np.stack((x_coordinates, y_coordinates), axis=2).reshape(-1, 2)
+        grids.append(grid)
+        expanded_strides.append(np.full((grid.shape[0], 1), stride, dtype=np.float32))
+    grid = np.concatenate(grids, axis=0)
+    stride_values = np.concatenate(expanded_strides, axis=0)
+    if rows.shape[0] != grid.shape[0]:
+        raise ValueError(
+            f"YOLOX output has {rows.shape[0]} predictions but input "
+            f"{input_width}x{input_height} with strides {strides} requires "
+            f"{grid.shape[0]}"
+        )
+
+    objectness = rows[:, 4]
+    class_scores = rows[:, 5:]
+    if objectness.size and (
+        float(objectness.min()) < 0
+        or float(objectness.max()) > 1
+        or float(class_scores.min()) < 0
+        or float(class_scores.max()) > 1
+    ):
+        raise ValueError(
+            "YOLOX objectness and class scores must be in the range [0, 1]"
+        )
+    largest_safe_log = math.log(max_coordinate_magnitude / min(strides))
+    if rows.size and float(rows[:, 2:4].max()) > largest_safe_log:
+        raise ValueError("YOLOX box dimensions exceed the configured magnitude limit")
+
+    centers = (rows[:, :2] + grid) * stride_values
+    dimensions = np.exp(rows[:, 2:4]) * stride_values
+    boxes = np.concatenate((centers - dimensions / 2, centers + dimensions / 2), axis=1)
+    if boxes.size and np.max(np.abs(boxes)) > max_coordinate_magnitude:
+        raise ValueError("YOLOX box coordinates exceed the configured magnitude limit")
+    resolved_class_ids = np.argmax(class_scores, axis=1)
+    scores = (
+        objectness * class_scores[np.arange(class_scores.shape[0]), resolved_class_ids]
+    )
+    selected = scores >= confidence
+    if class_ids is not None:
+        selected &= np.isin(resolved_class_ids, tuple(class_ids))
+    selected_indices = np.flatnonzero(selected)
+    order = np.argsort(-scores[selected_indices], kind="stable")
+    selected_indices = selected_indices[order[:max_candidates]]
+    detections: list[DecodedDetection] = []
+    for index in selected_indices:
+        x1, y1, x2, y2 = boxes[index]
+        if x2 <= x1 or y2 <= y1:
+            continue
+        detections.append(
+            DecodedDetection(
+                box=(float(x1), float(y1), float(x2), float(y2)),
+                confidence=float(scores[index]),
+                class_id=int(resolved_class_ids[index]),
+                source_index=int(index),
             )
         )
     return detections
@@ -441,7 +665,9 @@ def _request_options(
     confidence = request.parameters.get("confidence", config.confidence)
     iou = request.parameters.get("iou", config.iou)
     maximum = request.parameters.get("max_detections", config.max_detections)
-    agnostic = request.parameters.get("agnostic_nms", False)
+    # The official YOLOX ONNX reference defaults to class-agnostic NMS. Other
+    # profiles retain the conventional class-aware default.
+    agnostic = request.parameters.get("agnostic_nms", config.format == "yolox")
     if isinstance(confidence, bool) or not isinstance(confidence, (int, float)):
         raise ValueError("confidence must be a number")
     if isinstance(iou, bool) or not isinstance(iou, (int, float)):
@@ -522,6 +748,49 @@ def _prepare_image(
         scale=scale,
         pad_x=float(pad_x),
         pad_y=float(pad_y),
+    )
+
+
+def _prepare_yolox_image(
+    image: Any,
+    *,
+    input_height: int,
+    input_width: int,
+    max_image_pixels: int,
+    dtype: np.dtype[Any],
+) -> tuple[np.ndarray, ImageTransform]:
+    """Prepare contract RGB input for the official YOLOX ONNX profile."""
+    array = np.asarray(image)
+    if array.dtype != np.uint8 or array.ndim != 3 or array.shape[2] != 3:
+        raise ValueError("YOLOX inference expects an H x W x 3 uint8 RGB image")
+    height, width = array.shape[:2]
+    if height <= 0 or width <= 0 or height * width > max_image_pixels:
+        raise ValueError(
+            f"Image dimensions {width}x{height} exceed the configured pixel limit"
+        )
+    scale = min(input_width / width, input_height / height)
+    resized_width = max(1, min(input_width, int(width * scale)))
+    resized_height = max(1, min(input_height, int(height * scale)))
+    resized = cv2.resize(
+        array,
+        (resized_width, resized_height),
+        interpolation=cv2.INTER_LINEAR,
+    )
+    canvas = np.full((input_height, input_width, 3), 114, dtype=np.uint8)
+    canvas[:resized_height, :resized_width] = resized
+    # The published ONNX profile consumes the BGR byte range used by OpenCV,
+    # without 1/255 normalization.
+    tensor = np.ascontiguousarray(
+        canvas[:, :, ::-1].transpose(2, 0, 1)[None], dtype=dtype
+    )
+    return tensor, ImageTransform(
+        original_height=height,
+        original_width=width,
+        input_height=input_height,
+        input_width=input_width,
+        scale=scale,
+        pad_x=0.0,
+        pad_y=0.0,
     )
 
 
@@ -797,7 +1066,10 @@ class YoloOnnxSession(BaseInferenceSession):
         )
         started = time.perf_counter()
         preprocess_started = time.perf_counter()
-        tensor, transform = _prepare_image(
+        prepare = (
+            _prepare_yolox_image if self.config.format == "yolox" else _prepare_image
+        )
+        tensor, transform = prepare(
             image,
             input_height=self._input_height,
             input_width=self._input_width,
@@ -837,26 +1109,67 @@ class YoloOnnxSession(BaseInferenceSession):
             mask_dim = int(prototypes.shape[0])
 
         postprocess_started = time.perf_counter()
-        decoded = decode_yolo_tensor(
-            outputs[0],
-            class_count=len(self.config.class_names),
-            confidence=confidence,
-            class_ids=class_ids,
-            mask_dim=mask_dim,
-            layout=self.config.format,
-            max_output_elements=self.config.max_output_elements,
-            max_raw_predictions=self.config.max_raw_predictions,
-            max_candidates=self.config.max_nms_candidates,
-            max_coordinate_magnitude=self.config.max_coordinate_magnitude,
-        )
-        detections = non_maximum_suppression(
-            decoded,
-            iou_threshold=iou,
-            max_detections=maximum,
-            class_agnostic=agnostic,
-        )
+        if self.config.format == "yolox":
+            decoded = decode_yolox_tensor(
+                outputs[0],
+                class_count=len(self.config.class_names),
+                input_height=self._input_height,
+                input_width=self._input_width,
+                confidence=confidence,
+                class_ids=class_ids,
+                p6=self.config.yolox_p6,
+                max_output_elements=self.config.max_output_elements,
+                max_raw_predictions=self.config.max_raw_predictions,
+                max_candidates=self.config.max_nms_candidates,
+                max_coordinate_magnitude=self.config.max_coordinate_magnitude,
+            )
+            detections = non_maximum_suppression(
+                decoded,
+                iou_threshold=iou,
+                max_detections=maximum,
+                class_agnostic=agnostic,
+            )
+        elif self.config.uses_end_to_end_output:
+            decoded = decode_end_to_end_yolo_tensor(
+                outputs[0],
+                class_count=len(self.config.class_names),
+                confidence=confidence,
+                class_ids=class_ids,
+                mask_dim=mask_dim,
+                max_output_elements=self.config.max_output_elements,
+                max_raw_predictions=self.config.max_raw_predictions,
+                max_candidates=self.config.max_nms_candidates,
+                max_coordinate_magnitude=self.config.max_coordinate_magnitude,
+            )
+            detections = decoded[:maximum]
+        else:
+            decoded = decode_yolo_tensor(
+                outputs[0],
+                class_count=len(self.config.class_names),
+                confidence=confidence,
+                class_ids=class_ids,
+                mask_dim=mask_dim,
+                layout=self.config.format,
+                max_output_elements=self.config.max_output_elements,
+                max_raw_predictions=self.config.max_raw_predictions,
+                max_candidates=self.config.max_nms_candidates,
+                max_coordinate_magnitude=self.config.max_coordinate_magnitude,
+            )
+            detections = non_maximum_suppression(
+                decoded,
+                iou_threshold=iou,
+                max_detections=maximum,
+                class_agnostic=agnostic,
+            )
         shapes: list[InferenceShape] = []
         warnings = list(self._provider_warnings)
+        if self.config.uses_end_to_end_output and (
+            "iou" in request.parameters or "agnostic_nms" in request.parameters
+        ):
+            warnings.append(
+                "Ignored request NMS settings because the ONNX graph returns "
+                "end-to-end NMS-free detections"
+            )
         empty_masks = 0
         discarded_mask_components = 0
         for detection in detections:
@@ -934,6 +1247,7 @@ class YoloOnnxBackend(InferenceBackend):
             metadata={
                 "backend": self.backend_id,
                 "format": parsed.format,
+                "end_to_end": parsed.uses_end_to_end_output,
                 "class_count": len(parsed.class_names),
                 "artifact_policy": "user-supplied",
                 "requested_providers": ",".join(parsed.providers),

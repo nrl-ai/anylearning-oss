@@ -209,18 +209,18 @@ Absolute paths, parent traversal, links, undeclared files, and arbitrary externa
 references remain rejected. The generic user-supplied YOLO backend stays
 single-file until this shared bundle loader exists.
 
-| Order | Model capability                                           | Distribution policy                                          | Reason                                                            |
-| ----- | ---------------------------------------------------------- | ------------------------------------------------------------ | ----------------------------------------------------------------- |
-| 1     | ONNX models trained/exported by AnyLearning                | Built in                                                     | Close the train-to-prelabel loop with artifacts we already create |
-| 2     | User-supplied YOLOv5/v8/11 detection and segmentation ONNX | Generic decoder only; no Ultralytics code or weights bundled | Highest custom-model interoperability value                       |
-| 3     | YOLOX ONNX detection                                       | Permissive bundled option after benchmark                    | Apache-2.0, CPU-friendly detector                                 |
-| 4     | EfficientViT-SAM encoder/decoder ONNX                      | Permissive optional/bundled weights after review             | Faster promptable segmentation on CPU                             |
-| 5     | RF-DETR ONNX detection/instance segmentation               | Reuse Apache-designated training artifacts                   | Accurate permissive family and existing AnyLearning investment    |
-| 6     | D-FINE ONNX detection                                      | COCO-only weights after redistribution confirmation          | Official exporter; do not treat it as a segmentation model        |
-| 7     | ONNX detector-to-SAM refinement                            | Workflow over existing adapters                              | Converts detector boxes into editable high-quality masks          |
-| 8     | OWLv2 ONNX, then Grounding DINO ONNX                       | Optional/server-first; Grounding DINO export remains gated   | Zero-shot prelabeling with a verified ONNX path first             |
-| 9     | OBB through a permissive RTMDet ONNX backend               | Only after OBB editing and export are complete               | Geometry must be correct before inference                         |
-| 10    | RapidOCR PP-OCR ONNX                                       | Optional/server-first until workflow demand is validated     | Permissive OCR without a new training framework                   |
+| Order | Model capability                                                          | Distribution policy                                                      | Reason                                                            |
+| ----- | ------------------------------------------------------------------------- | ------------------------------------------------------------------------ | ----------------------------------------------------------------- |
+| 1     | ONNX models trained/exported by AnyLearning                               | Built in                                                                 | Close the train-to-prelabel loop with artifacts we already create |
+| 2     | User-supplied YOLOv5/v8/v9/v10/v11/v12/26 detection and segmentation ONNX | Generic decoder only; no external implementation code or weights bundled | Highest custom-model interoperability value                       |
+| 3     | YOLOX ONNX detection                                                      | Neutral ONNX adapter implemented; benchmark before offering weights      | Apache-2.0, CPU-friendly detector                                 |
+| 4     | EfficientViT-SAM encoder/decoder ONNX                                     | Permissive optional/bundled weights after review                         | Faster promptable segmentation on CPU                             |
+| 5     | RF-DETR ONNX detection/instance segmentation                              | Reuse Apache-designated training artifacts                               | Accurate permissive family and existing AnyLearning investment    |
+| 6     | D-FINE ONNX detection                                                     | COCO-only weights after redistribution confirmation                      | Official exporter; do not treat it as a segmentation model        |
+| 7     | ONNX detector-to-SAM refinement                                           | Workflow over existing adapters                                          | Converts detector boxes into editable high-quality masks          |
+| 8     | OWLv2 ONNX, then Grounding DINO ONNX                                      | Optional/server-first; Grounding DINO export remains gated               | Zero-shot prelabeling with a verified ONNX path first             |
+| 9     | OBB through a permissive RTMDet ONNX backend                              | Only after OBB editing and export are complete                           | Geometry must be correct before inference                         |
+| 10    | RapidOCR PP-OCR ONNX                                                      | Optional/server-first until workflow demand is validated                 | Permissive OCR without a new training framework                   |
 
 Ultralytics YOLO implementations and distributed weights remain rejected from
 the Apache-2.0 product under the current license policy. Supporting a documented
@@ -375,13 +375,14 @@ I2. Adapt existing SAM/SAM2 behind the interfaces without output changes.
 I3. Add stable image identity and embedding cache keys including model revision.
 I4. Add deterministic SAM fixtures and load/infer/unload soak tests.
 I5. Implement a reusable YOLO decoder with tensor-layout diagnostics.
-I6. Add YOLOv5/v8/11 detection and v8/11 segmentation using ONNX.
+I6. Add YOLOv5/v8/v9/v10/v11/v12/26 detection and segmentation using raw and
+end-to-end ONNX output profiles.
 I7. Add confidence, IoU, class filters, dynamic shapes, and provider diagnostics.
 I8. Connect AnyLearning-trained artifacts to auto-labeling through the same
 contracts.
-I9. Add and benchmark ONNX-only YOLOX, EfficientViT-SAM, RF-DETR, and D-FINE
-backends in that order, enabling only those that satisfy the model and source
-gates in `docs/onnx_model_sources.md`.
+I9. Benchmark the ONNX-only YOLOX adapter, then add EfficientViT-SAM, RF-DETR,
+and D-FINE backends in that order, enabling only those that satisfy the model
+and source gates in `docs/onnx_model_sources.md`.
 I10. Add OWLv2, Grounding DINO, RTMDet OBB, and RapidOCR only from validated ONNX
 artifacts; keep framework-native runtimes out of `anylearning.inference`.
 I11. Verify custom exported models and packaged runtime behavior.

@@ -12,9 +12,9 @@ backend is selected.
 ## User-supplied YOLO ONNX models
 
 The `yolo_onnx` backend implements neutral output layouts for YOLOv5, YOLOv8,
-and YOLO11 detection and instance segmentation. It does not include model
-implementation code, configuration, or weights. The user is responsible for
-the rights to each supplied artifact.
+YOLOv9, YOLOv10, YOLO11, YOLO12, and YOLO26 detection and instance
+segmentation. It does not include model implementation code, configuration, or
+weights. The user is responsible for the rights to each supplied artifact.
 
 ```python
 from anylearning.inference import InferenceRequest, get_default_registry
@@ -47,15 +47,40 @@ result = session.predict(request, rgb_image)
 session.unload()
 ```
 
-`format="auto"` accepts a tensor only when its channel count and orientation
+`format="auto"` accepts a raw tensor only when its channel count and orientation
 identify one layout unambiguously. For actionable errors and stable deployment,
-production configuration should set `yolov5`, `yolov8`, or `yolo11` explicitly.
-The supported raw layouts are:
+production configuration should set the exact model family explicitly. The
+supported layouts are:
 
 - YOLOv5: `[x_center, y_center, width, height, objectness, classes..., masks...]`
-- YOLOv8/11: `[x_center, y_center, width, height, classes..., masks...]`
+- YOLOv8/v9/v10/v11/v12/26 raw: `[x_center, y_center, width, height, classes..., masks...]`
+- YOLOv10/26 end-to-end: `[x1, y1, x2, y2, confidence, class_id, masks...]`
 - Either `batch × predictions × channels` or `batch × channels × predictions`
 - Segmentation prototypes: `batch × mask_channels × height × width`
+
+YOLOv10 and YOLO26 default to the end-to-end profile, whose graph has already
+selected detections. Set `end_to_end=false` only for an explicitly verified raw
+export. Conversely, set `end_to_end=true` for another family exported with the
+same end-to-end contract. Request-level IoU and class-agnostic NMS settings are
+ignored for end-to-end outputs and reported in result warnings.
+
+The `yolox` format implements the official P5 grid/stride ONNX profile and has
+an opt-in P6 mode. It performs the profile's top-left padding, RGB-contract to
+BGR conversion, unnormalized byte-range input, objectness/class composition,
+and bounded host NMS without importing its native framework. Its default NMS is
+class-agnostic, matching the official ONNX Runtime reference; requests may set
+`agnostic_nms=false` explicitly when preserving overlapping cross-class boxes is
+more important than reference parity.
+
+## Real-model validation reports
+
+`scripts/validate_real_model.py` runs a manifest-defined local model and image
+at least twice through the public inference contract. It fails expectations or
+non-repeatable shapes, and writes `summary.json`, every contract result,
+per-stage timings, model/image SHA-256 values, annotated PNGs, and a local HTML
+visual report beneath `validation-results/`. See
+`tests/fixtures/inference/real_models/README.md` for the manifest and opt-in
+pytest workflow. Weights remain outside the repository.
 
 Dynamic image inputs require an explicit bounded `input_size`. Multiple
 rank-2/rank-3 prediction outputs or rank-4 prototype outputs require
