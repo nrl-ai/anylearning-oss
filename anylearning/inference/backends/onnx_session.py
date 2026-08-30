@@ -104,11 +104,24 @@ def create_checked_onnx_session(
 def release_unused_cpu_memory() -> None:
     """Best-effort reclamation after unloading exceptionally large CPU graphs.
 
-    CPython releases ONNX Runtime objects promptly, but glibc can retain their
-    multi-gigabyte allocation arenas indefinitely. Collection is portable; the
-    process-wide trim is deliberately limited to Linux/glibc and unload paths.
+    CPython releases ONNX Runtime objects promptly, but platform allocators can
+    retain their multi-gigabyte caches indefinitely. Collection is portable;
+    allocator pressure relief is deliberately limited to supported unload APIs.
     """
     gc.collect()
+    if sys.platform == "darwin":
+        try:
+            libc = ctypes.CDLL(None)
+            pressure_relief = libc.malloc_zone_pressure_relief
+            pressure_relief.argtypes = [ctypes.c_void_p, ctypes.c_size_t]
+            pressure_relief.restype = ctypes.c_size_t
+            # A null zone examines every registered malloc zone; a zero goal
+            # requests maximal relief. Both semantics are part of Apple's
+            # public libmalloc API and have been available since macOS 10.7.
+            pressure_relief(None, 0)
+        except (AttributeError, OSError):
+            return
+        return
     if not sys.platform.startswith("linux"):
         return
     try:
