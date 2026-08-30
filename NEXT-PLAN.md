@@ -45,10 +45,9 @@ its implementation PR merges. Releases require explicit approval.
 | AnyLabeling remote inference integration              | AnyLabeling `RemoteModel` |
 
 AnyLearning is Apache-2.0. Feature ideas and wire behavior may be independently
-reimplemented, but GPL AnyLabeling or X-AnyLabeling implementation code must not
-be copied into AnyLearning unless the specific code has compatible provenance
-and licensing. Apache-2.0 AnyLearning components may be consumed by GPLv3
-AnyLabeling.
+reimplemented, but GPL implementation code must not be copied into AnyLearning
+unless the specific code has compatible provenance and licensing. Apache-2.0
+AnyLearning components may be consumed by GPLv3 AnyLabeling.
 
 ## Highest priorities: performance, stability, and security
 
