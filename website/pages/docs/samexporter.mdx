@@ -12,13 +12,13 @@ shown as quality evidence.
 
 ## Supported families
 
-| Family | Published ONNX files | Prompts | Practical use |
-|---|---|---|---|
-| SAM ViT-B | [encoder + decoder](https://huggingface.co/nrl-ai/samexporter-onnx-models/tree/main/sam_vit_b) | point, negative point, rectangle | Original SAM compatibility and quality |
-| MobileSAM | [TinyViT encoder + SAM decoder](https://huggingface.co/nrl-ai/samexporter-onnx-models/tree/main/mobile_sam) | point, negative point, rectangle | Fast CPU and smaller packages |
-| EfficientSAM-Ti | [official split ONNX](https://huggingface.co/nrl-ai/samexporter-onnx-models/tree/main/efficient_sam_ti) | point, rectangle | Smallest validated split pair |
-| SAM 2.1 Tiny | [encoder + decoder](https://huggingface.co/nrl-ai/samexporter-onnx-models/tree/main/sam2_1_hiera_tiny) | point, negative point, rectangle, mask refinement | Modern image segmentation |
-| SAM3 | [image, language and decoder graphs](https://huggingface.co/nrl-ai/samexporter-onnx-models/tree/main/sam3) | text and positive/negative geometry | Open-vocabulary instance discovery |
+| Family          | Published ONNX files                                                                                        | Prompts                                           | Practical use                          |
+| --------------- | ----------------------------------------------------------------------------------------------------------- | ------------------------------------------------- | -------------------------------------- |
+| SAM ViT-B       | [encoder + decoder](https://huggingface.co/nrl-ai/samexporter-onnx-models/tree/main/sam_vit_b)              | point, negative point, rectangle                  | Original SAM compatibility and quality |
+| MobileSAM       | [TinyViT encoder + SAM decoder](https://huggingface.co/nrl-ai/samexporter-onnx-models/tree/main/mobile_sam) | point, negative point, rectangle                  | Fast CPU and smaller packages          |
+| EfficientSAM-Ti | [official split ONNX](https://huggingface.co/nrl-ai/samexporter-onnx-models/tree/main/efficient_sam_ti)     | point, rectangle                                  | Smallest validated split pair          |
+| SAM 2.1 Tiny    | [encoder + decoder](https://huggingface.co/nrl-ai/samexporter-onnx-models/tree/main/sam2_1_hiera_tiny)      | point, negative point, rectangle, mask refinement | Modern image segmentation              |
+| SAM3            | [image, language and decoder graphs](https://huggingface.co/nrl-ai/samexporter-onnx-models/tree/main/sam3)  | text and positive/negative geometry               | Open-vocabulary instance discovery     |
 
 SAMExporter currently exports the SAM2 image path, not its temporal memory or
 video tracker. SAM3 geometry is a concept exemplar rather than a crop. The CLI
@@ -79,9 +79,9 @@ aspect ratio.
 
 ```json
 [
-  {"type": "rectangle", "data": [325, 410, 520, 770]},
-  {"type": "point", "data": [430, 690], "label": 1},
-  {"type": "point", "data": [500, 690], "label": 0}
+  { "type": "rectangle", "data": [325, 410, 520, 770] },
+  { "type": "point", "data": [430, 690], "label": 1 },
+  { "type": "point", "data": [500, 690], "label": 0 }
 ]
 ```
 
