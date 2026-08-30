@@ -47,11 +47,13 @@ MobileSAM apply the official longest-side resize and aspect-ratio-aware
 low-resolution mask crop; EfficientSAM preserves its dynamic native image size.
 All image boundaries are explicitly `uint8` RGB.
 
-Promptable pairs disable ONNX Runtime's per-session CPU memory arena by default.
-This keeps repeated model load/unload cycles bounded on desktop and server hosts
-without changing warm prompt decoding. A long-lived, throughput-oriented worker
-that has measured sufficient memory headroom may set
-`enable_cpu_mem_arena=true`; real-model validation should be rerun for that
+Promptable models disable ONNX Runtime's per-session CPU memory arena and memory
+pattern optimization by default. Memory patterns can preallocate one large
+activation buffer after observing the first run; disabling them keeps peak and
+repeated load/unload behavior bounded for large graphs on desktop and server
+hosts. A long-lived, throughput-oriented worker that has measured sufficient
+memory headroom may set `enable_cpu_mem_arena=true` and/or
+`enable_mem_pattern=true`; real-model validation should be rerun for that exact
 deployment profile.
 
 ## User-supplied YOLO ONNX models

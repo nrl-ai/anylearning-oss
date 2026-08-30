@@ -22,11 +22,13 @@ def _session_options(
     onnxruntime: Any,
     *,
     enable_cpu_mem_arena: bool,
+    enable_mem_pattern: bool,
     intra_op_threads: int,
     inter_op_threads: int,
 ) -> Any:
     options = onnxruntime.SessionOptions()
     options.enable_cpu_mem_arena = enable_cpu_mem_arena
+    options.enable_mem_pattern = enable_mem_pattern
     if intra_op_threads:
         options.intra_op_num_threads = intra_op_threads
     if inter_op_threads:
@@ -45,6 +47,7 @@ def create_checked_onnx_session(
     external_data_sha256: Mapping[str, str] | None,
     max_external_data_bytes: int,
     enable_cpu_mem_arena: bool,
+    enable_mem_pattern: bool,
     intra_op_threads: int,
     inter_op_threads: int,
     cancellation: CancellationToken,
@@ -65,6 +68,7 @@ def create_checked_onnx_session(
     options = _session_options(
         onnxruntime,
         enable_cpu_mem_arena=enable_cpu_mem_arena,
+        enable_mem_pattern=enable_mem_pattern,
         intra_op_threads=intra_op_threads,
         inter_op_threads=inter_op_threads,
     )
@@ -104,11 +108,24 @@ def create_checked_onnx_session(
 def release_unused_cpu_memory() -> None:
     """Best-effort reclamation after unloading exceptionally large CPU graphs.
 
-    CPython releases ONNX Runtime objects promptly, but glibc can retain their
-    multi-gigabyte allocation arenas indefinitely. Collection is portable; the
-    process-wide trim is deliberately limited to Linux/glibc and unload paths.
+    CPython releases ONNX Runtime objects promptly, but platform allocators can
+    retain their multi-gigabyte caches indefinitely. Collection is portable;
+    allocator pressure relief is deliberately limited to supported unload APIs.
     """
     gc.collect()
+    if sys.platform == "darwin":
+        try:
+            libc = ctypes.CDLL(None)
+            pressure_relief = libc.malloc_zone_pressure_relief
+            pressure_relief.argtypes = [ctypes.c_void_p, ctypes.c_size_t]
+            pressure_relief.restype = ctypes.c_size_t
+            # A null zone examines every registered malloc zone; a zero goal
+            # requests maximal relief. Both semantics are part of Apple's
+            # public libmalloc API and have been available since macOS 10.7.
+            pressure_relief(None, 0)
+        except (AttributeError, OSError):
+            return
+        return
     if not sys.platform.startswith("linux"):
         return
     try:

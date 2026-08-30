@@ -25,7 +25,7 @@ from ..runtime import (
     SessionState,
 )
 from .efficient_sam_onnx import EfficientSAMONNX
-from .onnx_session import create_checked_onnx_session
+from .onnx_session import create_checked_onnx_session, release_unused_cpu_memory
 from .sam import SamOnnxConfig, _legacy_prompts, mask_shapes
 
 _MAX_IMAGE_PIXELS = 16_000_000
@@ -59,6 +59,7 @@ class EfficientSamSession(BaseInferenceSession):
             external_data_sha256=self.config.encoder_external_data_sha256,
             max_external_data_bytes=self.config.max_external_data_bytes,
             enable_cpu_mem_arena=self.config.enable_cpu_mem_arena,
+            enable_mem_pattern=self.config.enable_mem_pattern,
             intra_op_threads=self.config.intra_op_threads,
             inter_op_threads=self.config.inter_op_threads,
             cancellation=cancellation,
@@ -72,6 +73,7 @@ class EfficientSamSession(BaseInferenceSession):
             external_data_sha256=self.config.decoder_external_data_sha256,
             max_external_data_bytes=self.config.max_external_data_bytes,
             enable_cpu_mem_arena=self.config.enable_cpu_mem_arena,
+            enable_mem_pattern=self.config.enable_mem_pattern,
             intra_op_threads=self.config.intra_op_threads,
             inter_op_threads=self.config.inter_op_threads,
             cancellation=cancellation,
@@ -176,6 +178,8 @@ class EfficientSamSession(BaseInferenceSession):
         self._embedding_cache.clear()
         self._model = None
         self._provider_warnings = ()
+        if self.config.release_cpu_memory_on_unload:
+            release_unused_cpu_memory()
 
 
 class EfficientSamBackend(InferenceBackend):

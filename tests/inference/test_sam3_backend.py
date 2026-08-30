@@ -55,6 +55,7 @@ def test_sam3_config_binds_all_graphs_and_freezes_external_manifests(tmp_path):
     validated = Sam3Config.model_validate(config)
 
     assert validated.revision.startswith("onnx-triplet-sha256:")
+    assert validated.enable_mem_pattern is False
     with pytest.raises(TypeError, match="immutable"):
         validated.image_encoder_external_data_sha256["other"] = "e" * 64
 

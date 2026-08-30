@@ -182,6 +182,10 @@ def test_efficient_backend_reuses_embedding_and_releases_model(tmp_path):
             call.kwargs["enable_cpu_mem_arena"] is False
             for call in checked.call_args_list
         )
+        assert all(
+            call.kwargs["enable_mem_pattern"] is False
+            for call in checked.call_args_list
+        )
         image = np.zeros((16, 20, 3), dtype=np.uint8)
         first = session.predict(efficient_request("image:one"), image)
         second = session.predict(efficient_request("image:one"), image)
@@ -189,9 +193,13 @@ def test_efficient_backend_reuses_embedding_and_releases_model(tmp_path):
         assert first.shapes == second.shapes
         assert first.shapes[0].type is ShapeType.RECTANGLE
         assert session._model.encode_calls == 1
-        session.unload()
+        with patch(
+            "anylearning.inference.backends.efficient_sam.release_unused_cpu_memory"
+        ) as release_memory:
+            session.unload()
         assert session._model is None
         assert len(session._embedding_cache) == 0
+        release_memory.assert_called_once_with()
 
 
 def test_efficient_backend_bounds_candidate_output_before_encoding(tmp_path):

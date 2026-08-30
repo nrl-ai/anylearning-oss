@@ -84,6 +84,8 @@ independent graph digests, and exact external-data maps for each graph.
 Reports draw the prompt over the predicted polygon so coordinate-scaling or
 channel-order defects are visible during review. The committed
 `efficient_sam_ti_official.json` is a complete real point/box example;
-`sam3_vit_h_official.json` covers text, text+point, and box inference and runs
-only in the scheduled/manual resource-qualified workflow because its bundle is
-several gigabytes.
+`efficient_sam_s_official.json` and `sam_vit_b_official.json` exercise the
+larger scheduled graph variants; `sam3_vit_h_official.json` covers text,
+text+point, and box inference. These larger cases run only in the
+scheduled/manual resource-qualified workflow so per-PR checks do not repeatedly
+download hundreds of megabytes or several gigabytes.
