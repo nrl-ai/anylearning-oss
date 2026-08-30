@@ -76,6 +76,9 @@ metrics and an application-level held-out inference result.
 - `website/`: documentation and public website
 - `tests/`: unit, integration, packaging, and training tests
 
+The shared inference contracts, lifecycle, SAM adapters, and user-supplied YOLO
+ONNX backend are documented in [`docs/inference.md`](docs/inference.md).
+
 ## Development
 
 ### 1. Install dependencies for frontend

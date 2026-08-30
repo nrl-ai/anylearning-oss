@@ -93,6 +93,21 @@ def test_inference_request_round_trips_neutral_prompts():
     assert isinstance(restored.prompts[1], BoxPrompt)
 
 
+def test_request_parameter_filters_round_trip_as_immutable_sequences():
+    request = InferenceRequest(
+        request_id="filter-request",
+        source_id="image-sha256:fixture",
+        model_id="detector",
+        model_revision="revision-1",
+        parameters={"class_ids": (1, 3), "class_names": ("cat", "dog")},
+    )
+
+    restored = InferenceRequest.model_validate_json(request.model_dump_json())
+
+    assert restored.parameters["class_ids"] == (1, 3)
+    assert restored.parameters["class_names"] == ("cat", "dog")
+
+
 def test_box_prompt_requires_ordered_positive_area():
     with pytest.raises(ValidationError, match="positive width and height"):
         BoxPrompt(
