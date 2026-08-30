@@ -1,6 +1,8 @@
 import hashlib
 import importlib.util
 import json
+import stat
+import zipfile
 from pathlib import Path
 
 import numpy as np
@@ -14,6 +16,7 @@ from anylearning.inference.validation import (
     ValidationTextPrompt,
     _model_artifact_details,
     _request_prompts,
+    load_validation_manifest,
 )
 
 _ROOT = Path(__file__).resolve().parents[2]
@@ -79,6 +82,68 @@ def test_verified_downloader_uses_bounded_curl_and_atomic_digest_gate(
             expected_sha256=digest,
             max_bytes=1024,
         )
+
+
+def test_exact_zip_extractor_accepts_only_manifested_regular_files(tmp_path):
+    module = _script("extract_verified_zip.py")
+    archive = tmp_path / "models.zip"
+    payloads = {"encoder.onnx": b"encoder", "decoder.onnx": b"decoder"}
+    with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_DEFLATED) as bundle:
+        for name, payload in payloads.items():
+            bundle.writestr(name, payload)
+
+    output = tmp_path / "models"
+    output.mkdir()
+    extracted = module.extract_exact_zip(
+        archive,
+        output,
+        {name: len(payload) for name, payload in payloads.items()},
+        remove_archive=True,
+    )
+
+    assert {path.name for path in extracted} == set(payloads)
+    assert {path.name: path.read_bytes() for path in extracted} == payloads
+    assert not archive.exists()
+
+
+@pytest.mark.parametrize("failure", ["extra", "size", "duplicate", "link"])
+def test_exact_zip_extractor_rejects_changed_or_unsafe_archives(tmp_path, failure):
+    module = _script("extract_verified_zip.py")
+    archive = tmp_path / "models.zip"
+    with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_DEFLATED) as bundle:
+        bundle.writestr("encoder.onnx", b"encoder")
+        if failure == "extra":
+            bundle.writestr("unexpected.txt", b"unexpected")
+        elif failure == "duplicate":
+            with pytest.warns(UserWarning, match="Duplicate name"):
+                bundle.writestr("encoder.onnx", b"duplicate")
+        elif failure == "link":
+            link = zipfile.ZipInfo("decoder.onnx")
+            link.create_system = 3
+            link.external_attr = (stat.S_IFLNK | 0o777) << 16
+            bundle.writestr(link, b"encoder.onnx")
+
+    output = tmp_path / "models"
+    output.mkdir()
+    expected = {"encoder.onnx": 8 if failure == "size" else 7}
+    if failure == "link":
+        expected["decoder.onnx"] = len(b"encoder.onnx")
+
+    with pytest.raises(ValueError):
+        module.extract_exact_zip(archive, output, expected)
+    assert not list(output.iterdir())
+
+
+def test_all_committed_real_model_manifests_are_schema_valid():
+    manifest_root = _ROOT / "tests/fixtures/inference/real_models"
+    manifests = sorted(manifest_root.glob("*.json"))
+
+    assert manifests
+    for path in manifests:
+        manifest = load_validation_manifest(path)
+        assert manifest.provenance.source_revision
+        assert manifest.runs >= 2
+        assert manifest.lifecycle_cycles >= 2
 
 
 def test_external_validation_converter_produces_loadable_real_onnx_bundle(tmp_path):

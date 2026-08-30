@@ -85,7 +85,10 @@ Reports draw the prompt over the predicted polygon so coordinate-scaling or
 channel-order defects are visible during review. The committed
 `efficient_sam_ti_official.json` is a complete real point/box example;
 `efficient_sam_s_official.json` and `sam_vit_b_official.json` exercise the
-larger scheduled graph variants; `sam3_vit_h_official.json` covers text,
-text+point, and box inference. These larger cases run only in the
-scheduled/manual resource-qualified workflow so per-PR checks do not repeatedly
-download hundreds of megabytes or several gigabytes.
+larger scheduled graph variants. `sam2_hiera_small_official.json`,
+`sam2_hiera_base_plus_official.json`, and `sam2_hiera_large_official.json`
+exercise every larger SAM2 encoder against the shared decoder contract.
+`sam3_vit_h_official.json` covers text, text+point, and box inference. These
+larger cases run only in the scheduled/manual resource-qualified workflow so
+per-PR checks do not repeatedly download hundreds of megabytes or several
+gigabytes.
