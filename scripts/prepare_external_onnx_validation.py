@@ -8,10 +8,16 @@ import hashlib
 import json
 import os
 import shutil
+import sys
 import tempfile
 from pathlib import Path
 
 import onnx
+
+# Make the checkout importable when invoked as `python scripts/...` without an
+# editable install. Installed entry points do not need this path adjustment.
+if __package__ in {None, ""}:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from anylearning.inference.backends.onnx_safety import validate_onnx_artifact
 
@@ -50,7 +56,9 @@ def prepare_external_validation_bundle(
         raise ValueError("Source model SHA-256 does not match its manifest")
 
     output_dir.parent.mkdir(parents=True, exist_ok=True)
-    staging = Path(tempfile.mkdtemp(prefix=f".{output_dir.name}.", dir=output_dir.parent))
+    staging = Path(
+        tempfile.mkdtemp(prefix=f".{output_dir.name}.", dir=output_dir.parent)
+    )
     try:
         graph_path = staging / "model.onnx"
         data_name = "weights.bin"

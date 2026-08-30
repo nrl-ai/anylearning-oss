@@ -616,10 +616,14 @@ def stable_onnx_artifact(
 
 def _descriptor_path(stream: BinaryIO) -> str | None:
     descriptor = stream.fileno()
-    for root in (Path("/proc/self/fd"), Path("/dev/fd")):
-        candidate = root / str(descriptor)
-        if root.is_dir() and candidate.exists():
-            return str(candidate)
+    # Opening /proc/self/fd/N creates an independently seekable file
+    # description on Linux. BSD/macOS /dev/fd/N duplicates the current stream
+    # offset instead; after graph validation ONNX Runtime then sees an empty
+    # protobuf. Those platforms intentionally take the private-snapshot path.
+    root = Path("/proc/self/fd")
+    candidate = root / str(descriptor)
+    if root.is_dir() and candidate.exists():
+        return str(candidate)
     return None
 
 
