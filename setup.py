@@ -45,6 +45,9 @@ def get_install_requires():
         "tqdm>=4.70,<5",
         # Direct imports that were previously only satisfied transitively.
         "cryptography>=50,<60",
+        # Public server password verification. Argon2id is memory-hard and the
+        # server additionally bounds concurrent verification and login rates.
+        "argon2-cffi>=25.1,<26",
         "psutil>=7.2,<8",
         "PyYAML>=6.0.3,<7",
         "numpy>=2,<3",
@@ -190,6 +193,7 @@ setup(
     entry_points={
         "console_scripts": [
             "anylearning=anylearning.app:main",
+            "anylearning-server=anylearning.server.cli:main",
         ],
     },
 )

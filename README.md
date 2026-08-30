@@ -78,6 +78,8 @@ metrics and an application-level held-out inference result.
 
 The shared inference contracts, lifecycle, SAM adapters, and user-supplied YOLO
 ONNX backend are documented in [`docs/inference.md`](docs/inference.md).
+The separate password-authenticated public service boundary is documented in
+[`docs/server.md`](docs/server.md).
 
 ## Development
 
