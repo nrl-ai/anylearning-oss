@@ -1,20 +1,30 @@
 - name: "sam2_hiera_small_20240803"
   display_name: Segment Anything 2 (Hiera-Small)
   type: segment_anything
-  download_url: https://huggingface.co/vietanhdev/segment-anything-2-onnx-models/resolve/main/sam2_hiera_small.zip
+  download_url: https://huggingface.co/nrl-ai/anylearning-labeling-models/resolve/v1.0.0/sam2_hiera_small.zip
+  sha256: 4ef9047eb7fc7e36041c88a9f968c3c0b1d1640b88ef66d754b7d558a10cee38
+  archive_size_bytes: 183345019
 - name: "sam2_hiera_tiny_20240803"
   display_name: Segment Anything 2 (Hiera-Tiny)
   type: segment_anything
-  download_url: https://huggingface.co/vietanhdev/segment-anything-2-onnx-models/resolve/main/sam2_hiera_tiny.zip
+  download_url: https://huggingface.co/nrl-ai/anylearning-labeling-models/resolve/v1.0.0/sam2_hiera_tiny.zip
+  sha256: 7454c3afd835b2acaad863afe3acb11f4e4af039c96e886989ad3873a338e1ec
+  archive_size_bytes: 154902833
 - name: "mobile_sam_20230629"
   display_name: MobileSAM
   type: segment_anything
-  download_url: https://huggingface.co/vietanhdev/segment-anything-onnx-models/resolve/main/mobile_sam_20230629.zip
+  download_url: https://huggingface.co/nrl-ai/anylearning-labeling-models/resolve/v1.0.0/mobile_sam_20230629.zip
+  sha256: 41aff2660b7531becfee21fb257c49933ddc892c554507bdb775bf504d443942
+  archive_size_bytes: 36655105
 - name: "sam2_hiera_base_plus_20240803"
   display_name: Segment Anything 2 (Hiera-Base+)
   type: segment_anything
-  download_url: https://huggingface.co/vietanhdev/segment-anything-2-onnx-models/resolve/main/sam2_hiera_base_plus.zip
+  download_url: https://huggingface.co/nrl-ai/anylearning-labeling-models/resolve/v1.0.0/sam2_hiera_base_plus.zip
+  sha256: c56282103c2bf99bdab07d2dddb1be67c03d71659ade3f9dcf1d7001fda582fb
+  archive_size_bytes: 360422777
 - name: "sam2_hiera_large_20240803"
   display_name: Segment Anything 2 (Hiera-Large)
   type: segment_anything
-  download_url: https://huggingface.co/vietanhdev/segment-anything-2-onnx-models/resolve/main/sam2_hiera_large.zip
+  download_url: https://huggingface.co/nrl-ai/anylearning-labeling-models/resolve/v1.0.0/sam2_hiera_large.zip
+  sha256: a967ef6e54794e9494c8b71201766532b7b2929fe18f56b8e63940e97dc671ac
+  archive_size_bytes: 910003530

@@ -1,11 +1,15 @@
 import copy
+import hashlib
 import importlib.resources as pkg_resources
 import logging
 import os
 import pathlib
+import re
 import shutil
+import stat
 import tempfile
 import time
+import urllib.parse
 import urllib.request
 import zipfile
 from enum import Enum
@@ -24,6 +28,108 @@ from anylearning.configs import auto_labeling as auto_labeling_configs
 
 logger = logging.getLogger(__name__)
 
+GIBIBYTE = 1024**3
+MAX_MODEL_DOWNLOAD_BYTES = 20 * GIBIBYTE
+MAX_MODEL_ARCHIVE_BYTES = 40 * GIBIBYTE
+MAX_MODEL_ARCHIVE_FILES = 256
+MAX_MODEL_MEMBER_BYTES = 40 * GIBIBYTE
+MAX_MODEL_COMPRESSION_RATIO = 100
+MODEL_DOWNLOAD_CHUNK_BYTES = 1024 * 1024
+MODEL_DOWNLOAD_TIMEOUT_SECONDS = 60
+PINNED_MODEL_FIELDS = ("download_url", "sha256", "archive_size_bytes")
+ALLOWED_MODEL_FILE_SUFFIXES = {
+    ".json",
+    ".names",
+    ".onnx",
+    ".txt",
+    ".yaml",
+    ".yml",
+}
+
+
+def _validate_https_url(url: str, *, redirected: bool = False) -> None:
+    """Require an absolute HTTPS URL before and after network redirects."""
+    parsed = urllib.parse.urlsplit(url)
+    if parsed.scheme.lower() != "https" or not parsed.hostname:
+        source = "redirected model URL" if redirected else "model URL"
+        raise ValueError(f"{source} must use HTTPS.")
+
+
+def _display_download_url(url: str) -> str:
+    """Return a short URL label without credentials, query data, or fragments."""
+    parsed = urllib.parse.urlsplit(url)
+    filename = pathlib.PurePosixPath(parsed.path).name or "model archive"
+    return f"{parsed.hostname or 'model host'}/.../{filename}"
+
+
+def _download_model_archive(
+    url: str,
+    destination: pathlib.Path,
+    *,
+    expected_sha256: str,
+    expected_size: int,
+    progress: Callable[[int, int], None] | None = None,
+) -> None:
+    """Stream a model archive to disk and verify its pinned manifest metadata."""
+    _validate_https_url(url)
+    if not isinstance(expected_sha256, str) or not re.fullmatch(
+        r"[0-9a-fA-F]{64}", expected_sha256
+    ):
+        raise ValueError("Model archive requires a valid SHA-256 checksum.")
+    if (
+        isinstance(expected_size, bool)
+        or not isinstance(expected_size, int)
+        or not 0 < expected_size <= MAX_MODEL_DOWNLOAD_BYTES
+    ):
+        raise ValueError("Model archive requires a valid bounded size.")
+
+    destination = pathlib.Path(destination)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    request = urllib.request.Request(
+        url,
+        headers={"User-Agent": "AnyLearning model downloader"},
+    )
+    downloaded = 0
+    digest = hashlib.sha256()
+    try:
+        with urllib.request.urlopen(
+            request, timeout=MODEL_DOWNLOAD_TIMEOUT_SECONDS
+        ) as response:
+            _validate_https_url(response.geturl(), redirected=True)
+            content_length = response.headers.get("Content-Length")
+            if content_length is not None:
+                try:
+                    reported_size = int(content_length)
+                except (TypeError, ValueError) as error:
+                    raise ValueError(
+                        "Model archive response has an invalid size."
+                    ) from error
+                if reported_size != expected_size:
+                    raise ValueError("Model archive size does not match manifest.")
+
+            if progress is not None:
+                progress(0, expected_size)
+            with destination.open("xb") as output:
+                while chunk := response.read(MODEL_DOWNLOAD_CHUNK_BYTES):
+                    downloaded += len(chunk)
+                    if (
+                        downloaded > expected_size
+                        or downloaded > MAX_MODEL_DOWNLOAD_BYTES
+                    ):
+                        raise ValueError("Model archive is larger than expected.")
+                    output.write(chunk)
+                    digest.update(chunk)
+                    if progress is not None:
+                        progress(downloaded, expected_size)
+
+        if downloaded != expected_size:
+            raise ValueError("Model archive size does not match manifest.")
+        if digest.hexdigest().lower() != expected_sha256.lower():
+            raise ValueError("Model archive checksum does not match manifest.")
+    except Exception:
+        destination.unlink(missing_ok=True)
+        raise
+
 
 def _complete_bundled_config(
     manifest: Dict[str, Any], stored: Dict[str, Any], config_file: str
@@ -37,6 +143,9 @@ def _complete_bundled_config(
     recovered only when their role is unambiguous.
     """
     config = {**manifest, **stored}
+    for field in PINNED_MODEL_FIELDS:
+        if field in manifest:
+            config[field] = manifest[field]
     config.setdefault("type", "segment_anything")
     model_dir = pathlib.Path(config_file).parent
     for key, pattern in (
@@ -343,17 +452,84 @@ class ModelManager:
 
     @staticmethod
     def _safe_extract(archive: zipfile.ZipFile, destination: pathlib.Path) -> None:
-        """Extract an archive while rejecting absolute paths and ``..`` escapes."""
+        """Validate and extract a small, data-only model archive."""
         destination = destination.resolve()
-        for member in archive.infolist():
-            target = (destination / member.filename).resolve()
+        members = archive.infolist()
+        if len(members) > MAX_MODEL_ARCHIVE_FILES:
+            raise ValueError("Model archive contains too many files.")
+
+        validated = []
+        extracted_paths = set()
+        total_size = 0
+        for member in members:
+            filename = member.filename
+            path = pathlib.PurePosixPath(filename)
+            if (
+                not filename
+                or "\x00" in filename
+                or "\\" in filename
+                or path.is_absolute()
+                or ".." in path.parts
+                or (path.parts and ":" in path.parts[0])
+            ):
+                raise ValueError(f"Unsafe path in model archive: {filename}")
+
+            target = (destination / pathlib.Path(*path.parts)).resolve()
             try:
                 target.relative_to(destination)
             except ValueError as error:
+                raise ValueError(f"Unsafe path in model archive: {filename}") from error
+
+            path_key = str(target).casefold()
+            if path_key in extracted_paths:
+                raise ValueError(f"Duplicate path in model archive: {filename}")
+            extracted_paths.add(path_key)
+
+            unix_mode = member.external_attr >> 16 if member.create_system == 3 else 0
+            file_type = stat.S_IFMT(unix_mode)
+            if file_type not in (0, stat.S_IFREG, stat.S_IFDIR):
                 raise ValueError(
-                    f"Unsafe path in model archive: {member.filename}"
-                ) from error
-        archive.extractall(destination)
+                    f"Model archive contains a link or special file: {filename}"
+                )
+
+            if member.is_dir():
+                validated.append((member, target))
+                continue
+            if path.suffix.lower() not in ALLOWED_MODEL_FILE_SUFFIXES:
+                raise ValueError(f"Unsupported file type in model archive: {filename}")
+            if member.file_size > MAX_MODEL_MEMBER_BYTES:
+                raise ValueError("Model archive member is too large.")
+            total_size += member.file_size
+            if total_size > MAX_MODEL_ARCHIVE_BYTES:
+                raise ValueError("Model archive is too large after extraction.")
+            if member.file_size and (
+                member.compress_size == 0
+                or member.file_size > member.compress_size * MAX_MODEL_COMPRESSION_RATIO
+            ):
+                raise ValueError("Model archive has an unsafe compression ratio.")
+            validated.append((member, target))
+
+        destination.mkdir(parents=True, exist_ok=True)
+        extracted_size = 0
+        for member, target in validated:
+            if member.is_dir():
+                target.mkdir(parents=True, exist_ok=True)
+                continue
+            target.parent.mkdir(parents=True, exist_ok=True)
+            member_size = 0
+            with archive.open(member) as source, target.open("xb") as output:
+                while chunk := source.read(MODEL_DOWNLOAD_CHUNK_BYTES):
+                    member_size += len(chunk)
+                    extracted_size += len(chunk)
+                    if (
+                        member_size > member.file_size
+                        or member_size > MAX_MODEL_MEMBER_BYTES
+                        or extracted_size > MAX_MODEL_ARCHIVE_BYTES
+                    ):
+                        raise ValueError("Model archive is too large after extraction.")
+                    output.write(chunk)
+            if member_size != member.file_size:
+                raise ValueError("Model archive member size does not match metadata.")
 
     def _download_and_extract_model(self, model_config):
         """Download a model archive and atomically install its model folder."""
@@ -361,8 +537,13 @@ class ModelManager:
         # Check if model is already downloaded
         if not os.path.exists(config_file):
             raise ValueError(ModelStatus.ERROR_CONFIG_FILE.value)
+        manifest_config = model_config
         with open(config_file, "r") as f:
-            model_config = yaml.safe_load(f)
+            stored_config = yaml.safe_load(f) or {}
+        model_config = {**manifest_config, **stored_config}
+        for field in PINNED_MODEL_FIELDS:
+            if field in manifest_config:
+                model_config[field] = manifest_config[field]
         if model_config.get("has_downloaded", False):
             return
 
@@ -370,28 +551,32 @@ class ModelManager:
         download_url = model_config.get("download_url", None)
         if not download_url:
             raise ValueError("Missing download_url in config file.")
+        expected_sha256 = model_config.get("sha256")
+        expected_size = model_config.get("archive_size_bytes")
         extract_dir = pathlib.Path(config_file).parent
-        ellipsis_download_url = download_url
-        if len(download_url) > 40:
-            ellipsis_download_url = download_url[:20] + "..." + download_url[-20:]
+        display_download_url = _display_download_url(download_url)
         with tempfile.TemporaryDirectory(prefix="anylearning-model-") as tmp_name:
             tmp_dir = pathlib.Path(tmp_name)
             zip_model_path = tmp_dir / "model.zip"
-            logging.info("Downloading model from %s", ellipsis_download_url)
+            logging.info("Downloading model from %s", display_download_url)
 
             # Download and show progress
-            def _progress(count, block_size, total_size):
-                percent = min(100, int(count * block_size * 100 / max(total_size, 1)))
+            def _progress(downloaded, total_size):
+                percent = min(100, int(downloaded * 100 / max(total_size, 1)))
                 self.notify_callbacks(
                     "model_status_changed",
                     ModelStatus.DOWNLOAD_PROGRESS.value.format(
-                        download_url=ellipsis_download_url, percent=percent
+                        download_url=display_download_url, percent=percent
                     ),
                 )
 
             try:
-                urllib.request.urlretrieve(
-                    download_url, str(zip_model_path), reporthook=_progress
+                _download_model_archive(
+                    download_url,
+                    zip_model_path,
+                    expected_sha256=expected_sha256,
+                    expected_size=expected_size,
+                    progress=_progress,
                 )
                 unpacked = tmp_dir / "extract"
                 with zipfile.ZipFile(zip_model_path) as archive:
@@ -415,7 +600,7 @@ class ModelManager:
                     raise
             except Exception as error:
                 logger.exception(
-                    "Could not install model from %s", ellipsis_download_url
+                    "Could not install model from %s", display_download_url
                 )
                 self.notify_callbacks(
                     "model_status_changed", f"Could not download model: {error}"
