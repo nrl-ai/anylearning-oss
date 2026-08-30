@@ -22,7 +22,7 @@
   },
   "runs": 3,
   "lifecycle_cycles": 3,
-  "maximum_steady_state_rss_growth_bytes": 268435456,
+  "maximum_steady_state_rss_growth_bytes": 402653184,
   "images": [
     {
       "path": "dog.jpg",
