@@ -158,16 +158,22 @@ def test_cors_is_explicit_and_app_contains_no_desktop_routes(settings, capabilit
     assert schema["paths"]["/v1/models"]["get"]["security"] == [{"HTTPBearer": []}]
     with TestClient(app) as client:
         allowed = client.options(
-            "/v1/models",
+            "/v1/predictions",
             headers={
                 "Origin": "https://label.example",
-                "Access-Control-Request-Method": "GET",
-                "Access-Control-Request-Headers": "Authorization",
+                "Access-Control-Request-Method": "POST",
+                "Access-Control-Request-Headers": (
+                    "Authorization, Content-Type, X-AnyLearning-Request"
+                ),
             },
         )
         assert allowed.status_code == 200
         assert allowed.headers["access-control-allow-origin"] == (
             "https://label.example"
+        )
+        assert (
+            "x-anylearning-request"
+            in allowed.headers["access-control-allow-headers"].lower()
         )
         denied = client.options(
             "/v1/models",

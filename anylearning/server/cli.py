@@ -12,6 +12,7 @@ from pathlib import Path
 from .app import create_server_app
 from .auth import generate_token_secret, hash_password
 from .config import ServerSettings
+from .models import load_server_model_manifest
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -35,6 +36,11 @@ def build_parser() -> argparse.ArgumentParser:
     serve = commands.add_parser("serve", help="run the public inference API")
     serve.add_argument("--host", default="127.0.0.1")
     serve.add_argument("--port", type=int, default=8000)
+    serve.add_argument(
+        "--model-manifest",
+        type=Path,
+        help="bounded JSON manifest of local ONNX models to serve",
+    )
     serve.add_argument("--ssl-certificate", type=Path)
     serve.add_argument("--ssl-key", type=Path)
     serve.add_argument(
@@ -64,7 +70,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         import uvicorn
 
         settings = ServerSettings.from_environment()
-        app = create_server_app(settings)
+        model_definitions = ()
+        if arguments.model_manifest is not None:
+            try:
+                model_definitions = load_server_model_manifest(arguments.model_manifest)
+            except (OSError, ValueError) as error:
+                parser.error(str(error))
+        app = create_server_app(settings, model_definitions=model_definitions)
         uvicorn.run(
             app,
             host=arguments.host,
