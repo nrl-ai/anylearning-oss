@@ -11,6 +11,7 @@ running at the time, making failures look random and order-dependent.
 import gc
 import os
 import pathlib
+import sys
 
 import pytest
 
@@ -31,9 +32,11 @@ def dispose_database_engines():
     """
     yield
 
-    from anylearning.database import db_manager
+    database_module = sys.modules.get("anylearning.database")
+    if database_module is None:
+        return
 
-    db_manager.dispose_all()
+    database_module.db_manager.dispose_all()
     # Force collection while the warning can still be attributed to this test
     # rather than to whatever runs next.
     gc.collect()
