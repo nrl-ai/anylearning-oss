@@ -16,9 +16,7 @@
     "encoder_sha256": "810993f3ab13c1ab647a78e8cf576ea7c5d8b860dded9dc1cf3b06cb4fd430a9",
     "decoder_sha256": "46e8dea9f428525c3dd7ae1288e406306e165912d8c2bc7300bb1ebf116c0334",
     "family": "sam",
-    "providers": [
-      "CPUExecutionProvider"
-    ],
+    "providers": ["CPUExecutionProvider"],
     "intra_op_threads": 1,
     "inter_op_threads": 1
   },
@@ -31,10 +29,7 @@
       "prompts": [
         {
           "type": "point",
-          "point": [
-            240,
-            330
-          ],
+          "point": [240, 330],
           "foreground": true
         }
       ],
@@ -48,12 +43,7 @@
         "detections": [
           {
             "label": "AUTOLABEL_OBJECT",
-            "box": [
-              134,
-              224,
-              307,
-              539
-            ],
+            "box": [134, 224, 307, 539],
             "minimum_iou": 0.95
           }
         ]
@@ -64,12 +54,7 @@
       "prompts": [
         {
           "type": "box",
-          "box": [
-            125,
-            215,
-            315,
-            550
-          ]
+          "box": [125, 215, 315, 550]
         }
       ],
       "output_shape": "polygon",
@@ -82,12 +67,7 @@
         "detections": [
           {
             "label": "AUTOLABEL_OBJECT",
-            "box": [
-              134,
-              224,
-              307,
-              539
-            ],
+            "box": [134, 224, 307, 539],
             "minimum_iou": 0.95
           }
         ]
@@ -98,10 +78,7 @@
       "prompts": [
         {
           "type": "point",
-          "point": [
-            245,
-            240
-          ],
+          "point": [245, 240],
           "foreground": true
         }
       ],
@@ -115,12 +92,7 @@
         "detections": [
           {
             "label": "AUTOLABEL_OBJECT",
-            "box": [
-              36,
-              134,
-              352,
-              305
-            ],
+            "box": [36, 134, 352, 305],
             "minimum_iou": 0.95
           }
         ]
@@ -131,12 +103,7 @@
       "prompts": [
         {
           "type": "box",
-          "box": [
-            25,
-            125,
-            360,
-            315
-          ]
+          "box": [25, 125, 360, 315]
         }
       ],
       "output_shape": "polygon",
@@ -149,12 +116,7 @@
         "detections": [
           {
             "label": "AUTOLABEL_OBJECT",
-            "box": [
-              36,
-              134,
-              352,
-              306
-            ],
+            "box": [36, 134, 352, 306],
             "minimum_iou": 0.95
           }
         ]
