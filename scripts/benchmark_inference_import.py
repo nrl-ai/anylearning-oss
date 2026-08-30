@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import platform
 import re
 import statistics
@@ -28,8 +29,24 @@ def percentile(values: list[float | int], percentage: float) -> float | int:
     """Return a nearest-rank percentile suitable for a small benchmark sample."""
 
     ordered = sorted(values)
-    index = max(0, min(len(ordered) - 1, int(len(ordered) * percentage) - 1))
+    index = max(0, min(len(ordered) - 1, math.ceil(len(ordered) * percentage) - 1))
     return ordered[index]
+
+
+def process_tree_rss(process: psutil.Process) -> int:
+    """Return current RSS for a process and children such as Windows launchers."""
+
+    try:
+        processes = [process, *process.children(recursive=True)]
+    except (psutil.NoSuchProcess, psutil.ZombieProcess):
+        return 0
+    total = 0
+    for item in processes:
+        try:
+            total += item.memory_info().rss
+        except (psutil.NoSuchProcess, psutil.ZombieProcess):
+            continue
+    return total
 
 
 def measure_import(module: str) -> Sample:
@@ -43,10 +60,7 @@ def measure_import(module: str) -> Sample:
     process = psutil.Process(child.pid)
     peak_rss = 0
     while child.poll() is None:
-        try:
-            peak_rss = max(peak_rss, process.memory_info().rss)
-        except (psutil.NoSuchProcess, psutil.ZombieProcess):
-            break
+        peak_rss = max(peak_rss, process_tree_rss(process))
         time.sleep(0.001)
     _, stderr = child.communicate()
     duration_ms = (time.perf_counter() - started) * 1000

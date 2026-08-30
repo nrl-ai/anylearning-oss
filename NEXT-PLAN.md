@@ -1,8 +1,8 @@
 # AnyLearning Platform Roadmap
 
-Status: active implementation plan  
-Last updated: 2026-08-30  
-Primary repository: `nrl-ai/anylearning-oss`  
+Status: active implementation plan
+Last updated: 2026-08-30
+Primary repository: `nrl-ai/anylearning-oss`
 Integration branch: `develop`
 
 ## Executive decision
@@ -315,85 +315,85 @@ and timings so clients can reject stale results.
 
 ### P0: Foundation, reliability, and measurement
 
-F1. Add this roadmap, branch policy, and no-release rule.  
-F2. Add lightweight versioned inference contracts with wire round-trip tests.  
-F3. Add import-boundary and import-time/RSS measurements.  
-F4. Record desktop and model lifecycle baselines on Linux, macOS, and Windows.  
-F5. Fix or explicitly disposition the existing cross-platform packaging gaps.  
+F1. Add this roadmap, branch policy, and no-release rule.
+F2. Add lightweight versioned inference contracts with wire round-trip tests.
+F3. Add import-boundary and import-time/RSS measurements.
+F4. Record desktop and model lifecycle baselines on Linux, macOS, and Windows.
+F5. Fix or explicitly disposition the existing cross-platform packaging gaps.
 F6. Increase first-party coverage around routers, auto-labeling, lifecycle, and
-failure recovery.  
+failure recovery.
 F7. Create benchmark/test artifacts and publish them with provenance.
 
 ### P0: Security foundation
 
-SEC1. Expand the repository security policy and threat boundaries.  
+SEC1. Expand the repository security policy and threat boundaries.
 SEC2. Triage current dependency alerts by reachability and patch supported
-frontend/website dependencies without hiding incompatible ML runtime changes.  
+frontend/website dependencies without hiding incompatible ML runtime changes.
 SEC3. Harden the desktop loopback API: header-only high-entropy tokens, narrow
-CORS, loopback enforcement, and production-safe error responses.  
-SEC4. Add adversarial archive, image, annotation, configuration, and path tests.  
+CORS, loopback enforcement, and production-safe error responses.
+SEC4. Add adversarial archive, image, annotation, configuration, and path tests.
 SEC5. Audit model/checkpoint loading for unsafe deserialization, external-data
-paths, unbounded tensors, downloads, and missing integrity verification.  
-SEC6. Add SBOM, build provenance, dependency review, and artifact checksum gates.  
+paths, unbounded tensors, downloads, and missing integrity verification.
+SEC6. Add SBOM, build provenance, dependency review, and artifact checksum gates.
 SEC7. Threat-model and security-test the inference server before enabling any
 non-loopback bind.
 
 ### P0: Inference platform
 
-I1. Define backend, session, cancellation, capabilities, and registry interfaces.  
-I2. Adapt existing SAM/SAM2 behind the interfaces without output changes.  
-I3. Add stable image identity and embedding cache keys including model revision.  
-I4. Add deterministic SAM fixtures and load/infer/unload soak tests.  
-I5. Implement a reusable YOLO decoder with tensor-layout diagnostics.  
-I6. Add YOLOv5/v8/11 detection and v8/11 segmentation using ONNX.  
-I7. Add confidence, IoU, class filters, dynamic shapes, and provider diagnostics.  
+I1. Define backend, session, cancellation, capabilities, and registry interfaces.
+I2. Adapt existing SAM/SAM2 behind the interfaces without output changes.
+I3. Add stable image identity and embedding cache keys including model revision.
+I4. Add deterministic SAM fixtures and load/infer/unload soak tests.
+I5. Implement a reusable YOLO decoder with tensor-layout diagnostics.
+I6. Add YOLOv5/v8/11 detection and v8/11 segmentation using ONNX.
+I7. Add confidence, IoU, class filters, dynamic shapes, and provider diagnostics.
 I8. Connect AnyLearning-trained artifacts to auto-labeling through the same
-contracts.  
+contracts.
 I9. Add and benchmark permissive YOLOX, EfficientViT-SAM, RF-DETR, and D-FINE
-backends in that order, enabling only those that satisfy the model gate.  
+backends in that order, enabling only those that satisfy the model gate.
 I10. Verify custom exported models and packaged runtime behavior.
 
 ### P0: Workflow correctness and performance
 
 W1. Replace O(number-of-points) zoom mutation with a viewport transform while
-preserving pointer-coordinate correctness.  
+preserving pointer-coordinate correctness.
 W2. Add batch inference with progress, cancellation, bounded queues, and atomic
-saves.  
-W3. Add resumable manifests, error reports, and stale-result rejection.  
-W4. Add embedding precomputation with exact image/model identity and size limits.  
-W5. Add YOLO-box-to-SAM refinement.  
+saves.
+W3. Add resumable manifests, error reports, and stale-result rejection.
+W4. Add embedding precomputation with exact image/model identity and size limits.
+W5. Add YOLO-box-to-SAM refinement.
 W6. Replace the growing training-log text field with appendable bounded storage
-and paged/tailing reads.  
+and paged/tailing reads.
 W7. Complete import/export round trips for AnyLabeling, YOLO, COCO, and LabelMe.
 
 ### P1: Authenticated shared inference
 
-S1. Add isolated server app factory and public threat assumptions.  
-S2. Add password hash CLI, token flow, redaction, and rate-limit tests.  
-S3. Add model discovery and deterministic synchronous prediction.  
-S4. Add bounded asynchronous queue, job state, cancellation, and timeouts.  
-S5. Add shared-session concurrency and cross-request isolation tests.  
-S6. Add Docker/reverse-proxy guidance and desktop-to-server end-to-end tests.  
+S1. Add isolated server app factory and public threat assumptions.
+S2. Add password hash CLI, token flow, redaction, and rate-limit tests.
+S3. Add model discovery and deterministic synchronous prediction.
+S4. Add bounded asynchronous queue, job state, cancellation, and timeouts.
+S5. Add shared-session concurrency and cross-request isolation tests.
+S6. Add Docker/reverse-proxy guidance and desktop-to-server end-to-end tests.
 S7. Add AnyLabeling remote client and three-client contract compatibility tests.
 
 ### P1: Modular installation
 
 P1. Classify every dependency by contracts, inference, training, server,
-desktop, structured data, build, or development.  
-P2. Add clean virtual-environment install/import tests for proposed profiles.  
-P3. Introduce extras while preserving the existing complete install path.  
-P4. Make optional imports actionable rather than masking missing dependencies.  
-P5. Verify CLI help and base imports without heavyweight frameworks.  
+desktop, structured data, build, or development.
+P2. Add clean virtual-environment install/import tests for proposed profiles.
+P3. Introduce extras while preserving the existing complete install path.
+P4. Make optional imports actionable rather than masking missing dependencies.
+P5. Verify CLI help and base imports without heavyweight frameworks.
 P6. Verify Nuitka builds and packaged self-tests after each dependency move.
 
 ### P2: Annotation breadth
 
 A1. Add oriented-box persistence, rendering, editing, import/export, then model
-decoding.  
+decoding.
 A2. Design mask-native storage, holes, disconnected regions, editing, and loss
-reporting before Automask.  
+reporting before Automask.
 A3. Add classification tags and model results only after persistence/export
-contracts exist.  
+contracts exist.
 A4. Consider OCR and video/tracking only after P0/P1 workflows meet stability
 gates.
 

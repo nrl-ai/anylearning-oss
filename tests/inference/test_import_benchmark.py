@@ -2,6 +2,12 @@ import json
 import subprocess
 import sys
 
+from scripts.benchmark_inference_import import percentile
+
+
+def test_percentile_uses_nearest_rank():
+    assert percentile(list(range(1, 11)), 0.95) == 10
+
 
 def test_import_benchmark_emits_machine_readable_bounded_results():
     completed = subprocess.run(
