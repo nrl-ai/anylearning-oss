@@ -5,6 +5,8 @@ on:
     paths:
       - "anylearning/inference/**"
       - "scripts/validate_real_model.py"
+      - "scripts/download_verified_file.py"
+      - "scripts/prepare_external_onnx_validation.py"
       - "tests/e2e/test_real_onnx_models_e2e.py"
       - "tests/fixtures/inference/real_models/**"
       - ".github/workflows/real-model-e2e.yml"
@@ -13,6 +15,8 @@ on:
     paths:
       - "anylearning/inference/**"
       - "scripts/validate_real_model.py"
+      - "scripts/download_verified_file.py"
+      - "scripts/prepare_external_onnx_validation.py"
       - "tests/e2e/test_real_onnx_models_e2e.py"
       - "tests/fixtures/inference/real_models/**"
       - ".github/workflows/real-model-e2e.yml"
@@ -29,14 +33,17 @@ concurrency:
 
 jobs:
   yolox-s:
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
+    name: YOLOX-S / ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
     env:
       ASSET_DIR: tests/fixtures/inference/real_models
       MODEL_SHA256: c5c2d13e59ae883e6af3b45daea64af4833a4951c92d116ec270d9ddbe998063
       IMAGE_SHA256: 5a9522051c3cec2bbd2f6323fccba32e8fbf3ddcc2b3e2fd46b04c720bc6f866
-      ANYLEARNING_REAL_MODEL_MANIFEST: tests/fixtures/inference/real_models/yolox_s_official.json
-      ANYLEARNING_REAL_MODEL_OUTPUT: validation-results
       OPENBLAS_NUM_THREADS: "1"
       OMP_NUM_THREADS: "1"
     steps:
@@ -55,32 +62,46 @@ jobs:
         run: >-
           uv pip install --system
           "numpy>=2,<3" "opencv-python-headless>=4.11,<6"
-          "pydantic>=2.13,<3" "onnx>=1.16,<2" "onnxruntime>=1.28,<2"
+          "pydantic>=2.13,<3" "onnx>=1.16,<2" "onnxruntime>=1.29,<2"
           "psutil>=7.2,<8" "pytest>=9,<10"
 
       - name: Download immutable official test assets
         shell: bash
         run: |
           set -euo pipefail
-          curl --proto '=https' --tlsv1.2 --fail --location --retry 3 \
-            --max-time 600 --max-filesize 104857600 \
-            --output "$ASSET_DIR/yolox_s.onnx" \
-            https://github.com/Megvii-BaseDetection/YOLOX/releases/download/0.1.1rc0/yolox_s.onnx
-          curl --proto '=https' --tlsv1.2 --fail --location --retry 3 \
-            --max-time 120 --max-filesize 10485760 \
-            --output "$ASSET_DIR/dog.jpg" \
-            https://raw.githubusercontent.com/Megvii-BaseDetection/YOLOX/6ddff4824372906469a7fae2dc3206c7aa4bbaee/assets/dog.jpg
-          echo "$MODEL_SHA256  $ASSET_DIR/yolox_s.onnx" | sha256sum --check --strict
-          echo "$IMAGE_SHA256  $ASSET_DIR/dog.jpg" | sha256sum --check --strict
+          python scripts/download_verified_file.py \
+            "https://github.com/Megvii-BaseDetection/YOLOX/releases/download/0.1.1rc0/yolox_s.onnx" \
+            "$ASSET_DIR/yolox_s.onnx" --sha256 "$MODEL_SHA256" \
+            --max-bytes 104857600
+          python scripts/download_verified_file.py \
+            "https://raw.githubusercontent.com/Megvii-BaseDetection/YOLOX/6ddff4824372906469a7fae2dc3206c7aa4bbaee/assets/dog.jpg" \
+            "$ASSET_DIR/dog.jpg" --sha256 "$IMAGE_SHA256" \
+            --max-bytes 10485760
 
-      - name: Run real ONNX model validation
-        run: pytest -q tests/e2e/test_real_onnx_models_e2e.py
+      - name: Run real single-file ONNX validation
+        run: >-
+          python scripts/validate_real_model.py
+          tests/fixtures/inference/real_models/yolox_s_official.json
+          --output-root validation-results/${{ runner.os }}/single-file
+
+      - name: Prepare external-data form of the same real model
+        run: >-
+          python scripts/prepare_external_onnx_validation.py
+          tests/fixtures/inference/real_models/yolox_s.onnx
+          tests/fixtures/inference/real_models/yolox_s_official.json
+          tests/fixtures/inference/real_models/yolox_s_external
+
+      - name: Run real external-data ONNX validation
+        run: >-
+          python scripts/validate_real_model.py
+          tests/fixtures/inference/real_models/yolox_s_external/manifest.json
+          --output-root validation-results/${{ runner.os }}/external-data
 
       - name: Retain visual and machine-readable evidence
         if: always()
         uses: actions/upload-artifact@v6
         with:
-          name: yolox-s-real-model-validation
+          name: yolox-s-real-model-validation-${{ runner.os }}
           path: validation-results/
           if-no-files-found: error
           retention-days: 30

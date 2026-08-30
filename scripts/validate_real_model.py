@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from pathlib import Path
 
@@ -25,7 +26,8 @@ def main() -> int:
         output_root=arguments.output_root,
     )
     print(output)
-    return 0
+    summary = json.loads((output / "summary.json").read_text(encoding="utf-8"))
+    return 0 if summary["passed"] else 1
 
 
 if __name__ == "__main__":

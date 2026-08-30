@@ -7,6 +7,7 @@ from onnx import TensorProto, helper, numpy_helper
 
 from anylearning.inference import InferenceRequest, ModelTask, SessionState
 from anylearning.inference.backends.onnx_safety import (
+    ExternalDataFiles,
     OnnxArtifactError,
     _iter_tensor_protos,
     select_providers,
@@ -54,6 +55,69 @@ def _constant_model(path, outputs, *, input_shape=(1, 3, 32, 32)):
     )
     model.ir_version = 10
     onnx.save_model(model, path)
+
+
+def _external_prediction_model(path, predictions, *, location="weights.bin"):
+    predictions = np.asarray(predictions, dtype=np.float32)
+    graph = helper.make_graph(
+        [helper.make_node("Identity", ["stored_predictions"], ["predictions"])],
+        "external-yolo-fixture",
+        [helper.make_tensor_value_info("images", TensorProto.FLOAT, [1, 3, 32, 32])],
+        [
+            helper.make_tensor_value_info(
+                "predictions", TensorProto.FLOAT, list(predictions.shape)
+            )
+        ],
+        initializer=[numpy_helper.from_array(predictions, name="stored_predictions")],
+    )
+    model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 13)])
+    model.ir_version = 10
+    onnx.save_model(
+        model,
+        path,
+        save_as_external_data=True,
+        all_tensors_to_one_file=True,
+        location=location,
+        size_threshold=0,
+    )
+
+
+def _external_shape_inference_model(path, predictions, *, location="weights.bin"):
+    predictions = np.asarray(predictions, dtype=np.float32)
+    initializers = [
+        numpy_helper.from_array(predictions, name="stored_predictions"),
+        numpy_helper.from_array(np.asarray([0], dtype=np.int64), name="starts"),
+        numpy_helper.from_array(np.asarray([1], dtype=np.int64), name="ends"),
+        numpy_helper.from_array(np.asarray([2], dtype=np.int64), name="axes"),
+        numpy_helper.from_array(np.asarray([1], dtype=np.int64), name="steps"),
+    ]
+    graph = helper.make_graph(
+        [
+            helper.make_node(
+                "Slice",
+                ["stored_predictions", "starts", "ends", "axes", "steps"],
+                ["predictions"],
+            )
+        ],
+        "external-shape-inference-fixture",
+        [helper.make_tensor_value_info("images", TensorProto.FLOAT, [1, 3, 32, 32])],
+        [
+            helper.make_tensor_value_info(
+                "predictions", TensorProto.FLOAT, list(predictions.shape)
+            )
+        ],
+        initializer=initializers,
+    )
+    model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 13)])
+    model.ir_version = 10
+    onnx.save_model(
+        model,
+        path,
+        save_as_external_data=True,
+        all_tensors_to_one_file=True,
+        location=location,
+        size_threshold=0,
+    )
 
 
 def _request(session, **parameters):
@@ -351,6 +415,239 @@ def test_external_data_in_a_tensor_attribute_is_also_rejected(tmp_path):
     assert "nested/weights.bin" not in str(error.value)
 
 
+def test_external_data_bundle_runs_real_runtime_and_binds_revision(tmp_path):
+    predictions = np.asarray([[[16], [16], [8], [8], [0.9], [0.1]]], dtype=np.float32)
+    path = tmp_path / "external.onnx"
+    _external_prediction_model(path, predictions)
+    graph_sha256 = hashlib.sha256(path.read_bytes()).hexdigest()
+    data_sha256 = hashlib.sha256((tmp_path / "weights.bin").read_bytes()).hexdigest()
+    session = YoloOnnxBackend().create_session(
+        {
+            "name": "external-fixture",
+            "model_path": path,
+            "sha256": graph_sha256,
+            "external_data_sha256": {"weights.bin": data_sha256},
+            "format": "yolov8",
+            "class_names": ["cat", "dog"],
+        }
+    )
+
+    assert session.capabilities.model_revision.startswith("onnx-bundle-sha256:")
+    with pytest.raises(TypeError, match="integrity metadata is immutable"):
+        session.config.external_data_sha256["weights.bin"] = "0" * 64
+    session.load()
+    result = session.predict(_request(session), np.zeros((32, 32, 3), dtype=np.uint8))
+    assert [shape.label for shape in result.shapes] == ["cat"]
+
+
+def test_external_shape_constants_are_hydrated_for_runtime_graph_build(tmp_path):
+    # Keep the prediction tensor above the hydration threshold so this covers
+    # both mapped large weights and copied small shape constants in one graph.
+    predictions = np.zeros((1, 6, 20_000), dtype=np.float32)
+    predictions[0, :, 0] = [16, 16, 8, 8, 0.9, 0.1]
+    path = tmp_path / "external-shapes.onnx"
+    _external_shape_inference_model(path, predictions)
+    data = tmp_path / "weights.bin"
+    session = YoloOnnxBackend().create_session(
+        {
+            "name": "external-shape-fixture",
+            "model_path": path,
+            "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+            "external_data_sha256": {
+                "weights.bin": hashlib.sha256(data.read_bytes()).hexdigest()
+            },
+            "format": "yolov8",
+            "class_names": ["cat", "dog"],
+        }
+    )
+
+    session.load()
+    result = session.predict(_request(session), np.zeros((32, 32, 3), dtype=np.uint8))
+    assert [shape.label for shape in result.shapes] == ["cat"]
+
+
+@pytest.mark.parametrize(
+    ("external_manifest", "message"),
+    [
+        ({}, "must exactly cover"),
+        ({"weights.bin": "0" * 64}, "SHA-256 does not match"),
+    ],
+)
+def test_external_data_bundle_fails_closed_on_manifest_errors(
+    tmp_path, external_manifest, message
+):
+    path = tmp_path / "external.onnx"
+    _external_prediction_model(path, np.zeros((1, 6, 1), dtype=np.float32))
+    session = YoloOnnxBackend().create_session(
+        {
+            "name": "external-fixture",
+            "model_path": path,
+            "model_revision": "fixture-1",
+            "external_data_sha256": external_manifest,
+            "format": "yolov8",
+            "class_names": ["cat", "dog"],
+        }
+    )
+
+    with pytest.raises(ValueError, match=message):
+        session.load()
+
+
+def test_external_data_manifest_rejects_extra_and_traversing_paths(tmp_path):
+    path = tmp_path / "external.onnx"
+    _external_prediction_model(path, np.zeros((1, 6, 1), dtype=np.float32))
+    data = tmp_path / "weights.bin"
+    digest = hashlib.sha256(data.read_bytes()).hexdigest()
+    extra = YoloOnnxBackend().create_session(
+        {
+            "name": "external-fixture",
+            "model_path": path,
+            "model_revision": "fixture-1",
+            "external_data_sha256": {
+                "weights.bin": digest,
+                "extra.bin": "0" * 64,
+            },
+            "format": "yolov8",
+            "class_names": ["cat", "dog"],
+        }
+    )
+    with pytest.raises(OnnxArtifactError, match="exactly cover"):
+        extra.load()
+
+    model = onnx.load_model(path, load_external_data=False)
+    for entry in model.graph.initializer[0].external_data:
+        if entry.key == "location":
+            entry.value = "../outside.bin"
+    path.write_bytes(model.SerializeToString())
+    outside = tmp_path.parent / "outside.bin"
+    outside.write_bytes(data.read_bytes())
+    traversal = YoloOnnxBackend().create_session(
+        {
+            "name": "external-fixture",
+            "model_path": path,
+            "model_revision": "fixture-1",
+            "external_data_sha256": {"../outside.bin": digest},
+            "format": "yolov8",
+            "class_names": ["cat", "dog"],
+        }
+    )
+    with pytest.raises(OnnxArtifactError, match="contained relative path"):
+        traversal.load()
+    outside.unlink()
+
+
+def test_external_data_size_limit_is_enforced_before_runtime_load(tmp_path):
+    path = tmp_path / "external.onnx"
+    _external_prediction_model(path, np.zeros((1, 6, 1), dtype=np.float32))
+    data = tmp_path / "weights.bin"
+    session = YoloOnnxBackend().create_session(
+        {
+            "name": "external-fixture",
+            "model_path": path,
+            "model_revision": "fixture-1",
+            "external_data_sha256": {
+                "weights.bin": hashlib.sha256(data.read_bytes()).hexdigest()
+            },
+            "max_external_data_bytes": data.stat().st_size - 1,
+            "format": "yolov8",
+            "class_names": ["cat", "dog"],
+        }
+    )
+
+    with pytest.raises(OnnxArtifactError, match="exceeds the configured"):
+        session.load()
+
+
+def test_external_data_declared_length_must_match_tensor_shape(tmp_path):
+    path = tmp_path / "external.onnx"
+    _external_prediction_model(path, np.zeros((1, 6, 1), dtype=np.float32))
+    model = onnx.load_model(path, load_external_data=False)
+    length = next(
+        entry
+        for entry in model.graph.initializer[0].external_data
+        if entry.key == "length"
+    )
+    length.value = "4"
+    path.write_bytes(model.SerializeToString())
+    data = tmp_path / "weights.bin"
+    session = YoloOnnxBackend().create_session(
+        {
+            "name": "external-fixture",
+            "model_path": path,
+            "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+            "external_data_sha256": {
+                "weights.bin": hashlib.sha256(data.read_bytes()).hexdigest()
+            },
+            "format": "yolov8",
+            "class_names": ["cat", "dog"],
+        }
+    )
+
+    with pytest.raises(OnnxArtifactError, match="does not match tensor dimensions"):
+        session.load()
+
+
+@pytest.mark.skipif(not hasattr(__import__("os"), "symlink"), reason="no symlinks")
+def test_external_data_symlink_is_rejected(tmp_path):
+    path = tmp_path / "external.onnx"
+    _external_prediction_model(path, np.zeros((1, 6, 1), dtype=np.float32))
+    data = tmp_path / "weights.bin"
+    original = data.read_bytes()
+    data.unlink()
+    target = tmp_path / "target.bin"
+    target.write_bytes(original)
+    try:
+        data.symlink_to(target.name)
+    except OSError:
+        pytest.skip("symlink creation is unavailable")
+    session = YoloOnnxBackend().create_session(
+        {
+            "name": "external-fixture",
+            "model_path": path,
+            "model_revision": "fixture-1",
+            "external_data_sha256": {
+                "weights.bin": hashlib.sha256(original).hexdigest()
+            },
+            "format": "yolov8",
+            "class_names": ["cat", "dog"],
+        }
+    )
+
+    with pytest.raises(OnnxArtifactError, match="links or reparse points"):
+        session.load()
+
+
+@pytest.mark.skipif(__import__("os").name == "nt", reason="Windows locks the mapping")
+def test_external_data_in_place_mutation_discards_loaded_session(tmp_path, monkeypatch):
+    path = tmp_path / "external.onnx"
+    _external_prediction_model(path, np.zeros((1, 6, 1), dtype=np.float32))
+    data = tmp_path / "weights.bin"
+    digest = hashlib.sha256(data.read_bytes()).hexdigest()
+    original_add = ExternalDataFiles.add_to_session_options
+
+    def mutate_after_mapping(files, options, model=None):
+        runtime_model = original_add(files, options, model)
+        data.write_bytes(b"\x01" * data.stat().st_size)
+        return runtime_model
+
+    monkeypatch.setattr(
+        ExternalDataFiles, "add_to_session_options", mutate_after_mapping
+    )
+    session = YoloOnnxBackend().create_session(
+        {
+            "name": "external-fixture",
+            "model_path": path,
+            "model_revision": "fixture-1",
+            "external_data_sha256": {"weights.bin": digest},
+            "format": "yolov8",
+            "class_names": ["cat", "dog"],
+        }
+    )
+
+    with pytest.raises(OnnxArtifactError, match="changed while it was being loaded"):
+        session.load()
+
+
 def test_nested_graph_walk_has_a_depth_budget():
     model = helper.make_model(
         helper.make_graph(
@@ -574,8 +871,8 @@ def test_runtime_load_uses_the_same_artifact_that_was_verified(tmp_path, monkeyp
 
     real_validate = backend_module.validate_onnx_artifact
 
-    def replace_after_validation(artifact, *, max_bytes):
-        model = real_validate(artifact, max_bytes=max_bytes)
+    def replace_after_validation(artifact, *, max_bytes, **kwargs):
+        model = real_validate(artifact, max_bytes=max_bytes, **kwargs)
         replacement.replace(original)
         return model
 
@@ -608,8 +905,8 @@ def test_in_place_model_mutation_fails_the_load(tmp_path, monkeypatch):
 
     real_validate = backend_module.validate_onnx_artifact
 
-    def mutate_after_validation(artifact, *, max_bytes):
-        model = real_validate(artifact, max_bytes=max_bytes)
+    def mutate_after_validation(artifact, *, max_bytes, **kwargs):
+        model = real_validate(artifact, max_bytes=max_bytes, **kwargs)
         path.write_bytes(replacement.read_bytes())
         return model
 

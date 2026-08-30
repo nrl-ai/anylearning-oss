@@ -533,6 +533,25 @@ def run_real_model_validation(
             "bytes": model_path.stat().st_size,
             "sha256": _sha256(model_path),
         }
+        external_manifest = config.get("external_data_sha256")
+        if isinstance(external_manifest, dict):
+            external_files = []
+            total_external_bytes = 0
+            for location, expected_digest in sorted(external_manifest.items()):
+                external_path = (model_path.parent / location).resolve(strict=True)
+                external_path.relative_to(model_path.parent)
+                size = external_path.stat().st_size
+                digest = _sha256(external_path)
+                if digest != expected_digest.lower():
+                    raise ValueError(
+                        "External-data report digest changed after inference"
+                    )
+                total_external_bytes += size
+                external_files.append(
+                    {"location": location, "bytes": size, "sha256": digest}
+                )
+            model_details["external_files"] = external_files
+            model_details["external_bytes"] = total_external_bytes
     summary = {
         "schema_version": 1,
         "name": manifest.name,
