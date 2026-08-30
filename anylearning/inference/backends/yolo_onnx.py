@@ -985,9 +985,13 @@ class YoloOnnxSession(BaseInferenceSession):
                 cancellation=cancellation,
             ) as external_data:
                 if external_data.locations:
-                    external_data.add_to_session_options(options)
+                    runtime_model = external_data.add_to_session_options(options, model)
+                else:
+                    runtime_model = None
                 session = onnxruntime.InferenceSession(
-                    runtime_path, sess_options=options, providers=list(providers)
+                    runtime_model if runtime_model is not None else runtime_path,
+                    sess_options=options,
+                    providers=list(providers),
                 )
         inputs = session.get_inputs()
         if len(inputs) != 1:

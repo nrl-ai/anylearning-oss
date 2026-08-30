@@ -75,7 +75,10 @@ def prepare_external_validation_bundle(
             all_tensors_to_one_file=True,
             location=data_name,
             size_threshold=0,
-            convert_attribute=True,
+            # Tensor-valued attributes may be required before runtime file
+            # overrides are applied. They are usually tiny, so retain them in
+            # the graph while large initializers remain external.
+            convert_attribute=False,
         )
         if not data_path.is_file() or data_path.stat().st_size <= 0:
             raise RuntimeError("ONNX conversion did not create external tensor data")

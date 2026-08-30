@@ -24,6 +24,8 @@ _MAX_GRAPH_INPUTS = 128
 _MAX_GRAPH_OUTPUTS = 128
 _MAX_GRAPH_NODES = 100_000
 _MAX_EXTERNAL_FILES = 1_024
+_MAX_HYDRATED_EXTERNAL_BYTES = 64 * 1024 * 1024
+_MAX_HYDRATED_TENSOR_BYTES = 64 * 1024
 _EXTERNAL_DATA_KEYS = frozenset({"location", "offset", "length", "checksum"})
 _SHA256 = re.compile(r"^[0-9a-fA-F]{64}$")
 _SHA1 = re.compile(r"^[0-9a-fA-F]{40}$")
@@ -160,7 +162,16 @@ class ExternalDataFiles:
     lengths: tuple[int, ...]
     total_bytes: int
 
-    def add_to_session_options(self, options: Any) -> None:
+    def add_to_session_options(
+        self, options: Any, model: Any | None = None
+    ) -> bytes | None:
+        """Register mapped files and return a shape-inference-safe graph.
+
+        ONNX Runtime resolves some small constant inputs while it constructs the
+        graph, before its file-buffer overrides are consulted. Hydrate only
+        bounded small tensors into the graph so shape inference works without
+        copying multi-gigabyte weights into Python memory.
+        """
         add_files = getattr(
             options, "add_external_initializers_from_files_in_memory", None
         )
@@ -169,6 +180,31 @@ class ExternalDataFiles:
                 "External-data ONNX models require ONNX Runtime 1.29 or newer"
             )
         add_files(list(self.locations), list(self.buffers), list(self.lengths))
+        if model is None:
+            return None
+
+        by_location = dict(zip(self.locations, self.buffers))
+        hydrated_bytes = 0
+        for tensor in _iter_tensor_protos(model):
+            if tensor.data_location != onnx.TensorProto.EXTERNAL:
+                continue
+            reference = _external_reference(tensor)
+            length = reference.length
+            if length is None:
+                length = _tensor_raw_data_size(tensor)
+            if length > _MAX_HYDRATED_TENSOR_BYTES:
+                continue
+            if hydrated_bytes + length > _MAX_HYDRATED_EXTERNAL_BYTES:
+                raise OnnxArtifactError(
+                    "ONNX graph requires more than the bounded small-tensor "
+                    "hydration budget"
+                )
+            buffer = by_location[reference.location]
+            tensor.raw_data = buffer[reference.offset : reference.offset + length]
+            tensor.ClearField("external_data")
+            tensor.data_location = onnx.TensorProto.DEFAULT
+            hydrated_bytes += length
+        return model.SerializeToString()
 
 
 @dataclass(frozen=True)
@@ -184,36 +220,89 @@ def _external_references(model: Any) -> tuple[_ExternalReference, ...]:
     for tensor in _iter_tensor_protos(model):
         if tensor.data_location != onnx.TensorProto.EXTERNAL:
             continue
-        entries: dict[str, str] = {}
-        for entry in tensor.external_data:
-            if entry.key not in _EXTERNAL_DATA_KEYS:
-                raise OnnxArtifactError(
-                    "ONNX external_data contains an unsupported metadata key"
-                )
-            if entry.key in entries:
-                raise OnnxArtifactError(
-                    "ONNX external_data contains a duplicate metadata key"
-                )
-            entries[entry.key] = entry.value
-        location = _normalize_external_location(entries.get("location", ""))
-        offset = _parse_external_integer(entries.get("offset", "0"), name="offset")
-        length = (
-            _parse_external_integer(entries["length"], name="length")
-            if "length" in entries
-            else None
-        )
-        checksum = entries.get("checksum")
-        if checksum is not None and not _SHA1.fullmatch(checksum):
-            raise OnnxArtifactError("ONNX external_data checksum must be SHA-1")
-        references.append(
-            _ExternalReference(
-                location=location,
-                offset=offset,
-                length=length,
-                checksum=checksum.lower() if checksum else None,
-            )
-        )
+        references.append(_external_reference(tensor))
     return tuple(references)
+
+
+def _external_reference(tensor: Any) -> _ExternalReference:
+    """Parse one TensorProto external_data record without resolving its path."""
+    entries: dict[str, str] = {}
+    for entry in tensor.external_data:
+        if entry.key not in _EXTERNAL_DATA_KEYS:
+            raise OnnxArtifactError(
+                "ONNX external_data contains an unsupported metadata key"
+            )
+        if entry.key in entries:
+            raise OnnxArtifactError(
+                "ONNX external_data contains a duplicate metadata key"
+            )
+        entries[entry.key] = entry.value
+    location = _normalize_external_location(entries.get("location", ""))
+    offset = _parse_external_integer(entries.get("offset", "0"), name="offset")
+    length = (
+        _parse_external_integer(entries["length"], name="length")
+        if "length" in entries
+        else None
+    )
+    checksum = entries.get("checksum")
+    if checksum is not None and not _SHA1.fullmatch(checksum):
+        raise OnnxArtifactError("ONNX external_data checksum must be SHA-1")
+    return _ExternalReference(
+        location=location,
+        offset=offset,
+        length=length,
+        checksum=checksum.lower() if checksum else None,
+    )
+
+
+def _tensor_raw_data_size(tensor: Any) -> int:
+    """Return the packed ONNX raw-data size for a fixed-width tensor."""
+    element_count = 1
+    for dimension in tensor.dims:
+        if dimension < 0:
+            raise OnnxArtifactError("ONNX external tensor has a negative dimension")
+        element_count *= dimension
+        if element_count > 2**63 - 1:
+            raise OnnxArtifactError("ONNX external tensor dimensions exceed the limit")
+    byte_widths = {
+        onnx.TensorProto.FLOAT: 4,
+        onnx.TensorProto.UINT8: 1,
+        onnx.TensorProto.INT8: 1,
+        onnx.TensorProto.UINT16: 2,
+        onnx.TensorProto.INT16: 2,
+        onnx.TensorProto.INT32: 4,
+        onnx.TensorProto.INT64: 8,
+        onnx.TensorProto.BOOL: 1,
+        onnx.TensorProto.FLOAT16: 2,
+        onnx.TensorProto.DOUBLE: 8,
+        onnx.TensorProto.UINT32: 4,
+        onnx.TensorProto.UINT64: 8,
+        onnx.TensorProto.COMPLEX64: 8,
+        onnx.TensorProto.COMPLEX128: 16,
+        onnx.TensorProto.BFLOAT16: 2,
+    }
+    for name in (
+        "FLOAT8E4M3FN",
+        "FLOAT8E4M3FNUZ",
+        "FLOAT8E5M2",
+        "FLOAT8E5M2FNUZ",
+    ):
+        value = getattr(onnx.TensorProto, name, None)
+        if value is not None:
+            byte_widths[value] = 1
+    packed_types = {
+        value
+        for name in ("UINT4", "INT4", "FLOAT4E2M1")
+        if (value := getattr(onnx.TensorProto, name, None)) is not None
+    }
+    if tensor.data_type in packed_types:
+        return (element_count + 1) // 2
+    byte_width = byte_widths.get(tensor.data_type)
+    if byte_width is None:
+        raise OnnxArtifactError(
+            "ONNX external tensor uses a variable-width or unsupported data type"
+        )
+    return element_count * byte_width
 
 
 def _normalize_external_location(value: str) -> str:

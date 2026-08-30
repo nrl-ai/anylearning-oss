@@ -82,6 +82,44 @@ def _external_prediction_model(path, predictions, *, location="weights.bin"):
     )
 
 
+def _external_shape_inference_model(path, predictions, *, location="weights.bin"):
+    predictions = np.asarray(predictions, dtype=np.float32)
+    initializers = [
+        numpy_helper.from_array(predictions, name="stored_predictions"),
+        numpy_helper.from_array(np.asarray([0], dtype=np.int64), name="starts"),
+        numpy_helper.from_array(np.asarray([1], dtype=np.int64), name="ends"),
+        numpy_helper.from_array(np.asarray([2], dtype=np.int64), name="axes"),
+        numpy_helper.from_array(np.asarray([1], dtype=np.int64), name="steps"),
+    ]
+    graph = helper.make_graph(
+        [
+            helper.make_node(
+                "Slice",
+                ["stored_predictions", "starts", "ends", "axes", "steps"],
+                ["predictions"],
+            )
+        ],
+        "external-shape-inference-fixture",
+        [helper.make_tensor_value_info("images", TensorProto.FLOAT, [1, 3, 32, 32])],
+        [
+            helper.make_tensor_value_info(
+                "predictions", TensorProto.FLOAT, list(predictions.shape)
+            )
+        ],
+        initializer=initializers,
+    )
+    model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 13)])
+    model.ir_version = 10
+    onnx.save_model(
+        model,
+        path,
+        save_as_external_data=True,
+        all_tensors_to_one_file=True,
+        location=location,
+        size_threshold=0,
+    )
+
+
 def _request(session, **parameters):
     return InferenceRequest(
         request_id="request-1",
@@ -402,6 +440,32 @@ def test_external_data_bundle_runs_real_runtime_and_binds_revision(tmp_path):
     assert [shape.label for shape in result.shapes] == ["cat"]
 
 
+def test_external_shape_constants_are_hydrated_for_runtime_graph_build(tmp_path):
+    # Keep the prediction tensor above the hydration threshold so this covers
+    # both mapped large weights and copied small shape constants in one graph.
+    predictions = np.zeros((1, 6, 20_000), dtype=np.float32)
+    predictions[0, :, 0] = [16, 16, 8, 8, 0.9, 0.1]
+    path = tmp_path / "external-shapes.onnx"
+    _external_shape_inference_model(path, predictions)
+    data = tmp_path / "weights.bin"
+    session = YoloOnnxBackend().create_session(
+        {
+            "name": "external-shape-fixture",
+            "model_path": path,
+            "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+            "external_data_sha256": {
+                "weights.bin": hashlib.sha256(data.read_bytes()).hexdigest()
+            },
+            "format": "yolov8",
+            "class_names": ["cat", "dog"],
+        }
+    )
+
+    session.load()
+    result = session.predict(_request(session), np.zeros((32, 32, 3), dtype=np.uint8))
+    assert [shape.label for shape in result.shapes] == ["cat"]
+
+
 @pytest.mark.parametrize(
     ("external_manifest", "message"),
     [
@@ -532,9 +596,10 @@ def test_external_data_in_place_mutation_discards_loaded_session(tmp_path, monke
     digest = hashlib.sha256(data.read_bytes()).hexdigest()
     original_add = ExternalDataFiles.add_to_session_options
 
-    def mutate_after_mapping(files, options):
-        original_add(files, options)
+    def mutate_after_mapping(files, options, model=None):
+        runtime_model = original_add(files, options, model)
         data.write_bytes(b"\x01" * data.stat().st_size)
+        return runtime_model
 
     monkeypatch.setattr(
         ExternalDataFiles, "add_to_session_options", mutate_after_mapping
