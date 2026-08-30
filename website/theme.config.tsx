@@ -42,6 +42,8 @@ const config: DocsThemeConfig = {
     const descriptions: Record<string, string> = {
       "/docs/auto-labeling":
         "Learn how to auto-label images in AnyLearning with SAM 2 using box, include-point and exclude-point prompts.",
+      "/docs/samexporter":
+        "Convert and run SAM, MobileSAM, EfficientSAM, SAM 2, SAM 2.1 and SAM3 as ONNX with real model downloads, prompts and visual examples.",
       "/docs/tabular-ai":
         "Train local CatBoost classification and regression models from CSV, Excel, Parquet or Hugging Face datasets in AnyLearning.",
       "/docs/text-llm":
