@@ -91,6 +91,20 @@ class InferenceJob:
     def done(self) -> bool:
         return self._future.done()
 
+    def running(self) -> bool:
+        """Return whether the worker has claimed this job for execution."""
+        return self._future.running()
+
+    def add_done_callback(self, callback: Callable[[InferenceJob], None]) -> None:
+        """Run a read-only job callback after completion on the worker thread."""
+        if not callable(callback):
+            raise TypeError("callback must be callable")
+
+        def notify(_future: Future[InferenceResult]) -> None:
+            callback(self)
+
+        self._future.add_done_callback(notify)
+
 
 ProgressCallback = Callable[[InferenceQueueProgress], None]
 
