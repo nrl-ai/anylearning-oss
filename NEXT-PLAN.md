@@ -1,0 +1,473 @@
+# AnyLearning Platform Roadmap
+
+Status: active implementation plan
+Last updated: 2026-08-30
+Primary repository: `nrl-ai/anylearning-oss`
+Integration branch: `develop`
+
+## Executive decision
+
+AnyLearning becomes the primary product and platform for labeling, training,
+evaluation, model export, and local or shared inference. AnyLabeling remains a
+maintained GPL desktop client and gains compatibility with AnyLearning through a
+versioned remote-inference protocol. New product breadth should not be built
+twice in Qt and React.
+
+The first shared boundary is named `anylearning.inference`, not
+`anylearning-core`. It has a specific purpose and must not become a home for
+unrelated desktop, project, or training code.
+
+The implementation order is:
+
+1. Protect current correctness, package integrity, and cross-platform behavior.
+2. Establish lightweight inference contracts and strict dependency boundaries.
+3. Move existing SAM inference behind the boundary without behavior changes.
+4. Add a unified ONNX model registry and YOLO detection/segmentation adapters.
+5. Add bounded batch inference and embedding precomputation.
+6. Add a production `anylearning serve` profile with password authentication.
+7. Connect AnyLabeling through the public protocol.
+8. Expand annotation workflows only after their performance and persistence are
+   proven.
+
+No package, installer, model, container, or dataset is released merely because
+its implementation PR merges. Releases require explicit approval.
+
+## Product and repository ownership
+
+| Concern                                               | Owner                     |
+| ----------------------------------------------------- | ------------------------- |
+| Labeling, training, evaluation, deployment UX         | AnyLearning               |
+| Neutral inference contracts and model backends        | `anylearning.inference`   |
+| Training implementations and export                   | `anylearning.training`    |
+| Authenticated shared inference                        | `anylearning.server`      |
+| Desktop-only FastAPI routes and webview integration   | AnyLearning desktop       |
+| AnyLabeling critical maintenance and interoperability | AnyLabeling               |
+| AnyLabeling remote inference integration              | AnyLabeling `RemoteModel` |
+
+AnyLearning is Apache-2.0. Feature ideas and wire behavior may be independently
+reimplemented, but GPL implementation code must not be copied into AnyLearning
+unless the specific code has compatible provenance and licensing. Apache-2.0
+AnyLearning components may be consumed by GPLv3 AnyLabeling.
+
+## Highest priorities: performance, stability, and security
+
+Performance, stability, and security are co-equal P0 requirements and outrank
+model count and feature breadth. A feature is not merge-ready merely because it
+works once. It must remain responsive, bound memory and concurrency, recover
+from failure, release resources, preserve existing results, and maintain every
+applicable security invariant.
+
+Every relevant PR must provide a reproducible before/after measurement on the
+same machine. Until stable baselines exist, report measurements without
+inventing thresholds. Once a benchmark has a stable baseline, an unexplained
+regression above 5% blocks merging.
+
+Required measures, where applicable:
+
+- CLI import and startup time.
+- Time to an interactive desktop window.
+- Image open and previous/next latency at p50 and p95.
+- Canvas pan, zoom, and edit frame time at representative shape and point counts.
+- Model cold load, first inference, warm inference, and unload time.
+- Batch throughput, queue latency, and cancellation latency.
+- Peak resident memory and memory growth during repeated work.
+- GPU memory release, worker/thread cleanup, open file handles, and temporary
+  artifact cleanup.
+- Failure followed by a successful retry in the same process.
+- Soak behavior for lifecycle, navigation, batch, cache, database, and server
+  changes.
+
+No percentage allowance applies to correctness failures, unbounded growth,
+stale results, UI-thread inference, leaked workers, credential exposure,
+authorization bypass, unsafe parsing, or silent data loss. Performance work may
+not disable validation, authentication, isolation, redaction, or resource limits.
+
+### Baseline program
+
+1. Build a deterministic, redistributable benchmark corpus with provenance and
+   checksums.
+2. Publish versioned test data and model fixtures under the appropriate
+   `nrl-ai` or `vietanhdev` Hugging Face namespace only after license review.
+3. Add a headless benchmark command that emits versioned JSON.
+4. Record Linux devbox, Apple Silicon macOS, and Windows baselines using fixed
+   source, model, and dataset revisions.
+5. Retain benchmark JSON as PR/CI artifacts and compare stable metrics.
+6. Keep timing tests outside the deterministic unit suite.
+
+### Security program
+
+Treat images, annotations, archives, model files, checkpoints, configuration,
+URLs, HTTP requests, database imports, and project metadata as attacker-controlled
+at every trust boundary.
+
+1. Expand `SECURITY.md` into a repository threat model covering the desktop
+   loopback API, public inference server, website, project/model/data ingestion,
+   training workers, build pipeline, release artifacts, and Hugging Face assets.
+2. Define and test security invariants: authentication before protected work,
+   project/request isolation, bounded parsing and execution, safe path handling,
+   fail-closed authorization, secret redaction, and integrity-checked artifacts.
+3. Add size, depth, count, decompression-ratio, time, memory, and concurrency
+   limits before parsing or executing untrusted content.
+4. Reject archive traversal, absolute paths, unsafe links, device files, and
+   extraction outside a newly created destination. Test ZIP and TAR variants.
+5. Do not deserialize untrusted pickle-based checkpoints or execute model-supplied
+   Python. Prefer safe tensor/ONNX formats, integrity hashes, explicit provenance,
+   and isolated conversion workflows.
+6. Treat model inference and training as resource-exhaustion boundaries. Apply
+   worker isolation, cancellation, deadlines, bounded output, and cleanup after
+   crashes or forced termination.
+7. Keep the desktop API loopback-only with a high-entropy header token. Remove
+   credentials from URLs, narrow CORS, and never return filesystem paths or
+   tracebacks outside an explicit local debug profile.
+8. Review dependency and supply-chain alerts for realistic reachability. A
+   reachable critical/high vulnerability blocks release; exceptions require a
+   written owner decision, compensating controls, and an expiry date.
+9. Generate an SBOM and provenance for installers, containers, Python packages,
+   model weights, and benchmark data. Pin or hash sensitive build inputs and
+   verify downloaded artifacts before use.
+10. Keep automated secret scanning, dependency review, static checks, security
+    regression tests, and targeted fuzz/property tests in CI.
+11. Document vulnerability reporting, supported versions, coordinated disclosure,
+    response ownership, and credential/model revocation procedures.
+12. Perform a focused threat review whenever a PR adds a network endpoint,
+    parser, archive format, model/backend, subprocess, file-write path, credential,
+    or release/deployment mechanism.
+
+## Architecture
+
+```text
+AnyLearning desktop ------------------+
+                                      |
+anylearning.server -------------------+--> anylearning.inference
+                                      |      - contracts
+optional AnyLabeling local adapter ---+      - model registry
+                                             - lifecycle
+AnyLabeling RemoteModel -- HTTP --> server   - backend adapters
+
+anylearning.training --> artifact contracts and inference validation
+```
+
+### `anylearning.inference`
+
+This is a headless library boundary inside the existing distribution first. It
+contains:
+
+- Protocol version and capability schemas.
+- Neutral points, prompts, shapes, prediction results, and timing metadata.
+- Model configuration validation.
+- Model registry and backend interfaces.
+- Session load, cache, inference, cancellation, and unload lifecycle.
+- ONNX preprocessing and postprocessing shared by desktop and server.
+- Deterministic contract fixtures and compatibility tests.
+
+It must not contain:
+
+- React, Qt, pywebview, or window-control code.
+- FastAPI routes, authentication, or HTTP transport.
+- Project databases or desktop settings.
+- Training implementations, augmentations, optimizers, or checkpoints.
+- Unconditional imports of PyTorch, ONNX Runtime, OpenCV, FastAPI, or desktop
+  frameworks from the package root.
+
+### `anylearning.training`
+
+Training remains separate and may depend on lightweight inference/artifact
+contracts. It owns trainers, data augmentation, subprocess/GPU orchestration,
+metrics, checkpoints, evaluation, and ONNX export. Training must remain an
+optional installation capability and must never become a server or inference
+client requirement.
+
+## Model support strategy
+
+Add model families by reusable task contracts and decoders, not by copying a
+large model zoo. Every adapter must pass correctness, performance, lifecycle,
+security, packaging, and separate code/weight license gates.
+
+| Order | Model capability                                           | Distribution policy                                          | Reason                                                            |
+| ----- | ---------------------------------------------------------- | ------------------------------------------------------------ | ----------------------------------------------------------------- |
+| 1     | Models trained/exported by AnyLearning                     | Built in                                                     | Close the train-to-prelabel loop with artifacts we already create |
+| 2     | User-supplied YOLOv5/v8/11 detection and segmentation ONNX | Generic decoder only; no Ultralytics code or weights bundled | Highest custom-model interoperability value                       |
+| 3     | YOLOX ONNX detection                                       | Permissive bundled option after benchmark                    | Apache-2.0, CPU-friendly detector                                 |
+| 4     | EfficientViT-SAM                                           | Permissive optional/bundled weights after review             | Faster promptable segmentation on CPU                             |
+| 5     | RF-DETR and D-FINE detection/instance segmentation         | Reuse licensed training artifacts; server for large variants | Accurate permissive families and existing AnyLearning investment  |
+| 6     | YOLO-to-SAM refinement                                     | Workflow over existing adapters                              | Converts detector boxes into editable high-quality masks          |
+| 7     | Grounding DINO and OWLv2                                   | Optional/server-first                                        | Permissive zero-shot prelabeling with heavier runtime             |
+| 8     | OBB through a permissive RTMDet/MMRotate-class backend     | Only after OBB editing and export are complete               | Geometry must be correct before inference                         |
+| 9     | RapidOCR PP-OCR ONNX                                       | Optional/server-first until workflow demand is validated     | Permissive OCR without a new training framework                   |
+
+Ultralytics YOLO implementations and distributed weights remain rejected from
+the Apache-2.0 product under the current license policy. Supporting a documented
+neutral tensor layout for a user-supplied ONNX file does not authorize bundling
+Ultralytics code, configuration, or weights. The UI must identify custom artifacts
+as user-provided and must not imply that AnyLearning grants rights to them.
+
+Long-tail, proprietary, research-only, or framework-heavy families should
+implement the public server protocol rather than expanding mandatory desktop
+dependencies. Models with non-commercial or unclear terms are not accepted even
+as optional examples or benchmark assets.
+
+### Definition of done for a model family
+
+- Code, weights, training data provenance, and redistribution terms are recorded
+  separately.
+- Configuration and tensor layouts are validated with actionable diagnostics.
+- Preprocessing and postprocessing use deterministic golden fixtures.
+- Malformed models, extreme shapes, external-data paths, and oversized outputs
+  fail within resource limits and without reading unintended files.
+- Cold load, first/warm inference, unload, peak RSS, and repeated lifecycle
+  measurements are recorded.
+- Failure, retry, cancellation, and provider fallback are tested.
+- Results preserve request, source, model, revision, confidence, and provenance.
+- Shapes remain editable and survive save/reload plus relevant exports.
+- CPU behavior works; accelerated behavior is verified or explicitly unsupported.
+- Source and packaged-app behavior pass on supported operating systems.
+- Server concurrency is tested if the backend is remotely exposed.
+
+### Installation profiles
+
+Keep the public `anylearning` distribution and import namespace. Move toward:
+
+```text
+pip install anylearning
+pip install "anylearning[inference]"
+pip install "anylearning[inference-gpu]"
+pip install "anylearning[training]"
+pip install "anylearning[server]"
+pip install "anylearning[desktop]"
+pip install "anylearning[all]"
+```
+
+The first packaging PRs must preserve the existing complete desktop install.
+Dependencies should be separated only with import-boundary tests, clean-environment
+installation tests, documented migration, and packaged-application verification.
+Do not turn the current mandatory dependency list into extras in one unverified
+rewrite.
+
+Expected commands:
+
+```text
+anylearning infer
+anylearning train
+anylearning serve
+anylearning desktop
+```
+
+## `anylearning.server`
+
+The current desktop `--server` mode is not a production network service. It
+contains desktop/project/window routes and assumptions that are inappropriate
+for remote exposure. Build a separate application factory and CLI profile with
+a narrow `/v1` inference API.
+
+Initial endpoints:
+
+```text
+GET    /v1/health
+POST   /v1/auth/token
+GET    /v1/models
+GET    /v1/models/{model_id}
+POST   /v1/predictions
+GET    /v1/predictions/{request_id}
+DELETE /v1/predictions/{request_id}
+```
+
+Server requirements:
+
+- Argon2id password-hash generation command.
+- Password hash supplied by a secret manager/environment variable.
+- Short-lived signed bearer tokens; passwords never enter URLs or persistent
+  client configuration.
+- Login rate limits and temporary backoff.
+- TLS verification by default, normally via a documented reverse proxy.
+- Narrow CORS policy; no wildcard production policy.
+- Safe error bodies without paths, source files, tracebacks, secrets, or image
+  content.
+- Request/image/result size limits, timeouts, queue limits, and bounded
+  concurrency.
+- Shared model sessions with per-backend concurrency safety.
+- Request IDs, structured logging, mandatory redaction, and graceful shutdown.
+- A documented single-host container deployment.
+
+Desktop webview tokens and production server tokens are separate mechanisms.
+Desktop development-mode authentication bypasses must never affect the server
+application.
+
+## AnyLabeling integration
+
+Integrate remotely before embedding Python code:
+
+1. Publish protocol schemas and golden request/result fixtures.
+2. Add a mock server contract suite.
+3. Implement AnyLabeling `RemoteModel` capability discovery and prediction.
+4. Add timeout, cancellation, TLS, error classification, and OS credential
+   storage.
+5. Run the same fixture through AnyLearning desktop, server, and AnyLabeling.
+6. Consider optional local `anylearning[inference]` integration only after
+   dependency, startup, memory, and packaging benchmarks demonstrate value.
+
+The protocol exchanges image content or explicit supported object references,
+not server-local project database IDs. Results always include request ID,
+source identity, protocol version, model ID/revision, neutral shapes, warnings,
+and timings so clients can reject stale results.
+
+## Milestones and PR sequence
+
+### P0: Foundation, reliability, and measurement
+
+F1. Add this roadmap, branch policy, and no-release rule.
+F2. Add lightweight versioned inference contracts with wire round-trip tests.
+F3. Add import-boundary and import-time/RSS measurements.
+F4. Record desktop and model lifecycle baselines on Linux, macOS, and Windows.
+F5. Fix or explicitly disposition the existing cross-platform packaging gaps.
+F6. Increase first-party coverage around routers, auto-labeling, lifecycle, and
+failure recovery.
+F7. Create benchmark/test artifacts and publish them with provenance.
+
+### P0: Security foundation
+
+SEC1. Expand the repository security policy and threat boundaries.
+SEC2. Triage current dependency alerts by reachability and patch supported
+frontend/website dependencies without hiding incompatible ML runtime changes.
+SEC3. Harden the desktop loopback API: header-only high-entropy tokens, narrow
+CORS, loopback enforcement, and production-safe error responses.
+SEC4. Add adversarial archive, image, annotation, configuration, and path tests.
+SEC5. Audit model/checkpoint loading for unsafe deserialization, external-data
+paths, unbounded tensors, downloads, and missing integrity verification.
+SEC6. Add SBOM, build provenance, dependency review, and artifact checksum gates.
+SEC7. Threat-model and security-test the inference server before enabling any
+non-loopback bind.
+
+### P0: Inference platform
+
+I1. Define backend, session, cancellation, capabilities, and registry interfaces.
+I2. Adapt existing SAM/SAM2 behind the interfaces without output changes.
+I3. Add stable image identity and embedding cache keys including model revision.
+I4. Add deterministic SAM fixtures and load/infer/unload soak tests.
+I5. Implement a reusable YOLO decoder with tensor-layout diagnostics.
+I6. Add YOLOv5/v8/11 detection and v8/11 segmentation using ONNX.
+I7. Add confidence, IoU, class filters, dynamic shapes, and provider diagnostics.
+I8. Connect AnyLearning-trained artifacts to auto-labeling through the same
+contracts.
+I9. Add and benchmark permissive YOLOX, EfficientViT-SAM, RF-DETR, and D-FINE
+backends in that order, enabling only those that satisfy the model gate.
+I10. Verify custom exported models and packaged runtime behavior.
+
+### P0: Workflow correctness and performance
+
+W1. Replace O(number-of-points) zoom mutation with a viewport transform while
+preserving pointer-coordinate correctness.
+W2. Add batch inference with progress, cancellation, bounded queues, and atomic
+saves.
+W3. Add resumable manifests, error reports, and stale-result rejection.
+W4. Add embedding precomputation with exact image/model identity and size limits.
+W5. Add YOLO-box-to-SAM refinement.
+W6. Replace the growing training-log text field with appendable bounded storage
+and paged/tailing reads.
+W7. Complete import/export round trips for AnyLabeling, YOLO, COCO, and LabelMe.
+
+### P1: Authenticated shared inference
+
+S1. Add isolated server app factory and public threat assumptions.
+S2. Add password hash CLI, token flow, redaction, and rate-limit tests.
+S3. Add model discovery and deterministic synchronous prediction.
+S4. Add bounded asynchronous queue, job state, cancellation, and timeouts.
+S5. Add shared-session concurrency and cross-request isolation tests.
+S6. Add Docker/reverse-proxy guidance and desktop-to-server end-to-end tests.
+S7. Add AnyLabeling remote client and three-client contract compatibility tests.
+
+### P1: Modular installation
+
+P1. Classify every dependency by contracts, inference, training, server,
+desktop, structured data, build, or development.
+P2. Add clean virtual-environment install/import tests for proposed profiles.
+P3. Introduce extras while preserving the existing complete install path.
+P4. Make optional imports actionable rather than masking missing dependencies.
+P5. Verify CLI help and base imports without heavyweight frameworks.
+P6. Verify Nuitka builds and packaged self-tests after each dependency move.
+
+### P2: Annotation breadth
+
+A1. Add oriented-box persistence, rendering, editing, import/export, then model
+decoding.
+A2. Design mask-native storage, holes, disconnected regions, editing, and loss
+reporting before Automask.
+A3. Add classification tags and model results only after persistence/export
+contracts exist.
+A4. Consider OCR and video/tracking only after P0/P1 workflows meet stability
+gates.
+
+## Existing backlog incorporated
+
+GitHub had no open issues at the 2026-08-30 audit. The following active items
+come from `docs/TODO.md` and are promoted into this plan:
+
+- Cross-platform packaged builds are not yet green on Windows and macOS.
+- Canvas zoom mutates and replots every shape and will exceed a frame budget on
+  larger annotations.
+- First-party coverage is approximately 53%; dataset routing and auto-labeling
+  have major gaps.
+- Instance-segmentation end-to-end coverage does not yet exercise its real ONNX
+  export path.
+- ONNX export depends on the deprecated TorchScript exporter because packaged
+  dynamo/onnxscript behavior is unresolved.
+- Training logs use one growing database field and become superlinear.
+- detectron2 CUDA extensions do not build against the current PyTorch version.
+- UI sizing, semantic colors, and spacing need a consistent system.
+- The default branch currently reports 60 open dependency alerts (including 23
+  high severity, with duplicates between manifests and lockfiles). Website
+  Next.js/PostCSS and frontend Effect alerts need immediate reachability review
+  and supported upgrades; the PyTorch alert must be handled with the ML ABI and
+  packaging matrix rather than an unverified isolated bump.
+
+## Test and release gates
+
+Every implementation PR must include deterministic written tests and the
+relevant manual/visual checks. High-risk desktop, inference, training, server,
+and packaging changes are checked on the physical Linux devbox, Apple Silicon
+macOS machine, and Windows machine before release.
+
+Every PR also states whether it changes a trust boundary. Security-sensitive
+changes include abuse and failure tests, verify redaction, and demonstrate that
+limits are enforced before expensive allocation or execution.
+
+### Inference gate
+
+- Contract serialization and compatibility fixtures pass.
+- Preprocessing/postprocessing are deterministic.
+- Results retain exact request/source/model identity.
+- Load, failure, retry, cancellation, and unload pass in one process.
+- CPU works; accelerated providers are verified or explicitly unsupported.
+- Repeated inference does not grow memory or leak sessions/threads.
+
+### Server gate
+
+- Unauthenticated clients cannot enumerate models or operate jobs.
+- Passwords and tokens do not appear in logs, errors, metrics, OpenAPI examples,
+  command history generated by tests, or exported configuration.
+- Token expiry/rotation, login rate limiting, TLS verification, size limits,
+  cancellation, and graceful shutdown pass.
+- Concurrent clients share sessions without cross-request leakage.
+- The public server contains no desktop project/window routes.
+
+### Desktop/package gate
+
+- Written tests and pre-commit checks pass.
+- Local source startup and packaged startup both pass.
+- Label, save, reload, import, export, train, export-model, and inference smoke
+  paths remain functional.
+- Visual checks cover the affected workflow on Linux, macOS, and Windows.
+- Install profiles are tested in clean environments with expected and forbidden
+  imports recorded.
+
+## Success measures
+
+- Crash-free desktop and inference sessions.
+- Zero stale/wrong-image result applications.
+- Time from dataset open to first accepted prediction.
+- p50/p95 navigation and canvas interaction latency.
+- Model cold/warm latency and memory stability.
+- Batch throughput, cancellation success, and failure recovery.
+- Training completion through registered, loadable ONNX artifact.
+- Server queue latency, bounded concurrency, and cross-client isolation.
+- Clean install success by profile and packaged-build success by platform.
+- Compatibility with AnyLabeling through the public protocol.
