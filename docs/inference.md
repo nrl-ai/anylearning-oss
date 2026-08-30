@@ -9,6 +9,30 @@ Importing the package root does not import ONNX Runtime, OpenCV, PyTorch,
 FastAPI, or a desktop framework. Model runtimes are loaded only when a registry
 backend is selected.
 
+## Promptable ONNX segmentation
+
+`segment_anything` runs SAM, MobileSAM, SAM 2, and SAM 2.1 split ONNX pairs.
+The decoder graph selects the compatible SAM generation, or production
+manifests can pin `family` to `sam` or `sam2`. `efficient_sam` is a distinct
+backend for the official EfficientSAM-Ti/S split graph contract; it is not the
+similarly named EfficientViT-SAM architecture. Both backends accept point and
+box prompts, cache image embeddings by model revision and source identity, and
+select the highest-IoU candidate mask.
+
+Every graph is independently bounded and optionally digest-verified before
+ONNX Runtime sees it. Large pairs use separate
+`encoder_external_data_sha256` and `decoder_external_data_sha256` maps. SAM and
+MobileSAM apply the official longest-side resize and aspect-ratio-aware
+low-resolution mask crop; EfficientSAM preserves its dynamic native image size.
+All image boundaries are explicitly `uint8` RGB.
+
+Promptable pairs disable ONNX Runtime's per-session CPU memory arena by default.
+This keeps repeated model load/unload cycles bounded on desktop and server hosts
+without changing warm prompt decoding. A long-lived, throughput-oriented worker
+that has measured sufficient memory headroom may set
+`enable_cpu_mem_arena=true`; real-model validation should be rerun for that
+deployment profile.
+
 ## User-supplied YOLO ONNX models
 
 The `yolo_onnx` backend implements neutral output layouts for YOLOv5, YOLOv8,
@@ -133,5 +157,6 @@ bounded. Provider fallback is explicit in result warnings and session
 capabilities.
 
 ONNX execution is cooperatively cancellable before and after the runtime call.
-An in-progress provider call is not preemptible in-process; the server profile
-must add a deadline and worker-isolation boundary before exposing this backend.
+An in-progress provider call is not preemptible in-process; the authenticated
+server therefore applies queue, image, result, concurrency, and deadline bounds
+around its per-model session worker.

@@ -24,6 +24,7 @@ from anylearning.inference.validation import (
     _annotate,
     _check_expectations,
     _load_rgb,
+    _request_prompts,
     _result_digest,
     load_validation_manifest,
 )
@@ -61,8 +62,6 @@ def run_server_validation(
 ) -> Path:
     manifest_path = manifest_path.resolve(strict=True)
     manifest = load_validation_manifest(manifest_path)
-    if manifest.backend != "yolo_onnx":
-        raise ValueError("public real-server validation currently requires yolo_onnx")
     config = dict(manifest.config)
     config["config_file"] = str(manifest_path)
     if model_path_override is not None:
@@ -122,6 +121,8 @@ def run_server_validation(
                     source_id=encoded_image_source_id(encoded),
                     model_id=capabilities["model_id"],
                     model_revision=capabilities["model_revision"],
+                    prompts=_request_prompts(image_case.prompts),
+                    output_shape=image_case.output_shape,
                     parameters=image_case.request_parameters,
                 )
                 run_started = time.perf_counter()
@@ -173,7 +174,8 @@ def run_server_validation(
             global_failures.extend(f"{image_path.name}: {item}" for item in failures)
             annotated_name = f"{index:03d}-{image_path.stem}-server.png"
             if not cv2.imwrite(
-                str(output_dir / annotated_name), _annotate(rgb, results[0])
+                str(output_dir / annotated_name),
+                _annotate(rgb, results[0], image_case.prompts),
             ):
                 raise OSError("could not write real-server annotated image")
             image_summaries.append(

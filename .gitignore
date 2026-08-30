@@ -200,3 +200,7 @@ AnyLearning-*.exe
 
 # Local real-model validation artifacts (JSON, timings, and annotated images).
 /validation-results/
+/tests/fixtures/inference/real_models/*.onnx
+/tests/fixtures/inference/real_models/*.jpg
+/tests/fixtures/inference/real_models/*.png
+/tests/fixtures/inference/real_models/*_external/

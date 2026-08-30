@@ -1,11 +1,14 @@
 import gc
 import json
+import subprocess
+import sys
 import weakref
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
 import numpy as np
+import pytest
 
 from anylearning.inference import (
     BoxPrompt,
@@ -74,19 +77,49 @@ def request(*, source_id: str, output_shape=ShapeType.POLYGON):
     )
 
 
+def checked_sam_session(*_args, **_kwargs):
+    graph = SimpleNamespace(graph=SimpleNamespace(input=[]))
+    return SimpleNamespace(), graph, ()
+
+
 def test_default_registry_keeps_sam_lazy():
     registry = create_default_registry()
 
-    assert registry.backend_ids() == ("segment_anything", "yolo_onnx")
+    assert registry.backend_ids() == (
+        "efficient_sam",
+        "segment_anything",
+        "yolo_onnx",
+    )
+    assert "efficient_sam" not in registry._backends
     assert "segment_anything" not in registry._backends
     assert "yolo_onnx" not in registry._backends
 
 
+def test_sam_backend_import_does_not_require_desktop_config_dependencies():
+    """The standalone inference extra must not pull in desktop YAML config."""
+    script = """
+import sys
+sys.modules['yaml'] = None
+sys.modules['loguru'] = None
+import anylearning.inference.backends.sam
+import anylearning.inference.backends.efficient_sam
+"""
+    completed = subprocess.run(
+        [sys.executable, "-c", script],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert completed.returncode == 0, completed.stderr
+
+
 def test_sam_session_preserves_identity_shapes_prompts_and_embedding_cache(tmp_path):
     model_config = config(tmp_path)
-    graph = SimpleNamespace(graph=SimpleNamespace(input=[]))
     with (
-        patch("anylearning.inference.backends.sam.onnx.load_model", return_value=graph),
+        patch(
+            "anylearning.inference.backends.sam.create_checked_onnx_session",
+            side_effect=checked_sam_session,
+        ),
         patch("anylearning.inference.backends.sam.SegmentAnythingONNX", FakeSAM),
     ):
         session = SegmentAnythingBackend().create_session(model_config)
@@ -151,13 +184,36 @@ def test_sam_mask_conversion_matches_golden_fixture():
     )
 
 
+def test_sam_mask_conversion_bounds_fragmented_and_complex_results():
+    fragmented = np.zeros((64, 64), dtype=np.float32)
+    fragmented[::2, ::2] = 1
+
+    with pytest.raises(ValueError, match="contours"):
+        mask_shapes(
+            fragmented,
+            ShapeType.POLYGON,
+            max_mask_contours=10,
+        )
+
+    rectangle = np.zeros((32, 32), dtype=np.float32)
+    rectangle[4:28, 4:28] = 1
+    with pytest.raises(ValueError, match="total point limit"):
+        mask_shapes(
+            rectangle,
+            ShapeType.RECTANGLE,
+            max_total_shape_points=3,
+        )
+
+
 def test_sam_repeated_load_predict_unload_releases_every_adapter(tmp_path):
     model_config = config(tmp_path)
-    graph = SimpleNamespace(graph=SimpleNamespace(input=[]))
     references = []
     image = np.zeros((32, 32, 3), dtype=np.uint8)
     with (
-        patch("anylearning.inference.backends.sam.onnx.load_model", return_value=graph),
+        patch(
+            "anylearning.inference.backends.sam.create_checked_onnx_session",
+            side_effect=checked_sam_session,
+        ),
         patch("anylearning.inference.backends.sam.SegmentAnythingONNX", FakeSAM),
     ):
         for index in range(100):
@@ -175,3 +231,93 @@ def test_sam_repeated_load_predict_unload_releases_every_adapter(tmp_path):
     del session
     gc.collect()
     assert all(reference() is None for reference in references)
+
+
+def test_sam_config_preserves_legacy_fields_and_freezes_integrity_maps(tmp_path):
+    model_config = {
+        **config(tmp_path),
+        "display_name": "Legacy desktop model",
+        "input_size": 1024,
+        "max_width": 1024,
+        "encoder_external_data_sha256": {"weights.bin": "a" * 64},
+    }
+
+    session = SegmentAnythingBackend().create_session(model_config)
+
+    assert session.config.display_name == "Legacy desktop model"
+    assert session.config.enable_cpu_mem_arena is False
+    with pytest.raises(TypeError, match="immutable"):
+        session.config.encoder_external_data_sha256["weights.bin"] = "b" * 64
+
+
+def test_sam_loader_forwards_independent_integrity_and_provider_bounds(tmp_path):
+    model_config = {
+        **config(tmp_path),
+        "encoder_sha256": "a" * 64,
+        "decoder_sha256": "b" * 64,
+        "providers": ["CUDAExecutionProvider"],
+        "allow_cpu_fallback": False,
+        "max_model_bytes": 1234,
+        "max_external_data_bytes": 5678,
+        "enable_cpu_mem_arena": True,
+        "intra_op_threads": 2,
+        "inter_op_threads": 3,
+    }
+    with (
+        patch(
+            "anylearning.inference.backends.sam.create_checked_onnx_session",
+            side_effect=checked_sam_session,
+        ) as checked,
+        patch("anylearning.inference.backends.sam.SegmentAnythingONNX", FakeSAM),
+    ):
+        session = SegmentAnythingBackend().create_session(model_config)
+        session.load()
+
+    assert checked.call_count == 2
+    encoder_call, decoder_call = checked.call_args_list
+    assert encoder_call.kwargs["expected_sha256"] == "a" * 64
+    assert decoder_call.kwargs["expected_sha256"] == "b" * 64
+    for call in (encoder_call, decoder_call):
+        assert call.kwargs["providers"] == ("CUDAExecutionProvider",)
+        assert call.kwargs["allow_cpu_fallback"] is False
+        assert call.kwargs["max_model_bytes"] == 1234
+        assert call.kwargs["max_external_data_bytes"] == 5678
+        assert call.kwargs["enable_cpu_mem_arena"] is True
+        assert call.kwargs["intra_op_threads"] == 2
+        assert call.kwargs["inter_op_threads"] == 3
+
+
+def test_sam_explicit_family_must_match_decoder_graph(tmp_path):
+    graph = SimpleNamespace(
+        graph=SimpleNamespace(input=[SimpleNamespace(name="high_res_feats_0")])
+    )
+
+    def checked_sam2_session(*_args, **_kwargs):
+        return SimpleNamespace(), graph, ()
+
+    model_config = {**config(tmp_path), "family": "sam"}
+    with patch(
+        "anylearning.inference.backends.sam.create_checked_onnx_session",
+        side_effect=checked_sam2_session,
+    ):
+        session = SegmentAnythingBackend().create_session(model_config)
+        with pytest.raises(ValueError, match="does not match"):
+            session.load()
+
+
+def test_sam_image_pixel_limit_is_enforced_before_encoding(tmp_path):
+    model_config = {**config(tmp_path), "max_image_pixels": 4}
+    with (
+        patch(
+            "anylearning.inference.backends.sam.create_checked_onnx_session",
+            side_effect=checked_sam_session,
+        ),
+        patch("anylearning.inference.backends.sam.SegmentAnythingONNX", FakeSAM),
+    ):
+        session = SegmentAnythingBackend().create_session(model_config)
+        session.load()
+        with pytest.raises(ValueError, match="configured limit"):
+            session.predict(
+                request(source_id="image-sha256:too-large"),
+                np.zeros((3, 3, 3), dtype=np.uint8),
+            )

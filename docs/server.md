@@ -34,8 +34,11 @@ Give it a bounded startup manifest instead:
 
 Relative artifact paths are resolved from the manifest. The manifest must be a
 regular non-link JSON file and cannot contain credential-like fields. Public
-serving initially permits only the safety-checked `yolo_onnx` backend; add each
-future ONNX backend only after its own format and resource review.
+serving permits the safety-checked `yolo_onnx`, `segment_anything`, and
+`efficient_sam` backends. Promptable models use separate encoder and decoder
+paths plus `encoder_sha256` and `decoder_sha256`; each graph may also declare an
+exact external-data digest map. Add future ONNX backends only after their own
+format, allocation, and license review.
 
 ## Create credentials
 

@@ -122,3 +122,355 @@ jobs:
           path: validation-results/
           if-no-files-found: error
           retention-days: 30
+
+  efficient-sam-ti:
+    name: EfficientSAM-Ti / ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    env:
+      ASSET_DIR: tests/fixtures/inference/real_models
+      ENCODER_SHA256: 84ed466ffcc5c1f8d08409bc34a23bb364ab2c15e402cb12d4335a42be0e0951
+      DECODER_SHA256: a62f8fa5ea080447c0689418d69e58f1e83e0b7adf9c142e2bd9bcc8045c0b11
+      IMAGE_SHA256: 5a9522051c3cec2bbd2f6323fccba32e8fbf3ddcc2b3e2fd46b04c720bc6f866
+      OPENBLAS_NUM_THREADS: "1"
+      OMP_NUM_THREADS: "1"
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v10.0.1
+        with:
+          enable-cache: true
+
+      - name: Install isolated inference test dependencies
+        run: >-
+          uv pip install --system
+          "numpy>=2,<3" "opencv-python-headless>=4.11,<6"
+          "pydantic>=2.13,<3" "onnx>=1.16,<2" "onnxruntime>=1.29,<2"
+          "psutil>=7.2,<8" "pytest>=9,<10" "Pillow>=12,<13"
+          "fastapi>=0.141,<1" "httpx>=0.28,<1" "argon2-cffi>=25.1,<26"
+
+      - name: Download immutable official test assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/download_verified_file.py \
+            "https://huggingface.co/yunyangx/EfficientSAM/resolve/d53228e3f6dee607309453f54a22c40c2a10204c/efficientsam_ti_encoder.onnx" \
+            "$ASSET_DIR/efficientsam_ti_encoder.onnx" \
+            --sha256 "$ENCODER_SHA256" --max-bytes 52428800
+          python scripts/download_verified_file.py \
+            "https://huggingface.co/yunyangx/EfficientSAM/resolve/d53228e3f6dee607309453f54a22c40c2a10204c/efficientsam_ti_decoder.onnx" \
+            "$ASSET_DIR/efficientsam_ti_decoder.onnx" \
+            --sha256 "$DECODER_SHA256" --max-bytes 52428800
+          python scripts/download_verified_file.py \
+            "https://raw.githubusercontent.com/Megvii-BaseDetection/YOLOX/6ddff4824372906469a7fae2dc3206c7aa4bbaee/assets/dog.jpg" \
+            "$ASSET_DIR/dog.jpg" --sha256 "$IMAGE_SHA256" \
+            --max-bytes 10485760
+
+      - name: Run real promptable ONNX validation
+        run: >-
+          python scripts/validate_real_model.py
+          tests/fixtures/inference/real_models/efficient_sam_ti_official.json
+          --output-root validation-results/${{ runner.os }}/efficient-sam-ti
+
+      - name: Run authenticated server with real promptable ONNX
+        run: >-
+          python scripts/validate_real_server.py
+          tests/fixtures/inference/real_models/efficient_sam_ti_official.json
+          --output-root validation-results/${{ runner.os }}/server-efficient-sam-ti
+
+      - name: Retain visual and machine-readable evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: efficient-sam-ti-real-model-validation-${{ runner.os }}
+          path: validation-results/
+          if-no-files-found: error
+          retention-days: 30
+
+  mobile-sam:
+    name: MobileSAM aspect ratios / ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    env:
+      ASSET_DIR: tests/fixtures/inference/real_models
+      ARCHIVE_SHA256: 41aff2660b7531becfee21fb257c49933ddc892c554507bdb775bf504d443942
+      IMAGE_SHA256: 5a9522051c3cec2bbd2f6323fccba32e8fbf3ddcc2b3e2fd46b04c720bc6f866
+      OPENBLAS_NUM_THREADS: "1"
+      OMP_NUM_THREADS: "1"
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v10.0.1
+        with:
+          enable-cache: true
+
+      - name: Install isolated inference test dependencies
+        run: >-
+          uv pip install --system
+          "numpy>=2,<3" "opencv-python-headless>=4.11,<6"
+          "pydantic>=2.13,<3" "onnx>=1.16,<2" "onnxruntime>=1.29,<2"
+          "psutil>=7.2,<8" "pytest>=9,<10" "Pillow>=12,<13"
+          "fastapi>=0.141,<1" "httpx>=0.28,<1" "argon2-cffi>=25.1,<26"
+
+      - name: Download immutable official test assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/download_verified_file.py \
+            "https://huggingface.co/nrl-ai/anylearning-labeling-models/resolve/b8abc71ec07279a978cc1682fd91cd50a7d7b207/mobile_sam_20230629.zip" \
+            "$ASSET_DIR/mobile_sam_20230629.zip" \
+            --sha256 "$ARCHIVE_SHA256" --max-bytes 52428800
+          python scripts/download_verified_file.py \
+            "https://raw.githubusercontent.com/Megvii-BaseDetection/YOLOX/6ddff4824372906469a7fae2dc3206c7aa4bbaee/assets/dog.jpg" \
+            "$ASSET_DIR/dog.jpg" --sha256 "$IMAGE_SHA256" \
+            --max-bytes 10485760
+
+      - name: Extract the verified data-only bundle and create portrait case
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os
+          import zipfile
+          from pathlib import Path
+          from PIL import Image
+
+          root = Path(os.environ["ASSET_DIR"])
+          expected = {
+              "config.yaml",
+              "mobile_sam.encoder.onnx",
+              "sam_vit_h_4b8939.decoder.onnx",
+          }
+          with zipfile.ZipFile(root / "mobile_sam_20230629.zip") as archive:
+              names = {item.filename for item in archive.infolist()}
+              if names != expected:
+                  raise ValueError("MobileSAM archive members changed")
+              archive.extractall(root, members=sorted(expected))
+          with Image.open(root / "dog.jpg") as image:
+              image.transpose(Image.Transpose.ROTATE_270).save(
+                  root / "dog_portrait.png", format="PNG", optimize=False
+              )
+          PY
+
+      - name: Run real portrait and landscape validation
+        run: >-
+          python scripts/validate_real_model.py
+          tests/fixtures/inference/real_models/mobile_sam_official.json
+          --output-root validation-results/${{ runner.os }}/mobile-sam
+
+      - name: Run authenticated server with real portrait and landscape model
+        run: >-
+          python scripts/validate_real_server.py
+          tests/fixtures/inference/real_models/mobile_sam_official.json
+          --output-root validation-results/${{ runner.os }}/server-mobile-sam
+
+      - name: Retain visual and machine-readable evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: mobile-sam-real-model-validation-${{ runner.os }}
+          path: validation-results/
+          if-no-files-found: error
+          retention-days: 30
+
+  sam2-hiera-tiny:
+    name: SAM2 Hiera-Tiny aspect ratios / ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    env:
+      ASSET_DIR: tests/fixtures/inference/real_models
+      ARCHIVE_SHA256: 7454c3afd835b2acaad863afe3acb11f4e4af039c96e886989ad3873a338e1ec
+      IMAGE_SHA256: 5a9522051c3cec2bbd2f6323fccba32e8fbf3ddcc2b3e2fd46b04c720bc6f866
+      OPENBLAS_NUM_THREADS: "1"
+      OMP_NUM_THREADS: "1"
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v10.0.1
+        with:
+          enable-cache: true
+
+      - name: Install isolated inference test dependencies
+        run: >-
+          uv pip install --system
+          "numpy>=2,<3" "opencv-python-headless>=4.11,<6"
+          "pydantic>=2.13,<3" "onnx>=1.16,<2" "onnxruntime>=1.29,<2"
+          "psutil>=7.2,<8" "pytest>=9,<10" "Pillow>=12,<13"
+          "fastapi>=0.141,<1" "httpx>=0.28,<1" "argon2-cffi>=25.1,<26"
+
+      - name: Download immutable official test assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/download_verified_file.py \
+            "https://huggingface.co/nrl-ai/anylearning-labeling-models/resolve/b8abc71ec07279a978cc1682fd91cd50a7d7b207/sam2_hiera_tiny.zip" \
+            "$ASSET_DIR/sam2_hiera_tiny.zip" \
+            --sha256 "$ARCHIVE_SHA256" --max-bytes 209715200
+          python scripts/download_verified_file.py \
+            "https://raw.githubusercontent.com/Megvii-BaseDetection/YOLOX/6ddff4824372906469a7fae2dc3206c7aa4bbaee/assets/dog.jpg" \
+            "$ASSET_DIR/dog.jpg" --sha256 "$IMAGE_SHA256" \
+            --max-bytes 10485760
+
+      - name: Extract the verified data-only bundle and create portrait case
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os
+          import zipfile
+          from pathlib import Path
+          from PIL import Image
+
+          root = Path(os.environ["ASSET_DIR"])
+          expected = {
+              "config.yaml",
+              "sam2_hiera_tiny.encoder.onnx",
+              "sam2_hiera_tiny.decoder.onnx",
+          }
+          with zipfile.ZipFile(root / "sam2_hiera_tiny.zip") as archive:
+              names = {item.filename for item in archive.infolist()}
+              if names != expected:
+                  raise ValueError("SAM2 archive members changed")
+              archive.extractall(root, members=sorted(expected))
+          with Image.open(root / "dog.jpg") as image:
+              image.transpose(Image.Transpose.ROTATE_270).save(
+                  root / "dog_portrait.png", format="PNG", optimize=False
+              )
+          PY
+
+      - name: Run real portrait and landscape validation
+        run: >-
+          python scripts/validate_real_model.py
+          tests/fixtures/inference/real_models/sam2_hiera_tiny_official.json
+          --output-root validation-results/${{ runner.os }}/sam2-hiera-tiny
+
+      - name: Run authenticated server with real portrait and landscape model
+        run: >-
+          python scripts/validate_real_server.py
+          tests/fixtures/inference/real_models/sam2_hiera_tiny_official.json
+          --output-root validation-results/${{ runner.os }}/server-sam2-hiera-tiny
+
+      - name: Retain visual and machine-readable evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: sam2-hiera-tiny-real-model-validation-${{ runner.os }}
+          path: validation-results/
+          if-no-files-found: error
+          retention-days: 30
+
+  sam2-1-hiera-tiny:
+    name: SAM2.1 Hiera-Tiny aspect ratios / ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    env:
+      ASSET_DIR: tests/fixtures/inference/real_models
+      ENCODER_SHA256: 3d5ae796097a6afb1198ceea4187ecaa82736242d07f5658541829d6dfc3f871
+      DECODER_SHA256: 197f1c7c8fd070aaf6f15ffc635f4c384422ba5eaa0f8c9e543e3d4b8e0e8e87
+      IMAGE_SHA256: 5a9522051c3cec2bbd2f6323fccba32e8fbf3ddcc2b3e2fd46b04c720bc6f866
+      OPENBLAS_NUM_THREADS: "1"
+      OMP_NUM_THREADS: "1"
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v10.0.1
+        with:
+          enable-cache: true
+
+      - name: Install isolated inference test dependencies
+        run: >-
+          uv pip install --system
+          "numpy>=2,<3" "opencv-python-headless>=4.11,<6"
+          "pydantic>=2.13,<3" "onnx>=1.16,<2" "onnxruntime>=1.29,<2"
+          "psutil>=7.2,<8" "pytest>=9,<10" "Pillow>=12,<13"
+          "fastapi>=0.141,<1" "httpx>=0.28,<1" "argon2-cffi>=25.1,<26"
+
+      - name: Download immutable official test assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/download_verified_file.py \
+            "https://huggingface.co/nrl-ai/samexporter-onnx-models/resolve/3c4a5640a91ea73235d78f1b79b4613f64b768b6/sam2_1_hiera_tiny/sam2.1_hiera_tiny.encoder.onnx" \
+            "$ASSET_DIR/sam2.1_hiera_tiny.encoder.onnx" \
+            --sha256 "$ENCODER_SHA256" --max-bytes 157286400
+          python scripts/download_verified_file.py \
+            "https://huggingface.co/nrl-ai/samexporter-onnx-models/resolve/3c4a5640a91ea73235d78f1b79b4613f64b768b6/sam2_1_hiera_tiny/sam2.1_hiera_tiny.decoder.onnx" \
+            "$ASSET_DIR/sam2.1_hiera_tiny.decoder.onnx" \
+            --sha256 "$DECODER_SHA256" --max-bytes 52428800
+          python scripts/download_verified_file.py \
+            "https://raw.githubusercontent.com/Megvii-BaseDetection/YOLOX/6ddff4824372906469a7fae2dc3206c7aa4bbaee/assets/dog.jpg" \
+            "$ASSET_DIR/dog.jpg" --sha256 "$IMAGE_SHA256" \
+            --max-bytes 10485760
+
+      - name: Create portrait case
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          from PIL import Image
+
+          root = Path(os.environ["ASSET_DIR"])
+          with Image.open(root / "dog.jpg") as image:
+              image.transpose(Image.Transpose.ROTATE_270).save(
+                  root / "dog_portrait.png", format="PNG", optimize=False
+              )
+          PY
+
+      - name: Run real portrait and landscape validation
+        run: >-
+          python scripts/validate_real_model.py
+          tests/fixtures/inference/real_models/sam2_1_hiera_tiny_official.json
+          --output-root validation-results/${{ runner.os }}/sam2-1-hiera-tiny
+
+      - name: Run authenticated server with real portrait and landscape model
+        run: >-
+          python scripts/validate_real_server.py
+          tests/fixtures/inference/real_models/sam2_1_hiera_tiny_official.json
+          --output-root validation-results/${{ runner.os }}/server-sam2-1-hiera-tiny
+
+      - name: Retain visual and machine-readable evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: sam2-1-hiera-tiny-real-model-validation-${{ runner.os }}
+          path: validation-results/
+          if-no-files-found: error
+          retention-days: 30

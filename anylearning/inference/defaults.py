@@ -16,6 +16,12 @@ def _sam_backend() -> InferenceBackend:
     return SegmentAnythingBackend()
 
 
+def _efficient_sam_backend() -> InferenceBackend:
+    from .backends.efficient_sam import EfficientSamBackend
+
+    return EfficientSamBackend()
+
+
 def _yolo_onnx_backend() -> InferenceBackend:
     from .backends.yolo_onnx import YoloOnnxBackend
 
@@ -24,6 +30,7 @@ def _yolo_onnx_backend() -> InferenceBackend:
 
 def create_default_registry() -> ModelRegistry:
     registry = ModelRegistry()
+    registry.register("efficient_sam", _efficient_sam_backend)
     registry.register("segment_anything", _sam_backend)
     registry.register("yolo_onnx", _yolo_onnx_backend)
     return registry

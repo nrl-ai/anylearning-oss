@@ -8,13 +8,14 @@ from __future__ import annotations
 
 import logging
 import time
+from collections.abc import Mapping
 from typing import Any
 
 import cv2
 import numpy as np
-import onnxruntime
 from numpy import ndarray
 
+from .sam_onnx import runtime_session
 from .sam_prompts import prompt_arrays
 
 logger = logging.getLogger(__name__)
@@ -23,13 +24,13 @@ logger = logging.getLogger(__name__)
 class SegmentAnything2ONNX:
     """Segmentation model using Segment Anything 2 (SAM2)"""
 
-    def __init__(self, encoder_model_path, decoder_model_path) -> None:
-        self.encoder = SAM2ImageEncoder(encoder_model_path)
-        self.decoder = SAM2ImageDecoder(
-            decoder_model_path, self.encoder.input_shape[2:]
-        )
+    def __init__(self, encoder: Any, decoder: Any) -> None:
+        self.encoder = SAM2ImageEncoder(encoder)
+        self.decoder = SAM2ImageDecoder(decoder, self.encoder.input_shape[2:])
 
     def encode(self, cv_image: np.ndarray) -> dict[str, Any]:
+        if cv_image.ndim != 3 or cv_image.shape[2] != 3 or cv_image.dtype != np.uint8:
+            raise ValueError("SAM2 expects an H x W x 3 uint8 RGB image")
         original_size = cv_image.shape[:2]
         high_res_feats_0, high_res_feats_1, image_embed = self.encoder(cv_image)
         return {
@@ -61,13 +62,8 @@ class SegmentAnything2ONNX:
 
 
 class SAM2ImageEncoder:
-    def __init__(self, path: str) -> None:
-        # Initialize model
-        self.session = onnxruntime.InferenceSession(
-            path, providers=onnxruntime.get_available_providers()
-        )
-
-        # Get model info
+    def __init__(self, session: Any) -> None:
+        self.session = runtime_session(session)
         self.get_input_details()
         self.get_output_details()
 
@@ -117,33 +113,55 @@ class SAM2ImageEncoder:
     def process_output(
         self, outputs: list[np.ndarray]
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-        return outputs[0], outputs[1], outputs[2]
+        arrays = tuple(np.asarray(output) for output in outputs)
+        if any(array.ndim != 4 or array.shape[0] != 1 for array in arrays):
+            raise ValueError("SAM2 encoder features must be rank-4 batches of one")
+        if any(not np.isfinite(array).all() for array in arrays):
+            raise ValueError("SAM2 encoder features contain NaN or infinity")
+        return arrays
 
     def get_input_details(self) -> None:
         model_inputs = self.session.get_inputs()
-        self.input_names = [model_inputs[i].name for i in range(len(model_inputs))]
-
+        if len(model_inputs) != 1:
+            raise ValueError("SAM2 encoder must expose exactly one input")
+        model_input = model_inputs[0]
+        if len(model_input.shape) != 4:
+            raise ValueError("SAM2 encoder input must be rank-4 NCHW")
+        batch, channels, height, width = model_input.shape
+        if isinstance(batch, int) and batch != 1:
+            raise ValueError("SAM2 encoder batch size must be one")
+        if isinstance(channels, int) and channels != 3:
+            raise ValueError("SAM2 encoder input must have three RGB channels")
+        if not all(
+            isinstance(value, int) and 16 <= value <= 16_384
+            for value in (height, width)
+        ):
+            raise ValueError(
+                "SAM2 encoder spatial dimensions must be static and bounded"
+            )
+        if getattr(model_input, "type", "tensor(float)") != "tensor(float)":
+            raise ValueError("SAM2 encoder input must be float32")
+        self.input_names = [model_input.name]
         self.input_shape = model_inputs[0].shape
-        self.input_height = self.input_shape[2]
-        self.input_width = self.input_shape[3]
+        self.input_height = height
+        self.input_width = width
 
     def get_output_details(self) -> None:
         model_outputs = self.session.get_outputs()
+        if len(model_outputs) != 3:
+            raise ValueError("SAM2 encoder must expose exactly three feature outputs")
         self.output_names = [model_outputs[i].name for i in range(len(model_outputs))]
 
 
 class SAM2ImageDecoder:
     def __init__(
         self,
-        path: str,
+        session: Any,
         encoder_input_size: tuple[int, int],
         orig_im_size: tuple[int, int] | None = None,
         mask_threshold: float = 0.0,
     ) -> None:
-        # Initialize model
-        self.session = onnxruntime.InferenceSession(
-            path, providers=onnxruntime.get_available_providers()
-        )
+        self.session = runtime_session(session)
 
         self.orig_im_size = (
             orig_im_size if orig_im_size is not None else encoder_input_size
@@ -199,7 +217,7 @@ class SAM2ImageDecoder:
         high_res_feats_1: np.ndarray,
         point_coords: list[np.ndarray] | np.ndarray,
         point_labels: list[np.ndarray] | np.ndarray,
-    ) -> tuple[np.ndarray, ...]:
+    ) -> dict[str, np.ndarray]:
         input_point_coords, input_point_labels = self.prepare_points(
             point_coords, point_labels
         )
@@ -216,15 +234,15 @@ class SAM2ImageDecoder:
         )
         has_mask_input = np.array([0], dtype=np.float32)
 
-        return (
-            image_embed,
-            high_res_feats_0,
-            high_res_feats_1,
-            input_point_coords,
-            input_point_labels,
-            mask_input,
-            has_mask_input,
-        )
+        return {
+            "image_embed": image_embed,
+            "high_res_feats_0": high_res_feats_0,
+            "high_res_feats_1": high_res_feats_1,
+            "point_coords": input_point_coords,
+            "point_labels": input_point_labels,
+            "mask_input": mask_input,
+            "has_mask_input": has_mask_input,
+        }
 
     def prepare_points(
         self,
@@ -232,8 +250,8 @@ class SAM2ImageDecoder:
         point_labels: list[np.ndarray] | np.ndarray,
     ) -> tuple[np.ndarray, np.ndarray]:
         if isinstance(point_coords, np.ndarray):
-            input_point_coords = point_coords[np.newaxis, ...]
-            input_point_labels = point_labels[np.newaxis, ...]
+            input_point_coords = point_coords[np.newaxis, ...].copy()
+            input_point_labels = np.asarray(point_labels)[np.newaxis, ...].copy()
         else:
             if not point_coords:
                 raise ValueError("At least one point batch is required")
@@ -266,13 +284,10 @@ class SAM2ImageDecoder:
             np.float32
         )
 
-    def infer(self, inputs) -> list[np.ndarray]:
+    def infer(self, inputs: Mapping[str, np.ndarray]) -> list[np.ndarray]:
         start = time.perf_counter()
 
-        outputs = self.session.run(
-            self.output_names,
-            {self.input_names[i]: inputs[i] for i in range(len(self.input_names))},
-        )
+        outputs = self.session.run(self.output_names, dict(inputs))
 
         logger.debug(
             "SAM2 decoder inference took %.2f ms",
@@ -283,8 +298,19 @@ class SAM2ImageDecoder:
     def process_output(
         self, outputs: list[np.ndarray]
     ) -> tuple[list[ndarray | Any], ndarray[Any, Any]]:
-        scores = outputs[1].squeeze()
-        masks = outputs[0][0]
+        if len(outputs) != len(self.output_names):
+            raise ValueError("SAM2 decoder output count does not match its graph")
+        by_name = dict(zip(self.output_names, outputs, strict=True))
+        masks_output = np.asarray(by_name["masks"])
+        scores_output = np.asarray(by_name["iou_predictions"])
+        if masks_output.ndim != 4 or masks_output.shape[0] != 1:
+            raise ValueError("SAM2 decoder masks must have shape 1xNxHxW")
+        scores = scores_output.reshape(-1)
+        masks = masks_output[0]
+        if masks.shape[0] != scores.size or scores.size == 0:
+            raise ValueError("SAM2 decoder scores must correspond to every mask")
+        if not np.isfinite(masks).all() or not np.isfinite(scores).all():
+            raise ValueError("SAM2 decoder output contains NaN or infinity")
 
         # Select the best masks based on the scores
         best_mask = masks[np.argmax(scores)]
@@ -299,8 +325,22 @@ class SAM2ImageDecoder:
 
     def get_input_details(self) -> None:
         model_inputs = self.session.get_inputs()
+        expected = {
+            "image_embed",
+            "high_res_feats_0",
+            "high_res_feats_1",
+            "point_coords",
+            "point_labels",
+            "mask_input",
+            "has_mask_input",
+        }
+        received = {item.name for item in model_inputs}
+        if received != expected:
+            raise ValueError("Unexpected SAM2 decoder input contract")
         self.input_names = [model_inputs[i].name for i in range(len(model_inputs))]
 
     def get_output_details(self) -> None:
         model_outputs = self.session.get_outputs()
+        if {item.name for item in model_outputs} != {"masks", "iou_predictions"}:
+            raise ValueError("SAM2 decoder must expose masks and iou_predictions")
         self.output_names = [model_outputs[i].name for i in range(len(model_outputs))]

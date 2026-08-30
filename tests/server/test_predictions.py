@@ -312,8 +312,37 @@ def test_server_model_manifest_is_bounded_onnx_only_and_rejects_credentials(
                 "models": [
                     {
                         "backend": "segment_anything",
-                        "config": {"name": "not-approved"},
+                        "config": {
+                            "name": "promptable",
+                            "encoder_model_path": "encoder.onnx",
+                            "decoder_model_path": "decoder.onnx",
+                        },
                     }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    definitions = load_server_model_manifest(manifest)
+    assert definitions[0].backend == "segment_anything"
+    assert (
+        ServerModelDefinition(
+            backend="efficient_sam",
+            config={
+                "name": "efficient-promptable",
+                "encoder_model_path": "encoder.onnx",
+                "decoder_model_path": "decoder.onnx",
+            },
+        ).backend
+        == "efficient_sam"
+    )
+
+    manifest.write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "models": [
+                    {"backend": "torch_model", "config": {"name": "not-approved"}}
                 ],
             }
         ),
