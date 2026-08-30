@@ -16,9 +16,16 @@ def _sam_backend() -> InferenceBackend:
     return SegmentAnythingBackend()
 
 
+def _yolo_onnx_backend() -> InferenceBackend:
+    from .backends.yolo_onnx import YoloOnnxBackend
+
+    return YoloOnnxBackend()
+
+
 def create_default_registry() -> ModelRegistry:
     registry = ModelRegistry()
     registry.register("segment_anything", _sam_backend)
+    registry.register("yolo_onnx", _yolo_onnx_backend)
     return registry
 
 

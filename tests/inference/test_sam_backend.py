@@ -1,3 +1,7 @@
+import gc
+import json
+import weakref
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -15,7 +19,10 @@ from anylearning.inference import (
 from anylearning.inference.backends.sam import (
     SegmentAnythingBackend,
     image_source_id,
+    mask_shapes,
 )
+
+FIXTURES = Path(__file__).parents[1] / "fixtures" / "inference"
 
 
 class FakeSAM:
@@ -70,8 +77,9 @@ def request(*, source_id: str, output_shape=ShapeType.POLYGON):
 def test_default_registry_keeps_sam_lazy():
     registry = create_default_registry()
 
-    assert registry.backend_ids() == ("segment_anything",)
+    assert registry.backend_ids() == ("segment_anything", "yolo_onnx")
     assert "segment_anything" not in registry._backends
+    assert "yolo_onnx" not in registry._backends
 
 
 def test_sam_session_preserves_identity_shapes_prompts_and_embedding_cache(tmp_path):
@@ -125,3 +133,45 @@ def test_image_source_id_changes_with_content_and_not_object_identity():
 
     assert image_source_id(first) == image_source_id(same)
     assert image_source_id(first) != image_source_id(changed)
+
+
+def test_sam_mask_conversion_matches_golden_fixture():
+    fixture = json.loads((FIXTURES / "sam_rectangle.json").read_text())
+    height, width = fixture["mask_size"]
+    x1, y1, x2, y2 = fixture["filled_box_xyxy_exclusive"]
+    mask = np.zeros((height, width), dtype=np.float32)
+    mask[y1:y2, x1:x2] = 1
+
+    shapes = mask_shapes(mask, ShapeType.RECTANGLE)
+
+    assert len(shapes) == 1
+    assert (
+        shapes[0].model_dump(mode="json", exclude_none=True, exclude_defaults=True)
+        == fixture["expected_shape"]
+    )
+
+
+def test_sam_repeated_load_predict_unload_releases_every_adapter(tmp_path):
+    model_config = config(tmp_path)
+    graph = SimpleNamespace(graph=SimpleNamespace(input=[]))
+    references = []
+    image = np.zeros((32, 32, 3), dtype=np.uint8)
+    with (
+        patch("anylearning.inference.backends.sam.onnx.load_model", return_value=graph),
+        patch("anylearning.inference.backends.sam.SegmentAnythingONNX", FakeSAM),
+    ):
+        for index in range(100):
+            session = SegmentAnythingBackend().create_session(model_config)
+            session.load()
+            references.append(weakref.ref(session._model))
+            result = session.predict(
+                request(source_id=f"image-sha256:soak-{index}"), image
+            )
+            assert result.shapes
+            session.unload()
+            assert session.state is SessionState.CLOSED
+            assert session._model is None
+
+    del session
+    gc.collect()
+    assert all(reference() is None for reference in references)

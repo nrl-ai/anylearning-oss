@@ -30,6 +30,9 @@ MetadataText = Annotated[str, Field(max_length=2048)]
 MetadataInteger = Annotated[int, Field(ge=-(2**63), le=2**63 - 1)]
 MetadataFloat = Annotated[float, Field(allow_inf_nan=False)]
 MetadataValue = MetadataText | bool | MetadataInteger | MetadataFloat | None
+ParameterTextList = Annotated[tuple[MetadataText, ...], Field(max_length=256)]
+ParameterIntegerList = Annotated[tuple[MetadataInteger, ...], Field(max_length=256)]
+ParameterValue = MetadataValue | ParameterTextList | ParameterIntegerList
 WarningText = Annotated[str, Field(max_length=2048)]
 
 
@@ -169,7 +172,7 @@ class InferenceRequest(ContractModel):
     model_revision: str = Field(min_length=1, max_length=512)
     prompts: tuple[InferencePrompt, ...] = Field(default=(), max_length=10_000)
     output_shape: ShapeType | None = None
-    parameters: dict[MetadataKey, MetadataValue] = Field(
+    parameters: dict[MetadataKey, ParameterValue] = Field(
         default_factory=dict, max_length=128
     )
 

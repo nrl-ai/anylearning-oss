@@ -1,0 +1,12 @@
+{
+  "mask_size": [12, 16],
+  "filled_box_xyxy_exclusive": [3, 2, 13, 10],
+  "expected_shape": {
+    "type": "rectangle",
+    "label": "AUTOLABEL_OBJECT",
+    "points": [
+      { "x": 3.0, "y": 2.0 },
+      { "x": 12.0, "y": 9.0 }
+    ]
+  }
+}

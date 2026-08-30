@@ -197,3 +197,6 @@ AnyLearning-*.exe
 /.claude/worktrees/
 .vercel/
 .env.local
+
+# Local real-model validation artifacts (JSON, timings, and annotated images).
+/validation-results/
