@@ -25,9 +25,7 @@
   "images": [
     {
       "path": "dog.jpg",
-      "prompts": [
-        { "type": "point", "point": [240, 330], "foreground": true }
-      ],
+      "prompts": [{ "type": "point", "point": [240, 330], "foreground": true }],
       "output_shape": "polygon",
       "expected": {
         "minimum_shapes": 1,
@@ -44,9 +42,7 @@
     },
     {
       "path": "dog.jpg",
-      "prompts": [
-        { "type": "box", "box": [125, 215, 315, 550] }
-      ],
+      "prompts": [{ "type": "box", "box": [125, 215, 315, 550] }],
       "output_shape": "polygon",
       "expected": {
         "minimum_shapes": 1,

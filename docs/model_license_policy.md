@@ -29,7 +29,7 @@ into Apache-2.0 source.
 | RTMPose / MMPose, MMRotate        | Apache 2.0 | Apache 2.0                   | pose, oriented boxes                                            |
 | ByteTrack                         | MIT        | n/a                          | tracking                                                        |
 | Grounding DINO, OWLv2             | Apache 2.0 | Apache 2.0                   | zero-shot pre-labeling                                          |
-| EfficientSAM-Ti / S               | Apache 2.0 | Apache 2.0                   | lightweight promptable segmentation                            |
+| EfficientSAM-Ti / S               | Apache 2.0 | Apache 2.0                   | lightweight promptable segmentation                             |
 | EfficientViT-SAM                  | Apache 2.0 | Apache 2.0                   | fast CPU promptable segmentation                                |
 | RTMDet through MMDetection        | Apache 2.0 | Apache 2.0                   | detection and oriented boxes                                    |
 | Florence-2                        | MIT        | MIT                          | captioning / multi-task                                         |

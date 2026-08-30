@@ -26,9 +26,7 @@
   "images": [
     {
       "path": "dog.jpg",
-      "prompts": [
-        { "type": "point", "point": [240, 330], "foreground": true }
-      ],
+      "prompts": [{ "type": "point", "point": [240, 330], "foreground": true }],
       "output_shape": "polygon",
       "expected": {
         "minimum_shapes": 1,
@@ -45,9 +43,7 @@
     },
     {
       "path": "dog.jpg",
-      "prompts": [
-        { "type": "box", "box": [125, 215, 315, 550] }
-      ],
+      "prompts": [{ "type": "box", "box": [125, 215, 315, 550] }],
       "output_shape": "polygon",
       "expected": {
         "minimum_shapes": 1,
@@ -64,9 +60,7 @@
     },
     {
       "path": "dog_portrait.png",
-      "prompts": [
-        { "type": "point", "point": [245, 240], "foreground": true }
-      ],
+      "prompts": [{ "type": "point", "point": [245, 240], "foreground": true }],
       "output_shape": "polygon",
       "expected": {
         "minimum_shapes": 1,
@@ -83,9 +77,7 @@
     },
     {
       "path": "dog_portrait.png",
-      "prompts": [
-        { "type": "box", "box": [25, 125, 360, 315] }
-      ],
+      "prompts": [{ "type": "box", "box": [25, 125, 360, 315] }],
       "output_shape": "polygon",
       "expected": {
         "minimum_shapes": 1,
