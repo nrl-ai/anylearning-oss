@@ -24,17 +24,11 @@ def _script(name):
 
 
 def _single_file_prediction_model(path):
-    predictions = np.asarray(
-        [[[16], [16], [8], [8], [0.9], [0.1]]], dtype=np.float32
-    )
+    predictions = np.asarray([[[16], [16], [8], [8], [0.9], [0.1]]], dtype=np.float32)
     graph = helper.make_graph(
         [helper.make_node("Identity", ["stored_predictions"], ["predictions"])],
         "conversion-fixture",
-        [
-            helper.make_tensor_value_info(
-                "images", TensorProto.FLOAT, [1, 3, 32, 32]
-            )
-        ],
+        [helper.make_tensor_value_info("images", TensorProto.FLOAT, [1, 3, 32, 32])],
         [
             helper.make_tensor_value_info(
                 "predictions", TensorProto.FLOAT, list(predictions.shape)
@@ -121,7 +115,9 @@ def test_external_validation_converter_produces_loadable_real_onnx_bundle(tmp_pa
     )
     payload = json.loads(manifest_path.read_text(encoding="utf-8"))
     assert set(payload["config"]["external_data_sha256"]) == {"weights.bin"}
-    graph = onnx.load_model(manifest_path.parent / "model.onnx", load_external_data=False)
+    graph = onnx.load_model(
+        manifest_path.parent / "model.onnx", load_external_data=False
+    )
     assert any(
         tensor.data_location == TensorProto.EXTERNAL
         for tensor in graph.graph.initializer
