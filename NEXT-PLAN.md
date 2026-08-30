@@ -390,7 +390,9 @@ I11. Verify custom exported models and packaged runtime behavior.
 I12. Keep the shared external-data loader compatible with multi-gigabyte ONNX
 bundles: exact SHA-256 coverage, bounded relative references, no links, zero-copy
 read-only mappings, bundle-bound model revisions, and real-model validation on
-Linux, Windows, and macOS.
+Linux, Windows, and macOS. The loader and official YOLOX-S single-file/external
+parity gate landed in PR #20; all three operating-system jobs and retained visual
+reports passed.
 
 ### P0: Workflow correctness and performance
 

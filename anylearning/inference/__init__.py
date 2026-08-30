@@ -19,6 +19,16 @@ from .contracts import (
     ShapeType,
 )
 from .defaults import create_default_registry, get_default_registry
+from .queue import (
+    DuplicateInferenceRequestError,
+    InferenceJob,
+    InferenceQueue,
+    InferenceQueueClosedError,
+    InferenceQueueError,
+    InferenceQueueFullError,
+    InferenceQueueProgress,
+    InferenceQueueShutdownError,
+)
 from .runtime import (
     BaseInferenceSession,
     CancellationToken,
@@ -38,10 +48,18 @@ __all__ = [
     "BoxPrompt",
     "CancellationToken",
     "create_default_registry",
+    "DuplicateInferenceRequestError",
     "get_default_registry",
     "InferenceBackend",
     "InferenceCancelledError",
     "InferencePrompt",
+    "InferenceJob",
+    "InferenceQueue",
+    "InferenceQueueClosedError",
+    "InferenceQueueError",
+    "InferenceQueueFullError",
+    "InferenceQueueProgress",
+    "InferenceQueueShutdownError",
     "InferenceRequest",
     "InferenceSession",
     "ModelRegistry",
