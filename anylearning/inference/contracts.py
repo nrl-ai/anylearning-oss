@@ -68,7 +68,25 @@ class BoxPrompt(ContractModel):
         return self
 
 
-InferencePrompt = Annotated[PointPrompt | BoxPrompt, Field(discriminator="type")]
+class TextPrompt(ContractModel):
+    """A bounded natural-language concept used by open-vocabulary models."""
+
+    type: Literal["text"] = "text"
+    text: str = Field(min_length=1, max_length=1024)
+
+    @field_validator("text")
+    @classmethod
+    def validate_visible_text(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("Text prompts must contain non-whitespace characters")
+        if "\x00" in value:
+            raise ValueError("Text prompts must not contain NUL characters")
+        return value
+
+
+InferencePrompt = Annotated[
+    PointPrompt | BoxPrompt | TextPrompt, Field(discriminator="type")
+]
 
 
 class ShapeType(str, Enum):

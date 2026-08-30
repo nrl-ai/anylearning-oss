@@ -76,8 +76,14 @@ Windows, and macOS, and uploads the visual/machine-readable reports per OS.
 
 Promptable cases add `prompts` and `output_shape` to each image. Point prompts
 use `{ "type": "point", "point": [x, y], "foreground": true }`; box prompts
-use `{ "type": "box", "box": [x1, y1, x2, y2] }`. Split models configure
+use `{ "type": "box", "box": [x1, y1, x2, y2] }`; bounded text prompts use
+`{ "type": "text", "text": "concept" }`. Split models configure
 `encoder_model_path`, `decoder_model_path`, and independent graph digests.
+SAM3 manifests configure image encoder, language encoder, and decoder paths,
+independent graph digests, and exact external-data maps for each graph.
 Reports draw the prompt over the predicted polygon so coordinate-scaling or
 channel-order defects are visible during review. The committed
-`efficient_sam_ti_official.json` is a complete real point/box example.
+`efficient_sam_ti_official.json` is a complete real point/box example;
+`sam3_vit_h_official.json` covers text, text+point, and box inference and runs
+only in the scheduled/manual resource-qualified workflow because its bundle is
+several gigabytes.

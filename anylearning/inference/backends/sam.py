@@ -26,6 +26,7 @@ from ..contracts import (
     Point,
     PointPrompt,
     ShapeType,
+    TextPrompt,
 )
 from ..runtime import (
     BaseInferenceSession,
@@ -276,6 +277,8 @@ def _legacy_prompts(request: InferenceRequest) -> list[dict[str, Any]]:
                     "label": 1,
                 }
             )
+        elif isinstance(prompt, TextPrompt):
+            raise ValueError("This SAM backend supports only point and box prompts")
     if not prompts:
         raise ValueError("Promptable segmentation requires at least one prompt")
     return prompts

@@ -474,3 +474,122 @@ jobs:
           path: validation-results/
           if-no-files-found: error
           retention-days: 30
+
+  sam3-vit-h:
+    name: SAM3 ViT-H text and geometry / ${{ matrix.os }}
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    env:
+      ASSET_DIR: tests/fixtures/inference/real_models
+      ARCHIVE_SHA256: 1617436f9db7eb9dd69029c2c465d54b316c36c21143f0fde0d1be513f15b7d5
+      IMAGE_SHA256: 5a9522051c3cec2bbd2f6323fccba32e8fbf3ddcc2b3e2fd46b04c720bc6f866
+      OPENBLAS_NUM_THREADS: "1"
+      OMP_NUM_THREADS: "1"
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v10.0.1
+        with:
+          enable-cache: true
+
+      - name: Install isolated inference test dependencies
+        run: >-
+          uv pip install --system
+          "numpy>=2,<3" "opencv-python-headless>=4.11,<6"
+          "pydantic>=2.13,<3" "onnx>=1.16,<2" "onnxruntime>=1.29,<2"
+          "psutil>=7.2,<8" "pytest>=9,<10" "Pillow>=12,<13"
+          "fastapi>=0.141,<1" "httpx>=0.28,<1" "argon2-cffi>=25.1,<26"
+          "ftfy>=6.3,<7" "regex>=2025.11,<2027"
+
+      - name: Download immutable SAM3 test assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/download_verified_file.py \
+            "https://huggingface.co/nrl-ai/anylearning-sam3-onnx/resolve/3aba7c91eb70d55891efccf0023cecfb3d68531e/sam3_vit_h.zip" \
+            "$ASSET_DIR/sam3_vit_h.zip" \
+            --sha256 "$ARCHIVE_SHA256" --max-bytes 3758096384 \
+            --timeout-seconds 1800
+          python scripts/download_verified_file.py \
+            "https://raw.githubusercontent.com/Megvii-BaseDetection/YOLOX/6ddff4824372906469a7fae2dc3206c7aa4bbaee/assets/dog.jpg" \
+            "$ASSET_DIR/dog.jpg" --sha256 "$IMAGE_SHA256" \
+            --max-bytes 10485760
+
+      - name: Extract only the verified graph triplet
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os
+          import shutil
+          import zipfile
+          from pathlib import Path
+
+          root = Path(os.environ["ASSET_DIR"])
+          archive_path = root / "sam3_vit_h.zip"
+          expected_sizes = {
+              "config.yaml": 283,
+              "sam3_decoder.onnx": 129858120,
+              "sam3_decoder.onnx.data": 116523008,
+              "sam3_image_encoder.onnx": 2509348,
+              "sam3_image_encoder.onnx.data": 1828519936,
+              "sam3_language_encoder.onnx": 1396738,
+              "sam3_language_encoder.onnx.data": 1615200256,
+          }
+          required = {
+              "sam3_decoder.onnx",
+              "sam3_image_encoder.onnx",
+              "sam3_image_encoder.onnx.data",
+              "sam3_language_encoder.onnx",
+              "sam3_language_encoder.onnx.data",
+          }
+          with zipfile.ZipFile(archive_path) as archive:
+              entries = archive.infolist()
+              if len(entries) != len(expected_sizes):
+                  raise ValueError("SAM3 archive member count changed")
+              by_name = {entry.filename: entry for entry in entries}
+              if set(by_name) != set(expected_sizes):
+                  raise ValueError("SAM3 archive members changed")
+              for name, expected_size in expected_sizes.items():
+                  entry = by_name[name]
+                  if entry.is_dir() or entry.file_size != expected_size:
+                      raise ValueError("SAM3 archive member size changed")
+              for name in sorted(required):
+                  destination = root / name
+                  with archive.open(by_name[name]) as source, destination.open("xb") as output:
+                      shutil.copyfileobj(source, output, length=1024 * 1024)
+                  if destination.stat().st_size != expected_sizes[name]:
+                      raise ValueError("SAM3 extracted member size changed")
+          archive_path.unlink()
+          PY
+
+      - name: Run real text and geometric prompt validation
+        run: >-
+          python scripts/validate_real_model.py
+          tests/fixtures/inference/real_models/sam3_vit_h_official.json
+          --output-root validation-results/${{ runner.os }}/sam3-vit-h
+
+      - name: Run authenticated server with real SAM3
+        run: >-
+          python scripts/validate_real_server.py
+          tests/fixtures/inference/real_models/sam3_vit_h_official.json
+          --output-root validation-results/${{ runner.os }}/server-sam3-vit-h
+
+      - name: Retain visual and machine-readable evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: sam3-vit-h-real-model-validation-${{ runner.os }}
+          path: validation-results/
+          if-no-files-found: error
+          retention-days: 30

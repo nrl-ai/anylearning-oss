@@ -17,6 +17,7 @@ from .contracts import (
     Point,
     PointPrompt,
     ShapeType,
+    TextPrompt,
 )
 from .defaults import create_default_registry, get_default_registry
 from .queue import (
@@ -73,4 +74,5 @@ __all__ = [
     "SessionLifecycleError",
     "SessionState",
     "ShapeType",
+    "TextPrompt",
 ]

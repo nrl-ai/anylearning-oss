@@ -5,4 +5,5 @@ include anylearning/configs/auto_labeling/*.yaml
 include anylearning/configs/*.yaml
 include anylearning/configs/*/*.yaml
 recursive-include anylearning/models *
+recursive-include anylearning/inference/assets *
 include LICENSE LICENSES.md MODEL_LICENCES.md NOTICE

@@ -4,7 +4,8 @@ AnyLearning ships with pretrained weights so that training and auto-labelling
 work on a machine that has never been online. Weights are licensed separately
 from the code that loads them, so they are listed separately here.
 
-Every model below is under a permissive licence that allows commercial use.
+Most models below are under permissive licences. Optional models with separate
+terms are identified explicitly and are not included in the default package.
 Nothing in this list restricts what you may do with a model you train.
 
 ## What ships with the application
@@ -26,9 +27,16 @@ Nothing in this list restricts what you may do with a model you train.
 | Used for | Weights | Licence |
 |---|---|---|
 | Auto-labelling | SAM 2 Hiera-Base+ and Hiera-Large | Apache 2.0 |
+| Auto-labelling | SAM3 ViT-H | Meta SAM License (optional, separate terms) |
 
-These two are larger and less often needed, so they are fetched the first time
-you select one. Everything else in the list above is already installed.
+The larger SAM 2 variants are fetched the first time you select one; the other
+models in the shipping table above are already installed.
+
+SAM3 is also download-only, but for a different reason: its weights are not
+Apache-2.0. The Meta SAM License must be shown and distributed beside the model
+bundle, and its field-of-use and trade-control terms apply to use of those
+weights. Installing the AnyLearning inference package does not install or imply
+acceptance of the SAM3 model artifact.
 
 The RF-DETR checkpoints that ship are trimmed copies of the ones Roboflow
 publishes: the optimiser state a training run leaves behind is removed, because

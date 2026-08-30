@@ -231,6 +231,25 @@ def extract_vendored_licences(existing: str) -> str:
     return existing[payload_at:payload_end].strip()
 
 
+def render_vendored_licences(existing: str, clip_license: str) -> str:
+    """Render data assets plus the preserved source-vendoring notice."""
+    if not clip_license.strip():
+        raise RuntimeError("OpenAI CLIP licence text is empty")
+    vendored = "## Vendored components\n\n"
+    vendored += "### OpenAI CLIP tokenizer vocabulary\n\n"
+    vendored += (
+        "The bounded SAM3 tokenizer includes OpenAI CLIP's BPE vocabulary as a "
+        "data-only asset.\n\n```\n"
+    )
+    vendored += clip_license.strip()
+    vendored += "\n```\n\n### Vendored training implementations\n\n"
+    vendored += "These are copied into `anylearning/training/models/` rather "
+    vendored += "than installed.\n\n```\n"
+    vendored += extract_vendored_licences(existing)
+    vendored += "\n```"
+    return vendored
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -248,10 +267,12 @@ def main() -> int:
     # The hand-written vendored section is kept: those components are copied
     # into this repository rather than installed, so nothing in the environment
     # describes them.
-    vendored = "## Vendored components\n\nThese are copied into "
-    vendored += "`anylearning/training/models/` rather than installed.\n\n```\n"
-    vendored += extract_vendored_licences(existing)
-    vendored += "\n```"
+    clip_license = (
+        (root / "anylearning" / "inference" / "assets" / "OPENAI_CLIP_LICENSE")
+        .read_text(encoding="utf-8")
+        .strip()
+    )
+    vendored = render_vendored_licences(existing, clip_license)
 
     included = (
         included_by_build(arguments.from_report) if arguments.from_report else None
