@@ -66,3 +66,11 @@ The hosted real-model workflow also derives an external-data form of the same
 official ONNX model using `scripts/prepare_external_onnx_validation.py`. It runs
 both forms through identical golden detections and lifecycle cycles on Linux,
 Windows, and macOS, and uploads the visual/machine-readable reports per OS.
+
+Promptable cases add `prompts` and `output_shape` to each image. Point prompts
+use `{ "type": "point", "point": [x, y], "foreground": true }`; box prompts
+use `{ "type": "box", "box": [x1, y1, x2, y2] }`. Split models configure
+`encoder_model_path`, `decoder_model_path`, and independent graph digests.
+Reports draw the prompt over the predicted polygon so coordinate-scaling or
+channel-order defects are visible during review. The committed
+`efficient_sam_ti_official.json` is a complete real point/box example.

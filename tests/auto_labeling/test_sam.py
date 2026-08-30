@@ -1,4 +1,5 @@
 from importlib import resources
+from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 import numpy as np
@@ -14,7 +15,11 @@ from anylearning.configs import auto_labeling as auto_labeling_configs
 @pytest.fixture
 def mock_encoder_session():
     mock = Mock()
-    mock.get_inputs.return_value = [Mock(name="input")]
+    mock.get_inputs.return_value = [
+        SimpleNamespace(
+            name="image", shape=("height", "width", 3), type="tensor(float)"
+        )
+    ]
     mock.run.return_value = [np.zeros((1, 256, 64, 64))]
     return mock
 
@@ -22,7 +27,24 @@ def mock_encoder_session():
 @pytest.fixture
 def mock_decoder_session():
     mock = Mock()
-    mock.run.return_value = [np.zeros((1, 1, 256, 256)), None, None]
+    mock.get_inputs.return_value = [
+        SimpleNamespace(name=name)
+        for name in (
+            "image_embeddings",
+            "point_coords",
+            "point_labels",
+            "mask_input",
+            "has_mask_input",
+            "orig_im_size",
+        )
+    ]
+    mock.get_outputs.return_value = [
+        SimpleNamespace(name="masks"),
+        SimpleNamespace(name="iou_predictions"),
+        SimpleNamespace(name="low_res_masks"),
+    ]
+    mask = np.zeros((1, 1, 256, 256), dtype=np.float32)
+    mock.run.return_value = [mask, np.ones((1, 1), dtype=np.float32), mask]
     return mock
 
 
@@ -36,7 +58,7 @@ def sam_model(mock_encoder_session, mock_decoder_session):
 
 def test_init(sam_model):
     assert sam_model.target_size == 1024
-    assert sam_model.input_size == (684, 1024)
+    assert sam_model.encoder_input_rank == 3
     assert sam_model.encoder_session is not None
     assert sam_model.decoder_session is not None
 
@@ -81,32 +103,32 @@ def test_apply_coords(sam_model):
     assert result.shape == coords.shape
 
 
-def test_transform_masks(sam_model):
+def test_postprocess_masks(sam_model):
     masks = np.zeros((1, 2, 256, 256))
     original_size = (100, 200)
-    transform_matrix = np.eye(3)
+    resized_size = (512, 1024)
 
-    result = sam_model.transform_masks(masks, original_size, transform_matrix)
+    result = sam_model.postprocess_masks(masks, original_size, resized_size)
 
     assert result.shape == (1, 2, 100, 200)
 
 
 def test_encode(sam_model):
-    image = np.zeros((100, 200, 3))
+    image = np.zeros((100, 200, 3), dtype=np.uint8)
     result = sam_model.encode(image)
 
     assert "image_embedding" in result
     assert "original_size" in result
-    assert "transform_matrix" in result
+    assert "resized_size" in result
     assert result["original_size"] == (100, 200)
-    assert result["transform_matrix"].shape == (3, 3)
+    assert result["resized_size"] == (512, 1024)
 
 
 def test_predict_masks(sam_model):
     embedding = {
         "image_embedding": np.zeros((1, 256, 64, 64)),
         "original_size": (100, 200),
-        "transform_matrix": np.eye(3),
+        "resized_size": (512, 1024),
     }
     prompt = [{"type": "point", "data": [10, 20], "label": 1}]
 

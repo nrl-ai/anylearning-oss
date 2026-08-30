@@ -13,14 +13,21 @@ import time
 from collections import Counter
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Self
+from typing import Annotated, Any, Literal, Self
 
 import cv2
 import numpy as np
 import psutil
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from .contracts import InferenceRequest, InferenceResult, ShapeType
+from .contracts import (
+    BoxPrompt,
+    InferenceRequest,
+    InferenceResult,
+    Point,
+    PointPrompt,
+    ShapeType,
+)
 from .defaults import get_default_registry
 
 _MAX_MANIFEST_BYTES = 1_048_576
@@ -73,11 +80,49 @@ class ImageExpectations(BaseModel):
         return self
 
 
+class ValidationPointPrompt(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    type: Literal["point"]
+    point: tuple[float, float]
+    foreground: bool = True
+
+    @field_validator("point")
+    @classmethod
+    def validate_point(cls, value: tuple[float, float]) -> tuple[float, float]:
+        if not all(np.isfinite(value)):
+            raise ValueError("Validation prompt coordinates must be finite")
+        return value
+
+
+class ValidationBoxPrompt(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    type: Literal["box"]
+    box: tuple[float, float, float, float]
+
+    @field_validator("box")
+    @classmethod
+    def validate_box(
+        cls, value: tuple[float, float, float, float]
+    ) -> tuple[float, float, float, float]:
+        if not all(np.isfinite(value)) or value[2] <= value[0] or value[3] <= value[1]:
+            raise ValueError("Validation box prompts must contain ordered finite xyxy")
+        return value
+
+
+ValidationPrompt = Annotated[
+    ValidationPointPrompt | ValidationBoxPrompt, Field(discriminator="type")
+]
+
+
 class ValidationImage(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     path: Path
     request_parameters: dict[str, Any] = Field(default_factory=dict, max_length=128)
+    prompts: tuple[ValidationPrompt, ...] = Field(default=(), max_length=1_024)
+    output_shape: ShapeType | None = None
     expected: ImageExpectations = Field(default_factory=ImageExpectations)
 
 
@@ -195,15 +240,12 @@ def _result_digest(result: InferenceResult) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
-def _rectangle(shape: Any) -> tuple[float, float, float, float] | None:
-    if shape.type is not ShapeType.RECTANGLE:
+def _shape_box(shape: Any) -> tuple[float, float, float, float] | None:
+    if shape.type is ShapeType.POINT or not shape.points:
         return None
-    return (
-        shape.points[0].x,
-        shape.points[0].y,
-        shape.points[1].x,
-        shape.points[1].y,
-    )
+    xs = [point.x for point in shape.points]
+    ys = [point.y for point in shape.points]
+    return min(xs), min(ys), max(xs), max(ys)
 
 
 def _box_iou(
@@ -239,9 +281,11 @@ def _check_expectations(
             (_box_iou(box, item.box), shape)
             for shape in result.shapes
             if shape.label == item.label
-            and shape.score is not None
-            and shape.score >= item.minimum_score
-            and (box := _rectangle(shape)) is not None
+            and (
+                (shape.score is None and item.minimum_score == 0)
+                or (shape.score is not None and shape.score >= item.minimum_score)
+            )
+            and (box := _shape_box(shape)) is not None
         ]
         best = max((candidate[0] for candidate in candidates), default=0.0)
         if best < item.minimum_iou:
@@ -252,12 +296,38 @@ def _check_expectations(
     return failures
 
 
+def _request_prompts(
+    prompts: tuple[ValidationPrompt, ...],
+) -> tuple[PointPrompt | BoxPrompt, ...]:
+    converted: list[PointPrompt | BoxPrompt] = []
+    for prompt in prompts:
+        if isinstance(prompt, ValidationPointPrompt):
+            converted.append(
+                PointPrompt(
+                    point=Point(x=prompt.point[0], y=prompt.point[1]),
+                    foreground=prompt.foreground,
+                )
+            )
+        else:
+            converted.append(
+                BoxPrompt(
+                    top_left=Point(x=prompt.box[0], y=prompt.box[1]),
+                    bottom_right=Point(x=prompt.box[2], y=prompt.box[3]),
+                )
+            )
+    return tuple(converted)
+
+
 def _color(label: str | None) -> tuple[int, int, int]:
     digest = hashlib.sha256((label or "shape").encode()).digest()
     return tuple(int(80 + channel % 176) for channel in digest[:3])
 
 
-def _annotate(rgb: np.ndarray, result: InferenceResult) -> np.ndarray:
+def _annotate(
+    rgb: np.ndarray,
+    result: InferenceResult,
+    prompts: tuple[ValidationPrompt, ...] = (),
+) -> np.ndarray:
     canvas = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
     for shape in result.shapes:
         color = _color(shape.label)
@@ -306,6 +376,23 @@ def _annotate(rgb: np.ndarray, result: InferenceResult) -> np.ndarray:
             2,
             cv2.LINE_AA,
         )
+    for prompt in prompts:
+        if isinstance(prompt, ValidationPointPrompt):
+            center = (round(prompt.point[0]), round(prompt.point[1]))
+            color = (40, 220, 40) if prompt.foreground else (40, 40, 240)
+            cv2.drawMarker(
+                canvas,
+                center,
+                color,
+                cv2.MARKER_CROSS,
+                markerSize=18,
+                thickness=3,
+                line_type=cv2.LINE_AA,
+            )
+        else:
+            top_left = (round(prompt.box[0]), round(prompt.box[1]))
+            bottom_right = (round(prompt.box[2]), round(prompt.box[3]))
+            cv2.rectangle(canvas, top_left, bottom_right, (255, 80, 255), 2)
     return canvas
 
 
@@ -355,6 +442,86 @@ def _rss_bytes() -> int:
     return int(psutil.Process().memory_info().rss)
 
 
+def _model_artifact_details(
+    config: dict[str, Any], manifest_dir: Path
+) -> dict[str, Any]:
+    fields = []
+    if isinstance(config.get("model_path"), (str, Path)):
+        fields.append(("model", "model_path", "sha256", "external_data_sha256"))
+    else:
+        for role in ("encoder", "decoder"):
+            if isinstance(config.get(f"{role}_model_path"), (str, Path)):
+                fields.append(
+                    (
+                        role,
+                        f"{role}_model_path",
+                        f"{role}_sha256",
+                        f"{role}_external_data_sha256",
+                    )
+                )
+    if not fields:
+        return {}
+
+    graphs: list[dict[str, Any]] = []
+    total_bytes = 0
+    aggregate = hashlib.sha256()
+    for role, path_field, digest_field, external_field in fields:
+        model_path = Path(config[path_field])
+        if not model_path.is_absolute():
+            model_path = manifest_dir / model_path
+        model_path = model_path.resolve(strict=True)
+        size = model_path.stat().st_size
+        digest = _sha256(model_path)
+        configured_digest = config.get(digest_field)
+        if isinstance(configured_digest, str) and digest != configured_digest.lower():
+            raise ValueError(f"{role} graph digest changed after inference")
+        graph_details: dict[str, Any] = {
+            "role": role,
+            "filename": model_path.name,
+            "bytes": size,
+            "sha256": digest,
+        }
+        external_manifest = config.get(external_field)
+        if isinstance(external_manifest, dict):
+            external_files = []
+            total_external_bytes = 0
+            for location, expected_digest in sorted(external_manifest.items()):
+                external_path = (model_path.parent / location).resolve(strict=True)
+                external_path.relative_to(model_path.parent)
+                external_size = external_path.stat().st_size
+                external_digest = _sha256(external_path)
+                if external_digest != expected_digest.lower():
+                    raise ValueError(
+                        f"{role} external-data digest changed after inference"
+                    )
+                total_external_bytes += external_size
+                external_files.append(
+                    {
+                        "location": location,
+                        "bytes": external_size,
+                        "sha256": external_digest,
+                    }
+                )
+            graph_details["external_files"] = external_files
+            graph_details["external_bytes"] = total_external_bytes
+            total_bytes += total_external_bytes
+        graphs.append(graph_details)
+        total_bytes += size
+        aggregate.update(role.encode("ascii"))
+        aggregate.update(b"\0")
+        aggregate.update(digest.encode("ascii"))
+
+    if len(graphs) == 1:
+        details = dict(graphs[0])
+        details.pop("role")
+        return details
+    return {
+        "sha256": aggregate.hexdigest(),
+        "bytes": total_bytes,
+        "graphs": graphs,
+    }
+
+
 def run_real_model_validation(
     manifest_path: Path,
     *,
@@ -374,7 +541,7 @@ def run_real_model_validation(
     )
 
     config = dict(manifest.config)
-    if manifest.backend == "yolo_onnx" and "config_file" not in config:
+    if "config_file" not in config:
         config["config_file"] = str(manifest_path)
     registry = get_default_registry()
     session = registry.create_session(manifest.backend, config)
@@ -403,6 +570,8 @@ def run_real_model_validation(
                     source_id=f"image-sha256:{image_digest}",
                     model_id=session.capabilities.model_id,
                     model_revision=session.capabilities.model_revision,
+                    prompts=_request_prompts(image_case.prompts),
+                    output_shape=image_case.output_shape,
                     parameters=image_case.request_parameters,
                 )
                 results.append(session.predict(request, rgb))
@@ -418,7 +587,8 @@ def run_real_model_validation(
             case_name = f"{index:03d}-{_safe_name(image_path.stem)}"
             annotated_name = case_name + "-annotated.png"
             if not cv2.imwrite(
-                str(output_dir / annotated_name), _annotate(rgb, results[0])
+                str(output_dir / annotated_name),
+                _annotate(rgb, results[0], image_case.prompts),
             ):
                 raise OSError(f"Could not write {annotated_name}")
             all_results.append(
@@ -478,6 +648,8 @@ def run_real_model_validation(
                     source_id=f"image-sha256:{image_digest}",
                     model_id=lifecycle_session.capabilities.model_id,
                     model_revision=lifecycle_session.capabilities.model_revision,
+                    prompts=_request_prompts(image_case.prompts),
+                    output_shape=image_case.output_shape,
                     parameters=image_case.request_parameters,
                 )
                 result = lifecycle_session.predict(request, rgb)
@@ -521,37 +693,7 @@ def run_real_model_validation(
             f"{manifest.maximum_steady_state_rss_growth_bytes}"
         )
 
-    model_path_value = config.get("model_path")
-    model_details: dict[str, Any] = {}
-    if isinstance(model_path_value, (str, Path)):
-        model_path = Path(model_path_value)
-        if not model_path.is_absolute():
-            model_path = manifest_dir / model_path
-        model_path = model_path.resolve(strict=True)
-        model_details = {
-            "filename": model_path.name,
-            "bytes": model_path.stat().st_size,
-            "sha256": _sha256(model_path),
-        }
-        external_manifest = config.get("external_data_sha256")
-        if isinstance(external_manifest, dict):
-            external_files = []
-            total_external_bytes = 0
-            for location, expected_digest in sorted(external_manifest.items()):
-                external_path = (model_path.parent / location).resolve(strict=True)
-                external_path.relative_to(model_path.parent)
-                size = external_path.stat().st_size
-                digest = _sha256(external_path)
-                if digest != expected_digest.lower():
-                    raise ValueError(
-                        "External-data report digest changed after inference"
-                    )
-                total_external_bytes += size
-                external_files.append(
-                    {"location": location, "bytes": size, "sha256": digest}
-                )
-            model_details["external_files"] = external_files
-            model_details["external_bytes"] = total_external_bytes
+    model_details = _model_artifact_details(config, manifest_dir)
     summary = {
         "schema_version": 1,
         "name": manifest.name,

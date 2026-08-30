@@ -19,7 +19,7 @@ _SENSITIVE_KEY = re.compile(r"(?:password|passwd|secret|token|api.?key)", re.I)
 
 # Server-side inference is deliberately ONNX-only. Additions to this set require
 # their own model-format, resource-bound, and license review.
-_SERVER_BACKENDS = frozenset({"yolo_onnx"})
+_SERVER_BACKENDS = frozenset({"efficient_sam", "segment_anything", "yolo_onnx"})
 
 
 class ServerModelDefinition(BaseModel):

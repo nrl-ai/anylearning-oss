@@ -1,7 +1,7 @@
 # AnyLearning Platform Roadmap
 
 Status: active implementation plan
-Last updated: 2026-08-30
+Last updated: 2026-08-31
 Primary repository: `nrl-ai/anylearning-oss`
 Integration branch: `develop`
 
@@ -261,6 +261,31 @@ Implementation and real-model gates proceed in this order:
 5. Add SAM3 text, point, box, and combined-prompt inference as a separately
    reviewed change because its contract, license, memory use, and multi-instance
    postprocessing differ materially.
+
+Implementation status (2026-08-31):
+
+- [x] Paired graphs use the bounded stable ONNX loader, independent graph and
+  external-data manifests, explicit providers/thread limits, and pair-bound
+  model revisions.
+- [x] SAM/MobileSAM now support HWC embedded preprocessing and raw NCHW
+  preprocessing, official longest-side resize, low-resolution aspect-aware mask
+  postprocessing, and highest-IoU candidate selection.
+- [x] EfficientSAM-Ti/S has a distinct `efficient_sam` backend with dynamic
+  native RGB input, allocation limits, named graph contracts, embedding cache,
+  and authenticated-server support. The real merge gate uses Ti; S remains a
+  scheduled artifact-size variant of the same graph contract.
+- [x] Real EfficientSAM-Ti, MobileSAM, SAM 2 Tiny, and SAM 2.1 Tiny point/box
+  runs pass in landscape and portrait orientations, both in-process and through
+  authenticated HTTP. Reports, timings, RSS measurements, digests, and reviewed
+  images are retained under `validation-results/` locally.
+- [x] The hosted workflow defines Linux, Windows, and macOS real-model gates for
+  all four smallest redistributable pairs, with immutable downloads and retained
+  artifacts. Hosted completion remains required before merge.
+- [ ] Add scheduled resource-qualified SAM ViT-B and EfficientSAM-S runs, then
+  graph/load coverage for SAM/SAM2/SAM2.1 larger variants without turning their
+  multi-gigabyte assets into per-PR downloads.
+- [ ] Implement SAM3 as the separate licensed three-graph backend described
+  above; it is not part of the smaller-family merge gate.
 
 Every merge gate uses real ONNX graphs and real images, never mocked model
 outputs. It records graph and image SHA-256 values, cold/warm latency, peak RSS,
