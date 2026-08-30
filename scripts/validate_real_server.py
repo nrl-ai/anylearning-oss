@@ -24,6 +24,7 @@ from anylearning.inference.validation import (
     _annotate,
     _check_expectations,
     _load_rgb,
+    _prediction_digest,
     _request_prompts,
     _result_digest,
     load_validation_manifest,
@@ -168,9 +169,12 @@ def run_server_validation(
                 for result in results
             ]
             digests = [_result_digest(result) for result in canonical]
+            prediction_digests = [_prediction_digest(result) for result in results]
             failures = _check_expectations(results[0], image_case.expected)
             if len(set(digests)) != 1:
                 failures.append("server results changed across identical requests")
+            if len(set(prediction_digests)) != 1:
+                failures.append("server predictions changed across identical requests")
             global_failures.extend(f"{image_path.name}: {item}" for item in failures)
             annotated_name = f"{index:03d}-{image_path.stem}-server.png"
             if not cv2.imwrite(
@@ -185,6 +189,7 @@ def run_server_validation(
                     "shape_count": len(results[0].shapes),
                     "consistent_runs": len(set(digests)) == 1,
                     "consistency_digest": digests[0],
+                    "prediction_digest": prediction_digests[0],
                     "round_trip_ms": round_trip_ms,
                     "failures": failures,
                 }

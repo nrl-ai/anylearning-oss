@@ -10,11 +10,12 @@ import onnx
 import pytest
 from onnx import TensorProto, helper, numpy_helper
 
-from anylearning.inference import InferenceRequest, TextPrompt
+from anylearning.inference import InferenceRequest, InferenceResult, TextPrompt
 from anylearning.inference.backends.yolo_onnx import YoloOnnxBackend
 from anylearning.inference.validation import (
     ValidationTextPrompt,
     _model_artifact_details,
+    _prediction_digest,
     _request_prompts,
     load_validation_manifest,
 )
@@ -144,6 +145,29 @@ def test_all_committed_real_model_manifests_are_schema_valid():
         assert manifest.provenance.source_revision
         assert manifest.runs >= 2
         assert manifest.lifecycle_cycles >= 2
+
+
+def test_prediction_digest_ignores_transport_identity_and_timings():
+    result = InferenceResult(
+        request_id="request-one",
+        source_id="content-sha256:one",
+        model_id="model",
+        model_revision="revision",
+        warnings=("review output",),
+        timings_ms={"total": 10.0},
+    )
+
+    equivalent = result.model_copy(
+        update={
+            "request_id": "request-two",
+            "source_id": "content-sha256:two",
+            "timings_ms": {"total": 20.0},
+        }
+    )
+    changed = result.model_copy(update={"warnings": ("different output",)})
+
+    assert _prediction_digest(equivalent) == _prediction_digest(result)
+    assert _prediction_digest(changed) != _prediction_digest(result)
 
 
 def test_external_validation_converter_produces_loadable_real_onnx_bundle(tmp_path):

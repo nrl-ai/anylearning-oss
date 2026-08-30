@@ -288,14 +288,19 @@ Implementation status (2026-08-31):
 - [x] Scheduled resource-qualified SAM ViT-B and EfficientSAM-S runs pass on
       Linux, Windows, and macOS with stable repeated lifecycle output, retained
       visual evidence, and bounded memory growth.
-- [ ] Complete hosted graph/load/inference coverage for SAM2 and SAM2.1
-      Small/Base+/Large without turning their multi-gigabyte assets into per-PR
-      downloads. SAM2 manifests and scheduled jobs are implemented and locally
-      validated; their exact-head hosted matrix remains the merge gate.
-- [ ] Re-export or optimize the SAM2 bundles so their ONNX metadata no longer
-      reports stale convolution output shapes or unused initializers. Prove exact
-      result parity before replacing the pinned artifacts; do not hide exporter
-      defects by suppressing inference warnings.
+- [x] SAM2 Small/Base+/Large passed the exact-head hosted in-process and
+      authenticated-server matrix on Linux, Windows, and macOS. All 36 annotated
+      image pairs were pixel-identical between transports, and normalized model
+      output matched across operating systems.
+- [ ] Complete exact-head hosted graph/load/inference coverage for SAM2.1
+      Small/Base+/Large without turning their large assets into per-PR downloads.
+      All sizes have checksum-pinned manifests and scheduled jobs; local real
+      in-process and password-authenticated HTTP validation passes for Tiny,
+      Small, Base+, and Large. The exact-head hosted matrix remains the merge gate.
+- [ ] Re-export or optimize the SAM2 and SAM2.1 bundles so their ONNX metadata no
+      longer reports stale convolution output shapes or unused initializers. Prove
+      exact result parity before replacing the pinned artifacts; do not hide
+      exporter defects by suppressing inference warnings.
 - [x] SAM3 has a separate licensed three-graph backend with bounded text,
       point, box, and combined prompts; fixed-capacity contract validation;
       independent graph/external hashes; bounded mask-IoU NMS and editable
@@ -306,8 +311,11 @@ Implementation status (2026-08-31):
 
 Every merge gate uses real ONNX graphs and real images, never mocked model
 outputs. It records graph and image SHA-256 values, cold/warm latency, peak RSS,
-output summaries, and annotated images under a retained validation-results
-artifact. At least one landscape and one portrait result per family receive
+output summaries, transport-sensitive consistency digests, inference-semantic
+prediction digests, and annotated images under a retained validation-results
+artifact. Prediction digests deliberately omit request IDs, source-file IDs, and
+timings so equal model output can be compared directly across operating systems.
+At least one landscape and one portrait result per family receive
 visual inspection. Linux, Windows, and macOS run the smallest redistributable
 artifact for each graph contract; multi-gigabyte variants run on resource-tagged
 workers with explicit memory evidence.

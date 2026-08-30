@@ -1,20 +1,20 @@
 {
-  "name": "official-sam2-1-hiera-tiny-dog-aspect-ratios",
+  "name": "official-sam2-1-hiera-large-dog-aspect-ratios",
   "backend": "segment_anything",
   "provenance": {
     "source_url": "https://github.com/facebookresearch/sam2",
-    "artifact_url": "https://huggingface.co/nrl-ai/anylearning-labeling-models/blob/142e56234c727348d5fc5ec22c89fd7be52a0965/sam2_1_hiera_tiny.zip",
+    "artifact_url": "https://huggingface.co/nrl-ai/anylearning-labeling-models/blob/142e56234c727348d5fc5ec22c89fd7be52a0965/sam2_1_hiera_large.zip",
     "source_revision": "2b90b9f5ceec907a1c18123530e92e794ad901a4",
     "code_license": "Apache-2.0",
     "artifact_license": "Apache-2.0 SAM 2.1 ONNX pair",
     "license_url": "https://huggingface.co/nrl-ai/anylearning-labeling-models/blob/142e56234c727348d5fc5ec22c89fd7be52a0965/LICENSES.md"
   },
   "config": {
-    "name": "official-sam2-1-hiera-tiny",
-    "encoder_model_path": "sam2.1_hiera_tiny.encoder.onnx",
-    "decoder_model_path": "sam2.1_hiera_tiny.decoder.onnx",
-    "encoder_sha256": "667384d1e686de6828b841ac8a24db0fafa2b3452494225f82eeedac56141230",
-    "decoder_sha256": "c40f5aa7d37b681cd500481a85d44839fd81c93dce1e86271a2c866470d22105",
+    "name": "official-sam2-1-hiera-large",
+    "encoder_model_path": "sam2.1_hiera_large.encoder.onnx",
+    "decoder_model_path": "sam2.1_hiera_large.decoder.onnx",
+    "encoder_sha256": "f18538735868c076b715d5abbdf1a9d5fb4b0939c00be9db42d6b3808cdd3251",
+    "decoder_sha256": "014ac31e9037238ee027d6399d932dafe80c15ae711aee564976b94383b4ffa1",
     "family": "sam2",
     "providers": ["CPUExecutionProvider"],
     "intra_op_threads": 1,
@@ -22,7 +22,7 @@
   },
   "runs": 3,
   "lifecycle_cycles": 3,
-  "maximum_steady_state_rss_growth_bytes": 268435456,
+  "maximum_steady_state_rss_growth_bytes": 402653184,
   "images": [
     {
       "path": "dog.jpg",
@@ -33,11 +33,7 @@
         "maximum_shapes": 1,
         "minimum_label_counts": { "AUTOLABEL_OBJECT": 1 },
         "detections": [
-          {
-            "label": "AUTOLABEL_OBJECT",
-            "box": [133, 223, 308, 537],
-            "minimum_iou": 0.97
-          }
+          { "label": "AUTOLABEL_OBJECT", "box": [133, 223, 308, 537], "minimum_iou": 0.97 }
         ]
       }
     },
@@ -50,11 +46,7 @@
         "maximum_shapes": 1,
         "minimum_label_counts": { "AUTOLABEL_OBJECT": 1 },
         "detections": [
-          {
-            "label": "AUTOLABEL_OBJECT",
-            "box": [133, 223, 308, 537],
-            "minimum_iou": 0.97
-          }
+          { "label": "AUTOLABEL_OBJECT", "box": [133, 223, 308, 537], "minimum_iou": 0.97 }
         ]
       }
     },
@@ -67,11 +59,7 @@
         "maximum_shapes": 1,
         "minimum_label_counts": { "AUTOLABEL_OBJECT": 1 },
         "detections": [
-          {
-            "label": "AUTOLABEL_OBJECT",
-            "box": [35, 133, 352, 308],
-            "minimum_iou": 0.97
-          }
+          { "label": "AUTOLABEL_OBJECT", "box": [35, 133, 352, 308], "minimum_iou": 0.97 }
         ]
       }
     },
@@ -84,11 +72,7 @@
         "maximum_shapes": 1,
         "minimum_label_counts": { "AUTOLABEL_OBJECT": 1 },
         "detections": [
-          {
-            "label": "AUTOLABEL_OBJECT",
-            "box": [35, 133, 353, 307],
-            "minimum_iou": 0.97
-          }
+          { "label": "AUTOLABEL_OBJECT", "box": [35, 133, 353, 307], "minimum_iou": 0.97 }
         ]
       }
     }

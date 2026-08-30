@@ -517,8 +517,7 @@ jobs:
         os: [ubuntu-latest, windows-latest, macos-latest]
     env:
       ASSET_DIR: tests/fixtures/inference/real_models
-      ENCODER_SHA256: 3d5ae796097a6afb1198ceea4187ecaa82736242d07f5658541829d6dfc3f871
-      DECODER_SHA256: 197f1c7c8fd070aaf6f15ffc635f4c384422ba5eaa0f8c9e543e3d4b8e0e8e87
+      ARCHIVE_SHA256: c602cb3f6fd297312a415f885f0df3f0eef9fbb334b069c9d30e828f2ae7c69a
       IMAGE_SHA256: 5a9522051c3cec2bbd2f6323fccba32e8fbf3ddcc2b3e2fd46b04c720bc6f866
       OPENBLAS_NUM_THREADS: "1"
       OMP_NUM_THREADS: "1"
@@ -547,22 +546,24 @@ jobs:
         run: |
           set -euo pipefail
           python scripts/download_verified_file.py \
-            "https://huggingface.co/nrl-ai/samexporter-onnx-models/resolve/3c4a5640a91ea73235d78f1b79b4613f64b768b6/sam2_1_hiera_tiny/sam2.1_hiera_tiny.encoder.onnx" \
-            "$ASSET_DIR/sam2.1_hiera_tiny.encoder.onnx" \
-            --sha256 "$ENCODER_SHA256" --max-bytes 157286400
-          python scripts/download_verified_file.py \
-            "https://huggingface.co/nrl-ai/samexporter-onnx-models/resolve/3c4a5640a91ea73235d78f1b79b4613f64b768b6/sam2_1_hiera_tiny/sam2.1_hiera_tiny.decoder.onnx" \
-            "$ASSET_DIR/sam2.1_hiera_tiny.decoder.onnx" \
-            --sha256 "$DECODER_SHA256" --max-bytes 52428800
+            "https://huggingface.co/nrl-ai/anylearning-labeling-models/resolve/142e56234c727348d5fc5ec22c89fd7be52a0965/sam2_1_hiera_tiny.zip" \
+            "$ASSET_DIR/sam2_1_hiera_tiny.zip" \
+            --sha256 "$ARCHIVE_SHA256" --max-bytes 157286400
           python scripts/download_verified_file.py \
             "https://raw.githubusercontent.com/Megvii-BaseDetection/YOLOX/6ddff4824372906469a7fae2dc3206c7aa4bbaee/assets/dog.jpg" \
             "$ASSET_DIR/dog.jpg" --sha256 "$IMAGE_SHA256" \
             --max-bytes 10485760
 
-      - name: Create portrait case
+      - name: Extract the exact verified graph pair and create portrait case
         shell: bash
         run: |
           set -euo pipefail
+          python scripts/extract_verified_zip.py \
+            "$ASSET_DIR/sam2_1_hiera_tiny.zip" "$ASSET_DIR" \
+            --member "config.yaml:260" \
+            --member "sam2.1_hiera_tiny.encoder.onnx:109471931" \
+            --member "sam2.1_hiera_tiny.decoder.onnx:16519561" \
+            --remove-archive
           python - <<'PY'
           import os
           from pathlib import Path
@@ -592,6 +593,139 @@ jobs:
         uses: actions/upload-artifact@v6
         with:
           name: sam2-1-hiera-tiny-real-model-validation-${{ runner.os }}
+          path: validation-results/
+          if-no-files-found: error
+          retention-days: 30
+
+  sam2-1-larger:
+    name: SAM2.1 Hiera-${{ matrix.display }} / ${{ matrix.os }}
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        variant: [small, base-plus, large]
+        include:
+          - variant: small
+            display: Small
+            archive: sam2_1_hiera_small
+            stem: sam2.1_hiera_small
+            archive_sha256: 7c232acd0a95053704aa2ae9f9a3e8f9e93899fa51335b14d38e34bb7267973d
+            archive_max_bytes: 157286400
+            encoder_bytes: 138018779
+            decoder_bytes: 16519569
+            config_bytes: 264
+            manifest: sam2_1_hiera_small_official.json
+            artifact: sam2-1-hiera-small
+          - variant: base-plus
+            display: Base+
+            archive: sam2_1_hiera_base_plus
+            stem: sam2.1_hiera_base_plus
+            archive_sha256: 389a2b0ba3209e4352887651d794a79e7518b186d85bd640b032ad6d5bee089a
+            archive_max_bytes: 314572800
+            encoder_bytes: 277472669
+            decoder_bytes: 16519587
+            config_bytes: 276
+            manifest: sam2_1_hiera_base_plus_official.json
+            artifact: sam2-1-hiera-base-plus
+          - variant: large
+            display: Large
+            archive: sam2_1_hiera_large
+            stem: sam2.1_hiera_large
+            archive_sha256: 07c8a5e445414529f0120f5d1c5699f3a70c38b217c249d699fa1308ef1645af
+            archive_max_bytes: 943718400
+            encoder_bytes: 852451097
+            decoder_bytes: 16519627
+            config_bytes: 264
+            manifest: sam2_1_hiera_large_official.json
+            artifact: sam2-1-hiera-large
+    env:
+      ASSET_DIR: tests/fixtures/inference/real_models
+      ARCHIVE_STEM: ${{ matrix.archive }}
+      MODEL_STEM: ${{ matrix.stem }}
+      ARCHIVE_SHA256: ${{ matrix.archive_sha256 }}
+      ARCHIVE_MAX_BYTES: ${{ matrix.archive_max_bytes }}
+      ENCODER_BYTES: ${{ matrix.encoder_bytes }}
+      DECODER_BYTES: ${{ matrix.decoder_bytes }}
+      CONFIG_BYTES: ${{ matrix.config_bytes }}
+      IMAGE_SHA256: 5a9522051c3cec2bbd2f6323fccba32e8fbf3ddcc2b3e2fd46b04c720bc6f866
+      OPENBLAS_NUM_THREADS: "1"
+      OMP_NUM_THREADS: "1"
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v10.0.1
+        with:
+          enable-cache: true
+
+      - name: Install isolated inference test dependencies
+        run: >-
+          uv pip install --system
+          "numpy>=2,<3" "opencv-python-headless>=4.11,<6"
+          "pydantic>=2.13,<3" "onnx>=1.16,<2" "onnxruntime>=1.29,<2"
+          "psutil>=7.2,<8" "pytest>=9,<10" "Pillow>=12,<13"
+          "fastapi>=0.141,<1" "httpx>=0.28,<1" "argon2-cffi>=25.1,<26"
+
+      - name: Download immutable official test assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/download_verified_file.py \
+            "https://huggingface.co/nrl-ai/anylearning-labeling-models/resolve/142e56234c727348d5fc5ec22c89fd7be52a0965/${ARCHIVE_STEM}.zip" \
+            "$ASSET_DIR/${ARCHIVE_STEM}.zip" \
+            --sha256 "$ARCHIVE_SHA256" --max-bytes "$ARCHIVE_MAX_BYTES" \
+            --timeout-seconds 1800
+          python scripts/download_verified_file.py \
+            "https://raw.githubusercontent.com/Megvii-BaseDetection/YOLOX/6ddff4824372906469a7fae2dc3206c7aa4bbaee/assets/dog.jpg" \
+            "$ASSET_DIR/dog.jpg" --sha256 "$IMAGE_SHA256" \
+            --max-bytes 10485760
+
+      - name: Extract the exact verified graph pair and create portrait case
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/extract_verified_zip.py \
+            "$ASSET_DIR/${ARCHIVE_STEM}.zip" "$ASSET_DIR" \
+            --member "config.yaml:${CONFIG_BYTES}" \
+            --member "${MODEL_STEM}.encoder.onnx:${ENCODER_BYTES}" \
+            --member "${MODEL_STEM}.decoder.onnx:${DECODER_BYTES}" \
+            --remove-archive
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          from PIL import Image
+
+          root = Path(os.environ["ASSET_DIR"])
+          with Image.open(root / "dog.jpg") as image:
+              image.transpose(Image.Transpose.ROTATE_270).save(
+                  root / "dog_portrait.png", format="PNG", optimize=False
+              )
+          PY
+
+      - name: Run real portrait and landscape validation
+        run: >-
+          python scripts/validate_real_model.py
+          tests/fixtures/inference/real_models/${{ matrix.manifest }}
+          --output-root validation-results/${{ runner.os }}/${{ matrix.artifact }}
+
+      - name: Run authenticated server with the real graph pair
+        run: >-
+          python scripts/validate_real_server.py
+          tests/fixtures/inference/real_models/${{ matrix.manifest }}
+          --output-root validation-results/${{ runner.os }}/server-${{ matrix.artifact }}
+
+      - name: Retain visual and machine-readable evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: ${{ matrix.artifact }}-real-model-validation-${{ runner.os }}
           path: validation-results/
           if-no-files-found: error
           retention-days: 30
