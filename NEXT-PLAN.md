@@ -283,10 +283,19 @@ Implementation status (2026-08-31):
       images are retained under `validation-results/` locally.
 - [x] The hosted workflow defines Linux, Windows, and macOS real-model gates for
       all four smallest redistributable pairs, with immutable downloads and retained
-      artifacts. Hosted completion remains required before merge.
-- [ ] Add scheduled resource-qualified SAM ViT-B and EfficientSAM-S runs, then
-      graph/load coverage for SAM/SAM2/SAM2.1 larger variants without turning their
-      multi-gigabyte assets into per-PR downloads.
+      artifacts. The complete smallest-model matrix has passed on all three hosted
+      operating systems.
+- [x] Scheduled resource-qualified SAM ViT-B and EfficientSAM-S runs pass on
+      Linux, Windows, and macOS with stable repeated lifecycle output, retained
+      visual evidence, and bounded memory growth.
+- [ ] Complete hosted graph/load/inference coverage for SAM2 and SAM2.1
+      Small/Base+/Large without turning their multi-gigabyte assets into per-PR
+      downloads. SAM2 manifests and scheduled jobs are implemented and locally
+      validated; their exact-head hosted matrix remains the merge gate.
+- [ ] Re-export or optimize the SAM2 bundles so their ONNX metadata no longer
+      reports stale convolution output shapes or unused initializers. Prove exact
+      result parity before replacing the pinned artifacts; do not hide exporter
+      defects by suppressing inference warnings.
 - [x] SAM3 has a separate licensed three-graph backend with bounded text,
       point, box, and combined prompts; fixed-capacity contract validation;
       independent graph/external hashes; bounded mask-IoU NMS and editable
