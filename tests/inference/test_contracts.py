@@ -7,11 +7,14 @@ from pydantic import ValidationError
 
 from anylearning.inference import (
     CURRENT_PROTOCOL_VERSION,
+    BoxPrompt,
+    InferenceRequest,
     InferenceResult,
     InferenceShape,
     ModelCapabilities,
     ModelTask,
     Point,
+    PointPrompt,
     ShapeType,
 )
 
@@ -65,6 +68,37 @@ def test_inference_result_round_trips_through_json():
     assert restored == result
     assert restored.protocol_version == CURRENT_PROTOCOL_VERSION
     assert restored.model_dump(mode="json")["shapes"][0]["type"] == "polygon"
+
+
+def test_inference_request_round_trips_neutral_prompts():
+    request = InferenceRequest(
+        request_id="request-42",
+        source_id="image-sha256:abc123",
+        model_id="sam2-small",
+        model_revision="sha256:def456",
+        prompts=(
+            PointPrompt(point=Point(x=10, y=20), foreground=False),
+            BoxPrompt(
+                top_left=Point(x=1, y=2),
+                bottom_right=Point(x=30, y=40),
+            ),
+        ),
+        output_shape=ShapeType.POLYGON,
+    )
+
+    restored = InferenceRequest.model_validate_json(request.model_dump_json())
+
+    assert restored == request
+    assert isinstance(restored.prompts[0], PointPrompt)
+    assert isinstance(restored.prompts[1], BoxPrompt)
+
+
+def test_box_prompt_requires_ordered_positive_area():
+    with pytest.raises(ValidationError, match="positive width and height"):
+        BoxPrompt(
+            top_left=Point(x=10, y=10),
+            bottom_right=Point(x=5, y=20),
+        )
 
 
 @pytest.mark.parametrize(
