@@ -15,6 +15,23 @@ from .onnx_safety import (
 )
 
 
+def _session_options(
+    onnxruntime: Any,
+    *,
+    enable_cpu_mem_arena: bool,
+    intra_op_threads: int,
+    inter_op_threads: int,
+) -> Any:
+    options = onnxruntime.SessionOptions()
+    options.enable_cpu_mem_arena = enable_cpu_mem_arena
+    if intra_op_threads:
+        options.intra_op_num_threads = intra_op_threads
+    if inter_op_threads:
+        options.inter_op_num_threads = inter_op_threads
+    options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_ALL
+    return options
+
+
 def create_checked_onnx_session(
     path: Path,
     *,
@@ -24,6 +41,7 @@ def create_checked_onnx_session(
     expected_sha256: str | None,
     external_data_sha256: Mapping[str, str] | None,
     max_external_data_bytes: int,
+    enable_cpu_mem_arena: bool,
     intra_op_threads: int,
     inter_op_threads: int,
     cancellation: CancellationToken,
@@ -41,12 +59,12 @@ def create_checked_onnx_session(
         onnxruntime.get_available_providers(),
         allow_cpu_fallback=allow_cpu_fallback,
     )
-    options = onnxruntime.SessionOptions()
-    if intra_op_threads:
-        options.intra_op_num_threads = intra_op_threads
-    if inter_op_threads:
-        options.inter_op_num_threads = inter_op_threads
-    options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_ALL
+    options = _session_options(
+        onnxruntime,
+        enable_cpu_mem_arena=enable_cpu_mem_arena,
+        intra_op_threads=intra_op_threads,
+        inter_op_threads=inter_op_threads,
+    )
     cancellation.raise_if_cancelled()
     with stable_onnx_artifact(
         path,

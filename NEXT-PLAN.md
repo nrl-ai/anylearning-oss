@@ -266,7 +266,10 @@ Implementation status (2026-08-31):
 
 - [x] Paired graphs use the bounded stable ONNX loader, independent graph and
       external-data manifests, explicit providers/thread limits, and pair-bound
-      model revisions.
+      model revisions. Per-session CPU arenas default off after real lifecycle
+      tests showed materially lower peak and retained RSS without changing
+      deterministic outputs or warm prompt latency; throughput deployments may
+      opt in after profiling.
 - [x] SAM/MobileSAM now support HWC embedded preprocessing and raw NCHW
       preprocessing, official longest-side resize, low-resolution aspect-aware mask
       postprocessing, and highest-IoU candidate selection.

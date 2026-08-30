@@ -245,6 +245,7 @@ def test_sam_config_preserves_legacy_fields_and_freezes_integrity_maps(tmp_path)
     session = SegmentAnythingBackend().create_session(model_config)
 
     assert session.config.display_name == "Legacy desktop model"
+    assert session.config.enable_cpu_mem_arena is False
     with pytest.raises(TypeError, match="immutable"):
         session.config.encoder_external_data_sha256["weights.bin"] = "b" * 64
 
@@ -258,6 +259,7 @@ def test_sam_loader_forwards_independent_integrity_and_provider_bounds(tmp_path)
         "allow_cpu_fallback": False,
         "max_model_bytes": 1234,
         "max_external_data_bytes": 5678,
+        "enable_cpu_mem_arena": True,
         "intra_op_threads": 2,
         "inter_op_threads": 3,
     }
@@ -280,6 +282,7 @@ def test_sam_loader_forwards_independent_integrity_and_provider_bounds(tmp_path)
         assert call.kwargs["allow_cpu_fallback"] is False
         assert call.kwargs["max_model_bytes"] == 1234
         assert call.kwargs["max_external_data_bytes"] == 5678
+        assert call.kwargs["enable_cpu_mem_arena"] is True
         assert call.kwargs["intra_op_threads"] == 2
         assert call.kwargs["inter_op_threads"] == 3
 

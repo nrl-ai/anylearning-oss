@@ -169,7 +169,7 @@ def test_efficient_backend_reuses_embedding_and_releases_model(tmp_path):
         patch(
             "anylearning.inference.backends.efficient_sam.create_checked_onnx_session",
             side_effect=checked_session,
-        ),
+        ) as checked,
         patch(
             "anylearning.inference.backends.efficient_sam.EfficientSAMONNX",
             FakeEfficientSAM,
@@ -177,6 +177,11 @@ def test_efficient_backend_reuses_embedding_and_releases_model(tmp_path):
     ):
         session = EfficientSamBackend().create_session(efficient_config(tmp_path))
         session.load()
+        assert checked.call_count == 2
+        assert all(
+            call.kwargs["enable_cpu_mem_arena"] is False
+            for call in checked.call_args_list
+        )
         image = np.zeros((16, 20, 3), dtype=np.uint8)
         first = session.predict(efficient_request("image:one"), image)
         second = session.predict(efficient_request("image:one"), image)
