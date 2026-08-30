@@ -252,6 +252,7 @@ def test_sam_config_preserves_legacy_fields_and_freezes_integrity_maps(tmp_path)
 
     assert session.config.display_name == "Legacy desktop model"
     assert session.config.enable_cpu_mem_arena is False
+    assert session.config.enable_mem_pattern is False
     assert session.config.release_cpu_memory_on_unload is True
     with pytest.raises(TypeError, match="immutable"):
         session.config.encoder_external_data_sha256["weights.bin"] = "b" * 64
@@ -286,6 +287,7 @@ def test_sam_loader_forwards_independent_integrity_and_provider_bounds(tmp_path)
         "max_model_bytes": 1234,
         "max_external_data_bytes": 5678,
         "enable_cpu_mem_arena": True,
+        "enable_mem_pattern": True,
         "intra_op_threads": 2,
         "inter_op_threads": 3,
     }
@@ -309,6 +311,7 @@ def test_sam_loader_forwards_independent_integrity_and_provider_bounds(tmp_path)
         assert call.kwargs["max_model_bytes"] == 1234
         assert call.kwargs["max_external_data_bytes"] == 5678
         assert call.kwargs["enable_cpu_mem_arena"] is True
+        assert call.kwargs["enable_mem_pattern"] is True
         assert call.kwargs["intra_op_threads"] == 2
         assert call.kwargs["inter_op_threads"] == 3
 

@@ -125,6 +125,7 @@ class Sam3Config(BaseModel):
     providers: tuple[str, ...] = ("CPUExecutionProvider",)
     allow_cpu_fallback: bool = True
     enable_cpu_mem_arena: bool = False
+    enable_mem_pattern: bool = False
     release_cpu_memory_on_unload: bool = True
     intra_op_threads: int = Field(default=0, ge=0, le=256)
     inter_op_threads: int = Field(default=0, ge=0, le=256)
@@ -373,6 +374,7 @@ class Sam3Session(BaseInferenceSession):
             external_data_sha256=getattr(self.config, f"{role}_external_data_sha256"),
             max_external_data_bytes=self.config.max_external_data_bytes,
             enable_cpu_mem_arena=self.config.enable_cpu_mem_arena,
+            enable_mem_pattern=self.config.enable_mem_pattern,
             intra_op_threads=self.config.intra_op_threads,
             inter_op_threads=self.config.inter_op_threads,
             cancellation=cancellation,

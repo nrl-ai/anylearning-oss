@@ -22,11 +22,13 @@ def _session_options(
     onnxruntime: Any,
     *,
     enable_cpu_mem_arena: bool,
+    enable_mem_pattern: bool,
     intra_op_threads: int,
     inter_op_threads: int,
 ) -> Any:
     options = onnxruntime.SessionOptions()
     options.enable_cpu_mem_arena = enable_cpu_mem_arena
+    options.enable_mem_pattern = enable_mem_pattern
     if intra_op_threads:
         options.intra_op_num_threads = intra_op_threads
     if inter_op_threads:
@@ -45,6 +47,7 @@ def create_checked_onnx_session(
     external_data_sha256: Mapping[str, str] | None,
     max_external_data_bytes: int,
     enable_cpu_mem_arena: bool,
+    enable_mem_pattern: bool,
     intra_op_threads: int,
     inter_op_threads: int,
     cancellation: CancellationToken,
@@ -65,6 +68,7 @@ def create_checked_onnx_session(
     options = _session_options(
         onnxruntime,
         enable_cpu_mem_arena=enable_cpu_mem_arena,
+        enable_mem_pattern=enable_mem_pattern,
         intra_op_threads=intra_op_threads,
         inter_op_threads=inter_op_threads,
     )
