@@ -1,5 +1,7 @@
 import gc
 import json
+import subprocess
+import sys
 import weakref
 from pathlib import Path
 from types import SimpleNamespace
@@ -91,6 +93,24 @@ def test_default_registry_keeps_sam_lazy():
     assert "efficient_sam" not in registry._backends
     assert "segment_anything" not in registry._backends
     assert "yolo_onnx" not in registry._backends
+
+
+def test_sam_backend_import_does_not_require_desktop_config_dependencies():
+    """The standalone inference extra must not pull in desktop YAML config."""
+    script = """
+import sys
+sys.modules['yaml'] = None
+sys.modules['loguru'] = None
+import anylearning.inference.backends.sam
+import anylearning.inference.backends.efficient_sam
+"""
+    completed = subprocess.run(
+        [sys.executable, "-c", script],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert completed.returncode == 0, completed.stderr
 
 
 def test_sam_session_preserves_identity_shapes_prompts_and_embedding_cache(tmp_path):

@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import os
 import time
 from collections.abc import Mapping
 from pathlib import Path
@@ -13,8 +14,6 @@ from typing import Any, Literal, Self
 import cv2
 import numpy as np
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
-
-from anylearning.config import DATA_ROOT
 
 from ..cache import LRUCache
 from ..contracts import (
@@ -49,6 +48,19 @@ _MAX_MASK_CONTOURS = 4_096
 _MAX_SHAPES = 256
 _MAX_POLYGON_POINTS = 4_096
 _MAX_TOTAL_SHAPE_POINTS = 10_000
+
+
+def _default_data_root() -> Path:
+    """Resolve the legacy model store without importing desktop configuration.
+
+    The inference package is intentionally installable without the desktop
+    application's YAML and logging dependencies. Keep this fallback compatible
+    with the application while avoiding its import-time directory creation.
+    """
+    configured = os.environ.get("ANYLEARNING_DATA_ROOT")
+    if configured:
+        return Path(configured).expanduser()
+    return Path.home() / "anylearning-data"
 
 
 class _FrozenStringMap(dict[str, str]):
@@ -165,7 +177,7 @@ def _resolved_model_path(config: Mapping[str, Any], field: str) -> Path:
     model_name = config.get("name")
     if not isinstance(model_name, str) or not model_name:
         raise ValueError("Missing model configuration field: name")
-    model_root = (Path(DATA_ROOT) / "models" / model_name).resolve()
+    model_root = (_default_data_root() / "models" / model_name).resolve()
     relative = Path(configured.name) if configured.is_absolute() else configured
     fallback = (model_root / relative).resolve()
     try:
