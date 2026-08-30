@@ -88,6 +88,10 @@ channel-order defects are visible during review. The committed
 larger scheduled graph variants. `sam2_hiera_small_official.json`,
 `sam2_hiera_base_plus_official.json`, and `sam2_hiera_large_official.json`
 exercise every larger SAM2 encoder against the shared decoder contract.
+The corresponding `sam2_1_hiera_*_official.json` manifests exercise every
+SAM 2.1 size from immutable, checksum-pinned archives. Tiny remains a
+cross-platform pull-request gate; Small, Base+, and Large run in the scheduled
+or manually dispatched resource-qualified matrix.
 `sam3_vit_h_official.json` covers text, text+point, and box inference. These
 larger cases run only in the scheduled/manual resource-qualified workflow so
 per-PR checks do not repeatedly download hundreds of megabytes or several

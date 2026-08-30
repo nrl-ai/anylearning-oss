@@ -256,6 +256,28 @@ def _result_digest(result: InferenceResult) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
+def _prediction_digest(result: InferenceResult) -> str:
+    """Hash model output without request, source-file, or timing identity."""
+    payload = result.model_dump(
+        mode="json",
+        include={
+            "protocol_version",
+            "model_id",
+            "model_revision",
+            "shapes",
+            "warnings",
+        },
+    )
+    encoded = json.dumps(
+        payload,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+        allow_nan=False,
+    ).encode()
+    return hashlib.sha256(encoded).hexdigest()
+
+
 def _shape_box(shape: Any) -> tuple[float, float, float, float] | None:
     if shape.type is ShapeType.POINT or not shape.points:
         return None
@@ -447,7 +469,8 @@ def _write_html(output_dir: Path, summary: dict[str, Any]) -> None:
             f'<img src="{html.escape(item["annotated_image"])}" '
             'loading="lazy" alt="annotated inference output">'
             f"<p>Shapes: {item['shape_count']} · "
-            f"Consistency: {html.escape(item['consistency_digest'])}</p>"
+            f"Consistency: {html.escape(item['consistency_digest'])}<br>"
+            f"Prediction: {html.escape(item['prediction_digest'])}</p>"
             f'<p class="fail">{failures}</p>'
             "</section>"
         )
@@ -631,9 +654,12 @@ def run_real_model_validation(
                 for result in results
             ]
             digests = [_result_digest(result) for result in canonical]
+            prediction_digests = [_prediction_digest(result) for result in results]
             failures = _check_expectations(results[0], image_case.expected)
             if len(set(digests)) != 1:
                 failures.append("repeated inference results were not byte-consistent")
+            if len(set(prediction_digests)) != 1:
+                failures.append("repeated predictions were not byte-consistent")
             case_name = f"{index:03d}-{_safe_name(image_path.stem)}"
             annotated_name = case_name + "-annotated.png"
             if not cv2.imwrite(
@@ -667,6 +693,7 @@ def run_real_model_validation(
                         )
                     ),
                     "consistency_digest": digests[0],
+                    "prediction_digest": prediction_digests[0],
                     "consistent_runs": len(set(digests)) == 1,
                     "failures": failures,
                     "passed": not failures,
