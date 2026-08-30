@@ -11,12 +11,13 @@ from fastapi.testclient import TestClient
 from onnx import TensorProto, helper, numpy_helper
 from PIL import Image
 
-from anylearning.inference import InferenceRequest
+from anylearning.inference import InferenceRequest, TextPrompt
 from anylearning.inference.backends.yolo_onnx import YoloOnnxBackend
 from anylearning.server import (
     ServerModelDefinition,
     ServerSettings,
     create_server_app,
+    decode_request_header,
     encode_request_header,
     hash_password,
     load_server_model_manifest,
@@ -24,6 +25,21 @@ from anylearning.server import (
 from anylearning.server.transport import encoded_image_source_id
 
 PASSWORD = "correct horse battery staple"
+
+
+def test_text_prompt_round_trips_through_bounded_http_metadata():
+    request = InferenceRequest(
+        request_id="text-round-trip",
+        source_id="image-sha256:fixture",
+        model_id="sam3",
+        model_revision="fixture",
+        prompts=(TextPrompt(text="dog"),),
+    )
+
+    restored = decode_request_header(encode_request_header(request))
+
+    assert restored == request
+    assert isinstance(restored.prompts[0], TextPrompt)
 
 
 def _constant_yolo(path):
@@ -335,6 +351,18 @@ def test_server_model_manifest_is_bounded_onnx_only_and_rejects_credentials(
             },
         ).backend
         == "efficient_sam"
+    )
+    assert (
+        ServerModelDefinition(
+            backend="sam3",
+            config={
+                "name": "text-promptable",
+                "image_encoder_model_path": "image.onnx",
+                "language_encoder_model_path": "language.onnx",
+                "decoder_model_path": "decoder.onnx",
+            },
+        ).backend
+        == "sam3"
     )
 
     manifest.write_text(

@@ -19,6 +19,27 @@ similarly named EfficientViT-SAM architecture. Both backends accept point and
 box prompts, cache image embeddings by model revision and source identity, and
 select the highest-IoU candidate mask.
 
+`sam3` is a separate three-graph backend for text-driven and geometrically
+guided segmentation. It accepts one bounded `TextPrompt`, plus point or box
+geometry up to the decoder graph's fixed exported capacity. Text-only requests
+discover matching instances; text plus geometry narrows the concept; a
+geometry-only request uses the graph's generic `visual` token. The image,
+language, and decoder graphs and both external tensor files have independent
+SHA-256 manifests and contribute to one triplet-bound model revision.
+
+SAM3 filtering stays bounded before full-resolution postprocessing: raw query
+count, NMS candidates, retained instances, mask elements, contours, shapes, and
+polygon points each have independent limits. Native mask-IoU NMS operates on
+bit-packed samples, and only retained masks are resized. The default one-item
+image-feature cache is intentionally small because a single ViT-H embedding is
+roughly 223 MB. On Linux/glibc, unload also returns released multi-gigabyte CPU
+allocations to the operating system; set
+`release_cpu_memory_on_unload=false` only after measuring a long-lived worker.
+
+SAM3 weights remain under Meta's separate SAM License. They are never bundled
+into the Apache-2.0 Python package; deployments must acquire them separately,
+retain the model license, and provide exact graph/external-data digests.
+
 Every graph is independently bounded and optionally digest-verified before
 ONNX Runtime sees it. Large pairs use separate
 `encoder_external_data_sha256` and `decoder_external_data_sha256` maps. SAM and
@@ -126,8 +147,9 @@ more important than reference parity.
 at least twice through the public inference contract. It fails expectations or
 non-repeatable shapes, and writes `summary.json`, every contract result,
 per-stage timings, model/image SHA-256 values, annotated PNGs, and a local HTML
-visual report beneath `validation-results/`. External bundles additionally log
-each tensor file's relative location, bytes, and verified digest. See
+visual report beneath `validation-results/`. External bundles and SAM3 graph
+triplets additionally log each graph role and every tensor file's relative
+location, bytes, and verified digest. See
 `tests/fixtures/inference/real_models/README.md` for the manifest and opt-in
 pytest workflow. Weights remain outside the repository.
 

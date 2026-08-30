@@ -16,6 +16,7 @@ from anylearning.inference import (
     Point,
     PointPrompt,
     ShapeType,
+    TextPrompt,
 )
 
 
@@ -82,6 +83,7 @@ def test_inference_request_round_trips_neutral_prompts():
                 top_left=Point(x=1, y=2),
                 bottom_right=Point(x=30, y=40),
             ),
+            TextPrompt(text="dog"),
         ),
         output_shape=ShapeType.POLYGON,
     )
@@ -91,6 +93,13 @@ def test_inference_request_round_trips_neutral_prompts():
     assert restored == request
     assert isinstance(restored.prompts[0], PointPrompt)
     assert isinstance(restored.prompts[1], BoxPrompt)
+    assert isinstance(restored.prompts[2], TextPrompt)
+
+
+@pytest.mark.parametrize("text", ["", "   ", "dog\x00truck", "x" * 1025])
+def test_text_prompt_is_bounded_and_visible(text):
+    with pytest.raises(ValidationError):
+        TextPrompt(text=text)
 
 
 def test_request_parameter_filters_round_trip_as_immutable_sequences():

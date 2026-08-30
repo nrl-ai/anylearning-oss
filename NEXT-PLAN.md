@@ -287,8 +287,13 @@ Implementation status (2026-08-31):
 - [ ] Add scheduled resource-qualified SAM ViT-B and EfficientSAM-S runs, then
       graph/load coverage for SAM/SAM2/SAM2.1 larger variants without turning their
       multi-gigabyte assets into per-PR downloads.
-- [ ] Implement SAM3 as the separate licensed three-graph backend described
-      above; it is not part of the smaller-family merge gate.
+- [x] SAM3 has a separate licensed three-graph backend with bounded text,
+      point, box, and combined prompts; fixed-capacity contract validation;
+      independent graph/external hashes; bounded mask-IoU NMS and editable
+      multi-instance shapes; authenticated-server support; and explicit
+      multi-gigabyte unload reclamation. Real local in-process and authenticated
+      HTTP validation passes with retained visual reports. Its Linux, Windows,
+      and macOS job is scheduled/manual rather than a per-PR download.
 
 Every merge gate uses real ONNX graphs and real images, never mocked model
 outputs. It records graph and image SHA-256 values, cold/warm latency, peak RSS,

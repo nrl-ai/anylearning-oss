@@ -8,8 +8,13 @@ import onnx
 import pytest
 from onnx import TensorProto, helper, numpy_helper
 
-from anylearning.inference import InferenceRequest
+from anylearning.inference import InferenceRequest, TextPrompt
 from anylearning.inference.backends.yolo_onnx import YoloOnnxBackend
+from anylearning.inference.validation import (
+    ValidationTextPrompt,
+    _model_artifact_details,
+    _request_prompts,
+)
 
 _ROOT = Path(__file__).resolve().parents[2]
 
@@ -136,3 +141,39 @@ def test_external_validation_converter_produces_loadable_real_onnx_bundle(tmp_pa
     result = session.predict(request, np.zeros((32, 32, 3), dtype=np.uint8))
     session.unload()
     assert [shape.label for shape in result.shapes] == ["cat"]
+
+
+def test_validation_text_prompt_converts_to_shared_contract():
+    prompts = _request_prompts((ValidationTextPrompt(type="text", text="dog"),))
+
+    assert prompts == (TextPrompt(text="dog"),)
+
+
+def test_validation_evidence_hashes_sam3_graph_triplet_and_external_data(tmp_path):
+    config = {}
+    expected_total = 0
+    for role in ("image_encoder", "language_encoder", "decoder"):
+        graph = tmp_path / f"{role}.onnx"
+        graph.write_bytes(f"{role}-graph".encode())
+        digest = hashlib.sha256(graph.read_bytes()).hexdigest()
+        config[f"{role}_model_path"] = graph.name
+        config[f"{role}_sha256"] = digest
+        expected_total += graph.stat().st_size
+        if role != "decoder":
+            external = tmp_path / f"{role}.onnx.data"
+            external.write_bytes(f"{role}-weights".encode())
+            external_digest = hashlib.sha256(external.read_bytes()).hexdigest()
+            config[f"{role}_external_data_sha256"] = {external.name: external_digest}
+            expected_total += external.stat().st_size
+
+    details = _model_artifact_details(config, tmp_path)
+
+    assert [item["role"] for item in details["graphs"]] == [
+        "image_encoder",
+        "language_encoder",
+        "decoder",
+    ]
+    assert details["bytes"] == expected_total
+    assert details["graphs"][0]["external_files"][0]["location"] == (
+        "image_encoder.onnx.data"
+    )

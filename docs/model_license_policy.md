@@ -50,6 +50,14 @@ require a written maintainer decision recorded in `LICENSES.md` before merge.
 | **D-FINE published checkpoints** | Unconfirmed         | Source code is Apache-2.0, but checkpoint redistribution and ONNX conversion rights are not separately confirmed. Objects365-derived variants also inherit dataset-term uncertainty. Keep user-exported ONNX artifacts local until clarified. |
 | **RapidOCR PP-OCR weights**      | Unconfirmed         | RapidOCR's engineering code is Apache-2.0, but its README identifies Baidu as the model copyright holder. Official ONNX URLs and hashes are reusable as download metadata; do not mirror the weights until their grant is recorded.           |
 
+Maintainer decision for SAM3 (2026-08-31): the ONNX runtime adapter is approved,
+and a model bundle may be offered as an explicit optional/server-first download.
+It must not enter the default package or installer; every mirror must identify
+the artifact as `Meta SAM License`, include the complete license beside the
+weights, preserve immutable source/export revisions and SHA-256 values, and
+surface the separate terms before use. This approval does not relicense the
+weights as Apache-2.0.
+
 ## Tier C — rejected for bundling or runtime dependencies
 
 Do not copy or vendor these implementations, depend on them at runtime, bundle

@@ -52,6 +52,10 @@ def get_install_requires():
         "PyYAML>=6.0.3,<7",
         "numpy>=2,<3",
         "Pillow>=12,<13",
+        # SAM3 text prompts use the small, framework-free CLIP BPE tokenizer.
+        # Both imports stay behind the lazy SAM3 backend boundary.
+        "ftfy>=6.3,<7",
+        "regex>=2025.11,<2027",
         # mediapipe depends on opencv-contrib-python, so both variants can end up
         # installed; keep the floor low enough that they can agree on a build.
         "opencv-python-headless>=4.11,<6",
@@ -187,6 +191,7 @@ setup(
             "configs/*/*.yml",
             "models/*",
             "models/*/*",
+            "inference/assets/*",
         ]
     },
     include_package_data=True,

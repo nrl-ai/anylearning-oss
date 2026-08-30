@@ -61,6 +61,7 @@ Licences below that carry conditions worth checking before redistribution:
 | flatbuffers | 25.12.19 | Apache Software License |
 | fonttools | 4.63.0 | MIT |
 | frozenlist | 1.8.0 | Apache-2.0 |
+| ftfy | 6.3.1 | Apache-2.0 |
 | fsspec | 2026.7.0 | BSD-3-Clause |
 | fvcore | 0.1.5.post20221221 | Apache 2.0 |
 | graphviz | 0.21 | MIT |
@@ -204,6 +205,37 @@ Licences below that carry conditions worth checking before redistribution:
 | yarl | 1.24.5 | Apache-2.0 |
 
 ## Vendored components
+
+### OpenAI CLIP tokenizer vocabulary
+
+The bounded SAM3 tokenizer includes OpenAI CLIP's BPE vocabulary as a
+data-only asset.
+
+```
+MIT License
+
+Copyright (c) 2021 OpenAI
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+### Vendored training implementations
 
 These are copied into `anylearning/training/models/` rather than installed.
 
@@ -2820,6 +2852,24 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+```
+
+### ftfy 6.3.1
+
+```
+Copyright 2023 Robyn Speer
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
 ```
 
 ### frozenlist 1.8.0

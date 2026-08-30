@@ -27,6 +27,7 @@ from .contracts import (
     Point,
     PointPrompt,
     ShapeType,
+    TextPrompt,
 )
 from .defaults import get_default_registry
 
@@ -111,8 +112,23 @@ class ValidationBoxPrompt(BaseModel):
         return value
 
 
+class ValidationTextPrompt(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    type: Literal["text"]
+    text: str = Field(min_length=1, max_length=1024)
+
+    @field_validator("text")
+    @classmethod
+    def validate_text(cls, value: str) -> str:
+        if not value.strip() or "\x00" in value:
+            raise ValueError("Validation text prompts must contain visible text")
+        return value
+
+
 ValidationPrompt = Annotated[
-    ValidationPointPrompt | ValidationBoxPrompt, Field(discriminator="type")
+    ValidationPointPrompt | ValidationBoxPrompt | ValidationTextPrompt,
+    Field(discriminator="type"),
 ]
 
 
@@ -298,8 +314,8 @@ def _check_expectations(
 
 def _request_prompts(
     prompts: tuple[ValidationPrompt, ...],
-) -> tuple[PointPrompt | BoxPrompt, ...]:
-    converted: list[PointPrompt | BoxPrompt] = []
+) -> tuple[PointPrompt | BoxPrompt | TextPrompt, ...]:
+    converted: list[PointPrompt | BoxPrompt | TextPrompt] = []
     for prompt in prompts:
         if isinstance(prompt, ValidationPointPrompt):
             converted.append(
@@ -308,13 +324,15 @@ def _request_prompts(
                     foreground=prompt.foreground,
                 )
             )
-        else:
+        elif isinstance(prompt, ValidationBoxPrompt):
             converted.append(
                 BoxPrompt(
                     top_left=Point(x=prompt.box[0], y=prompt.box[1]),
                     bottom_right=Point(x=prompt.box[2], y=prompt.box[3]),
                 )
             )
+        else:
+            converted.append(TextPrompt(text=prompt.text))
     return tuple(converted)
 
 
@@ -389,10 +407,32 @@ def _annotate(
                 thickness=3,
                 line_type=cv2.LINE_AA,
             )
-        else:
+        elif isinstance(prompt, ValidationBoxPrompt):
             top_left = (round(prompt.box[0]), round(prompt.box[1]))
             bottom_right = (round(prompt.box[2]), round(prompt.box[3]))
             cv2.rectangle(canvas, top_left, bottom_right, (255, 80, 255), 2)
+        else:
+            caption = f"text: {prompt.text}"
+            cv2.putText(
+                canvas,
+                caption,
+                (12, 28),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.7,
+                (0, 0, 0),
+                5,
+                cv2.LINE_AA,
+            )
+            cv2.putText(
+                canvas,
+                caption,
+                (12, 28),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.7,
+                (255, 180, 40),
+                2,
+                cv2.LINE_AA,
+            )
     return canvas
 
 
@@ -449,12 +489,22 @@ def _model_artifact_details(
     if isinstance(config.get("model_path"), (str, Path)):
         fields.append(("model", "model_path", "sha256", "external_data_sha256"))
     else:
-        for role in ("encoder", "decoder"):
-            if isinstance(config.get(f"{role}_model_path"), (str, Path)):
+        role_fields = (
+            ("image_encoder", "image_encoder_model_path"),
+            ("language_encoder", "language_encoder_model_path"),
+            ("decoder", "decoder_model_path"),
+        )
+        if "image_encoder_model_path" not in config:
+            role_fields = (
+                ("encoder", "encoder_model_path"),
+                ("decoder", "decoder_model_path"),
+            )
+        for role, path_field in role_fields:
+            if isinstance(config.get(path_field), (str, Path)):
                 fields.append(
                     (
                         role,
-                        f"{role}_model_path",
+                        path_field,
                         f"{role}_sha256",
                         f"{role}_external_data_sha256",
                     )

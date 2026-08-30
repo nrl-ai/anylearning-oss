@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import ctypes
+import gc
+import sys
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
@@ -98,4 +101,25 @@ def create_checked_onnx_session(
     return session, graph, warnings
 
 
-__all__ = ["create_checked_onnx_session"]
+def release_unused_cpu_memory() -> None:
+    """Best-effort reclamation after unloading exceptionally large CPU graphs.
+
+    CPython releases ONNX Runtime objects promptly, but glibc can retain their
+    multi-gigabyte allocation arenas indefinitely. Collection is portable; the
+    process-wide trim is deliberately limited to Linux/glibc and unload paths.
+    """
+    gc.collect()
+    if not sys.platform.startswith("linux"):
+        return
+    try:
+        libc = ctypes.CDLL(None)
+        malloc_trim = libc.malloc_trim
+        malloc_trim.argtypes = [ctypes.c_size_t]
+        malloc_trim.restype = ctypes.c_int
+        malloc_trim(0)
+    except (AttributeError, OSError):
+        # musl and other libc implementations need not expose malloc_trim.
+        return
+
+
+__all__ = ["create_checked_onnx_session", "release_unused_cpu_memory"]
