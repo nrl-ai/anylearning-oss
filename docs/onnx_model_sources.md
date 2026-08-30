@@ -32,8 +32,10 @@ process; they are not runtime dependencies of `anylearning.inference`.
    checksums, not multi-gigabyte weights.
 5. For ONNX models that exceed the single-protobuf limit, publish a manifest
    containing the graph and every external tensor shard with relative paths,
-   sizes, and SHA-256 values. Load only from an immutable, fully verified bundle;
-   never follow model-supplied absolute paths, parent traversal, or links.
+   sizes, and SHA-256 values. The shared loader requires exact manifest coverage,
+   bounds referenced byte ranges, and passes verified read-only mappings to ONNX
+   Runtime without copying the full bundle. Never follow model-supplied absolute
+   paths, parent traversal, symlinks, or hardlinks.
 6. Implement preprocessing and postprocessing from documented contracts and
    measured fixtures. If source code is reused, preserve its license and notice
    and keep a provenance record down to the commit.

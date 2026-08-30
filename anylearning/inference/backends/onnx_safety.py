@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import hashlib
+import mmap
 import os
 import re
+import stat
 import tempfile
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from contextlib import contextmanager
-from pathlib import Path
+from dataclasses import dataclass
+from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any, BinaryIO, Iterator
 
 import onnx
@@ -20,6 +23,11 @@ _MAX_PROTO_DEPTH = 128
 _MAX_GRAPH_INPUTS = 128
 _MAX_GRAPH_OUTPUTS = 128
 _MAX_GRAPH_NODES = 100_000
+_MAX_EXTERNAL_FILES = 1_024
+_EXTERNAL_DATA_KEYS = frozenset({"location", "offset", "length", "checksum"})
+_SHA256 = re.compile(r"^[0-9a-fA-F]{64}$")
+_SHA1 = re.compile(r"^[0-9a-fA-F]{40}$")
+_DECIMAL = re.compile(r"^(?:0|[1-9][0-9]*)$")
 
 
 class OnnxArtifactError(ValueError):
@@ -66,7 +74,35 @@ def local_artifact_revision(
     return f"local-stat-sha256:{hashlib.sha256(identity).hexdigest()}"
 
 
-def validate_onnx_artifact(path: str | Path | BinaryIO, *, max_bytes: int) -> Any:
+def local_onnx_bundle_revision(
+    path: Path,
+    *,
+    explicit_revision: str | None = None,
+    sha256: str | None = None,
+    external_data_sha256: Mapping[str, str] | None = None,
+) -> str:
+    """Bind cache identity to the graph and every configured external file."""
+    if explicit_revision:
+        return explicit_revision
+    graph_revision = local_artifact_revision(path, sha256=sha256)
+    if not external_data_sha256:
+        return graph_revision
+    digest = hashlib.sha256()
+    digest.update(graph_revision.encode("utf-8"))
+    for location, file_sha256 in sorted(external_data_sha256.items()):
+        digest.update(b"\0")
+        digest.update(location.encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(file_sha256.lower().encode("ascii"))
+    return f"onnx-bundle-sha256:{digest.hexdigest()}"
+
+
+def validate_onnx_artifact(
+    path: str | Path | BinaryIO,
+    *,
+    max_bytes: int,
+    allow_external_data: bool = False,
+) -> Any:
     """Inspect an ONNX graph without resolving external tensor references."""
     display_path = Path(path) if isinstance(path, (str, Path)) else None
     if display_path is not None and not display_path.is_file():
@@ -93,7 +129,7 @@ def validate_onnx_artifact(path: str | Path | BinaryIO, *, max_bytes: int) -> An
     for tensor in _iter_tensor_protos(model):
         if tensor.data_location == onnx.TensorProto.EXTERNAL:
             external_count += 1
-    if external_count:
+    if external_count and not allow_external_data:
         raise OnnxArtifactError(
             "External-data ONNX models are not accepted; package tensors in one "
             f"integrity-checkable file ({external_count} external tensor reference(s))"
@@ -113,6 +149,343 @@ def validate_onnx_artifact(path: str | Path | BinaryIO, *, max_bytes: int) -> An
     if len(model.graph.node) > _MAX_GRAPH_NODES:
         raise OnnxArtifactError(f"ONNX graph exceeds the {_MAX_GRAPH_NODES}-node limit")
     return model
+
+
+@dataclass(frozen=True)
+class ExternalDataFiles:
+    """Verified buffers keyed by the relative locations stored in an ONNX graph."""
+
+    locations: tuple[str, ...]
+    buffers: tuple[mmap.mmap, ...]
+    lengths: tuple[int, ...]
+    total_bytes: int
+
+    def add_to_session_options(self, options: Any) -> None:
+        add_files = getattr(
+            options, "add_external_initializers_from_files_in_memory", None
+        )
+        if add_files is None:
+            raise RuntimeError(
+                "External-data ONNX models require ONNX Runtime 1.29 or newer"
+            )
+        add_files(list(self.locations), list(self.buffers), list(self.lengths))
+
+
+@dataclass(frozen=True)
+class _ExternalReference:
+    location: str
+    offset: int
+    length: int | None
+    checksum: str | None
+
+
+def _external_references(model: Any) -> tuple[_ExternalReference, ...]:
+    references: list[_ExternalReference] = []
+    for tensor in _iter_tensor_protos(model):
+        if tensor.data_location != onnx.TensorProto.EXTERNAL:
+            continue
+        entries: dict[str, str] = {}
+        for entry in tensor.external_data:
+            if entry.key not in _EXTERNAL_DATA_KEYS:
+                raise OnnxArtifactError(
+                    "ONNX external_data contains an unsupported metadata key"
+                )
+            if entry.key in entries:
+                raise OnnxArtifactError(
+                    "ONNX external_data contains a duplicate metadata key"
+                )
+            entries[entry.key] = entry.value
+        location = _normalize_external_location(entries.get("location", ""))
+        offset = _parse_external_integer(entries.get("offset", "0"), name="offset")
+        length = (
+            _parse_external_integer(entries["length"], name="length")
+            if "length" in entries
+            else None
+        )
+        checksum = entries.get("checksum")
+        if checksum is not None and not _SHA1.fullmatch(checksum):
+            raise OnnxArtifactError("ONNX external_data checksum must be SHA-1")
+        references.append(
+            _ExternalReference(
+                location=location,
+                offset=offset,
+                length=length,
+                checksum=checksum.lower() if checksum else None,
+            )
+        )
+    return tuple(references)
+
+
+def _normalize_external_location(value: str) -> str:
+    if not value or "\x00" in value or len(value.encode("utf-8")) > 4_096:
+        raise OnnxArtifactError("ONNX external_data location is invalid")
+    normalized = value.replace("\\", "/")
+    windows_path = PureWindowsPath(value)
+    posix_path = PurePosixPath(normalized)
+    raw_parts = normalized.split("/")
+    if (
+        windows_path.drive
+        or windows_path.is_absolute()
+        or posix_path.is_absolute()
+        or any(part in {"", ".", ".."} for part in raw_parts)
+    ):
+        raise OnnxArtifactError(
+            "ONNX external_data location must be a contained relative path"
+        )
+    return posix_path.as_posix()
+
+
+def _parse_external_integer(value: str, *, name: str) -> int:
+    if not _DECIMAL.fullmatch(value):
+        raise OnnxArtifactError(
+            f"ONNX external_data {name} must be a non-negative decimal integer"
+        )
+    parsed = int(value)
+    if parsed > 2**63 - 1:
+        raise OnnxArtifactError(f"ONNX external_data {name} exceeds the limit")
+    return parsed
+
+
+def _normalize_external_manifest(
+    values: Mapping[str, str] | None,
+) -> dict[str, str]:
+    normalized: dict[str, str] = {}
+    for raw_location, digest in (values or {}).items():
+        location = _normalize_external_location(raw_location)
+        if location in normalized:
+            raise OnnxArtifactError(
+                "External-data SHA-256 manifest has duplicate normalized paths"
+            )
+        if not _SHA256.fullmatch(digest):
+            raise OnnxArtifactError(
+                "External-data SHA-256 manifest contains an invalid digest"
+            )
+        normalized[location] = digest.lower()
+    return normalized
+
+
+def _path_components_are_plain(
+    root: Path, location: str
+) -> tuple[Path, os.stat_result]:
+    current = root
+    metadata: os.stat_result | None = None
+    for component in PurePosixPath(location).parts:
+        current = current / component
+        try:
+            metadata = current.lstat()
+        except OSError as error:
+            raise OnnxArtifactError("ONNX external-data file is unavailable") from error
+        file_attributes = getattr(metadata, "st_file_attributes", 0)
+        reparse_flag = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0)
+        is_junction = getattr(current, "is_junction", lambda: False)()
+        if (
+            stat.S_ISLNK(metadata.st_mode)
+            or is_junction
+            or bool(file_attributes & reparse_flag)
+        ):
+            raise OnnxArtifactError(
+                "ONNX external-data paths may not use links or reparse points"
+            )
+    try:
+        resolved = current.resolve(strict=True)
+        resolved.relative_to(root)
+    except (OSError, ValueError) as error:
+        raise OnnxArtifactError(
+            "ONNX external-data path escapes the model directory"
+        ) from error
+    if metadata is None:
+        raise OnnxArtifactError("ONNX external-data location is empty")
+    return resolved, metadata
+
+
+def _open_external_file(path: Path, *, expected: os.stat_result) -> BinaryIO:
+    flags = os.O_RDONLY
+    flags |= getattr(os, "O_BINARY", 0)
+    flags |= getattr(os, "O_CLOEXEC", 0)
+    flags |= getattr(os, "O_NOFOLLOW", 0)
+    try:
+        descriptor = os.open(path, flags)
+    except OSError as error:
+        raise OnnxArtifactError(
+            "ONNX external-data file could not be opened"
+        ) from error
+    try:
+        opened = os.fstat(descriptor)
+        current = path.stat(follow_symlinks=False)
+        if not stat.S_ISREG(opened.st_mode):
+            raise OnnxArtifactError("ONNX external data must be a regular file")
+        if opened.st_nlink != 1:
+            raise OnnxArtifactError("ONNX external-data hardlinks are not accepted")
+        if _stat_file_id(opened) != _stat_file_id(expected):
+            raise OnnxArtifactError("ONNX external-data path changed before opening")
+        if _stat_file_id(opened) != _stat_file_id(current):
+            raise OnnxArtifactError("ONNX external-data path changed while opening")
+        return os.fdopen(descriptor, "rb")
+    except Exception:
+        os.close(descriptor)
+        raise
+
+
+def _stat_file_id(value: os.stat_result) -> tuple[int, int, int]:
+    return value.st_dev, value.st_ino, value.st_nlink
+
+
+def _file_identity(stream: BinaryIO) -> tuple[int, int, int, int, int, int]:
+    value = os.fstat(stream.fileno())
+    return (
+        value.st_dev,
+        value.st_ino,
+        value.st_nlink,
+        value.st_size,
+        value.st_mtime_ns,
+        value.st_ctime_ns,
+    )
+
+
+def _hash_mapped_file(
+    buffer: mmap.mmap,
+    *,
+    cancellation: Any = None,
+    include_sha1: bool = False,
+) -> tuple[str, str | None]:
+    sha256 = hashlib.sha256()
+    sha1 = hashlib.sha1() if include_sha1 else None  # noqa: S324 - ONNX field format
+    view = memoryview(buffer)
+    try:
+        for start in range(0, len(view), 8 * 1024 * 1024):
+            if cancellation is not None:
+                cancellation.raise_if_cancelled()
+            block = view[start : start + 8 * 1024 * 1024]
+            try:
+                sha256.update(block)
+                if sha1 is not None:
+                    sha1.update(block)
+            finally:
+                block.release()
+    finally:
+        view.release()
+    return sha256.hexdigest(), sha1.hexdigest() if sha1 is not None else None
+
+
+@contextmanager
+def stable_external_data_files(
+    model: Any,
+    *,
+    model_path: Path,
+    expected_sha256: Mapping[str, str] | None,
+    max_bytes: int,
+    max_files: int = _MAX_EXTERNAL_FILES,
+    cancellation: Any = None,
+) -> Iterator[ExternalDataFiles]:
+    """Open, bound, hash, and map every external file referenced by a graph."""
+    references = _external_references(model)
+    locations = tuple(dict.fromkeys(item.location for item in references))
+    if not locations:
+        if _normalize_external_manifest(expected_sha256):
+            raise OnnxArtifactError(
+                "External-data SHA-256 manifest has entries not used by the graph"
+            )
+        yield ExternalDataFiles((), (), (), 0)
+        return
+    if len(locations) > max_files:
+        raise OnnxArtifactError(
+            f"ONNX graph references {len(locations)} external files; limit is {max_files}"
+        )
+    manifest = _normalize_external_manifest(expected_sha256)
+    referenced = set(locations)
+    if set(manifest) != referenced:
+        missing = len(referenced - set(manifest))
+        extra = len(set(manifest) - referenced)
+        raise OnnxArtifactError(
+            "External-data SHA-256 manifest must exactly cover graph locations "
+            f"(missing={missing}, extra={extra})"
+        )
+
+    root = model_path.parent.resolve(strict=True)
+    streams: list[BinaryIO] = []
+    buffers: list[mmap.mmap] = []
+    identities: list[tuple[int, int, int, int, int, int]] = []
+    paths: list[Path] = []
+    total_bytes = 0
+    try:
+        for location in locations:
+            if cancellation is not None:
+                cancellation.raise_if_cancelled()
+            path, expected = _path_components_are_plain(root, location)
+            stream = _open_external_file(path, expected=expected)
+            streams.append(stream)
+            identity = _file_identity(stream)
+            size = identity[3]
+            if size <= 0:
+                raise OnnxArtifactError("ONNX external-data file is empty")
+            total_bytes += size
+            if total_bytes > max_bytes:
+                raise OnnxArtifactError(
+                    f"ONNX external data exceeds the configured {max_bytes}-byte limit"
+                )
+            buffer = mmap.mmap(stream.fileno(), 0, access=mmap.ACCESS_READ)
+            buffers.append(buffer)
+            identities.append(identity)
+            paths.append(path)
+            needs_sha1 = any(
+                item.checksum is not None
+                for item in references
+                if item.location == location
+            )
+            digest, sha1 = _hash_mapped_file(
+                buffer, cancellation=cancellation, include_sha1=needs_sha1
+            )
+            if digest != manifest[location]:
+                raise OnnxArtifactError(
+                    "ONNX external-data SHA-256 does not match configuration"
+                )
+            declared_sha1 = {
+                item.checksum
+                for item in references
+                if item.location == location and item.checksum is not None
+            }
+            if len(declared_sha1) > 1 or (declared_sha1 and sha1 not in declared_sha1):
+                raise OnnxArtifactError(
+                    "ONNX external-data checksum does not match the referenced file"
+                )
+
+        sizes = dict(zip(locations, (identity[3] for identity in identities)))
+        for reference in references:
+            file_size = sizes[reference.location]
+            end = (
+                file_size
+                if reference.length is None
+                else reference.offset + reference.length
+            )
+            if reference.offset > file_size or end > file_size:
+                raise OnnxArtifactError(
+                    "ONNX external-data offset/length exceeds the referenced file"
+                )
+
+        yield ExternalDataFiles(
+            locations=locations,
+            buffers=tuple(buffers),
+            lengths=tuple(identity[3] for identity in identities),
+            total_bytes=total_bytes,
+        )
+        for stream, path, identity in zip(streams, paths, identities):
+            if _file_identity(stream) != identity:
+                raise OnnxArtifactError(
+                    "ONNX external data changed while it was being loaded"
+                )
+            try:
+                current = path.stat(follow_symlinks=False)
+            except OSError as error:
+                raise OnnxArtifactError(
+                    "ONNX external-data path changed while loading"
+                ) from error
+            if _stat_file_id(current) != identity[:3]:
+                raise OnnxArtifactError("ONNX external-data path changed while loading")
+    finally:
+        for buffer in reversed(buffers):
+            buffer.close()
+        for stream in reversed(streams):
+            stream.close()
 
 
 def _iter_tensor_protos(

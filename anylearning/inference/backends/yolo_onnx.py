@@ -28,9 +28,10 @@ from ..contracts import (
 )
 from ..runtime import BaseInferenceSession, CancellationToken, InferenceBackend
 from .onnx_safety import (
-    local_artifact_revision,
+    local_onnx_bundle_revision,
     resolve_model_path,
     select_providers,
+    stable_external_data_files,
     stable_onnx_artifact,
     validate_onnx_artifact,
 )
@@ -48,12 +49,29 @@ YoloFormat = Literal[
 ]
 
 _MAX_MODEL_BYTES = 20 * 1024**3
+_MAX_EXTERNAL_DATA_BYTES = 100 * 1024**3
 _MAX_IMAGE_PIXELS = 100_000_000
 _MAX_OUTPUT_ELEMENTS = 25_000_000
 _MAX_RAW_PREDICTIONS = 1_000_000
 _MAX_NMS_CANDIDATES = 30_000
 _MAX_COORDINATE_MAGNITUDE = 1_000_000.0
 _MAX_POLYGON_POINTS = 4_096
+
+
+class _FrozenStringMap(dict[str, str]):
+    """Serializable dict whose validated integrity entries cannot be changed."""
+
+    @staticmethod
+    def _immutable(*_args: Any, **_kwargs: Any) -> None:
+        raise TypeError("Validated ONNX integrity metadata is immutable")
+
+    __setitem__ = _immutable
+    __delitem__ = _immutable
+    clear = _immutable
+    pop = _immutable
+    popitem = _immutable
+    setdefault = _immutable
+    update = _immutable
 
 
 def _output_selection_error(kind: str, candidates: Sequence[str]) -> str:
@@ -106,6 +124,7 @@ class YoloOnnxConfig(BaseModel):
     config_file: Path | None = None
     model_revision: str | None = Field(default=None, min_length=1, max_length=512)
     sha256: str | None = Field(default=None, pattern=r"^[0-9a-fA-F]{64}$")
+    external_data_sha256: dict[str, str] = Field(default_factory=dict)
     task: Literal["detection", "instance_segmentation"] = "detection"
     format: YoloFormat = "auto"
     end_to_end: bool | None = None
@@ -118,6 +137,11 @@ class YoloOnnxConfig(BaseModel):
     mask_threshold: float = Field(default=0.5, ge=0, le=1, allow_inf_nan=False)
     max_detections: int = Field(default=300, ge=1, le=1_000)
     max_model_bytes: int = Field(default=_MAX_MODEL_BYTES, ge=1, le=40 * 1024**3)
+    max_external_data_bytes: int = Field(
+        default=_MAX_EXTERNAL_DATA_BYTES,
+        ge=1,
+        le=1024 * 1024**3,
+    )
     max_image_pixels: int = Field(default=_MAX_IMAGE_PIXELS, ge=1, le=400_000_000)
     max_output_elements: int = Field(default=_MAX_OUTPUT_ELEMENTS, ge=1, le=100_000_000)
     max_raw_predictions: int = Field(default=_MAX_RAW_PREDICTIONS, ge=1, le=5_000_000)
@@ -177,6 +201,24 @@ class YoloOnnxConfig(BaseModel):
             raise ValueError("providers must contain between 1 and 16 names")
         return value
 
+    @field_validator("external_data_sha256")
+    @classmethod
+    def validate_external_data_sha256(cls, value: dict[str, str]) -> dict[str, str]:
+        if len(value) > 1_024:
+            raise ValueError("external_data_sha256 may contain at most 1024 files")
+        for location, digest in value.items():
+            if not location or len(location.encode("utf-8")) > 4_096:
+                raise ValueError("external_data_sha256 contains an invalid path")
+            if (
+                not isinstance(digest, str)
+                or len(digest) != 64
+                or any(
+                    character not in "0123456789abcdefABCDEF" for character in digest
+                )
+            ):
+                raise ValueError("external_data_sha256 values must be SHA-256")
+        return _FrozenStringMap(value)
+
     @model_validator(mode="after")
     def validate_outputs(self) -> Self:
         if self.task == "detection" and self.prototype_output is not None:
@@ -195,10 +237,11 @@ class YoloOnnxConfig(BaseModel):
 
     @property
     def revision(self) -> str:
-        return local_artifact_revision(
+        return local_onnx_bundle_revision(
             self.resolved_model_path,
             explicit_revision=self.model_revision,
             sha256=self.sha256,
+            external_data_sha256=self.external_data_sha256,
         )
 
     @property
@@ -928,13 +971,24 @@ class YoloOnnxSession(BaseInferenceSession):
             cancellation=cancellation,
         ) as (artifact, runtime_path, _digest):
             model = validate_onnx_artifact(
-                artifact, max_bytes=self.config.max_model_bytes
+                artifact,
+                max_bytes=self.config.max_model_bytes,
+                allow_external_data=True,
             )
             _validate_graph_output_budget(model, self.config)
             cancellation.raise_if_cancelled()
-            session = onnxruntime.InferenceSession(
-                runtime_path, sess_options=options, providers=list(providers)
-            )
+            with stable_external_data_files(
+                model,
+                model_path=path,
+                expected_sha256=self.config.external_data_sha256,
+                max_bytes=self.config.max_external_data_bytes,
+                cancellation=cancellation,
+            ) as external_data:
+                if external_data.locations:
+                    external_data.add_to_session_options(options)
+                session = onnxruntime.InferenceSession(
+                    runtime_path, sess_options=options, providers=list(providers)
+                )
         inputs = session.get_inputs()
         if len(inputs) != 1:
             raise ValueError(

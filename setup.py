@@ -73,7 +73,10 @@ def get_install_requires():
         "catboost>=1.2.8,<2",
         "scikit-learn>=1.8,<2",
         # --- ML runtime (pinned, see docstring) -------------------------
-        "onnxruntime>=1.28,<2",
+        # 1.29 adds zero-copy buffers for external-data files. The inference
+        # boundary uses those buffers to load multi-GB ONNX bundles without a
+        # second disk copy or reading the full tensor payload into Python RAM.
+        "onnxruntime>=1.29,<2",
         "torch==2.11.0",
         "torchvision==0.26.0",
         # Required by torch.onnx.export: from torch 2.6 the default exporter is

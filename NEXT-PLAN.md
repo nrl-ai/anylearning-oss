@@ -206,8 +206,9 @@ data only inside an integrity-addressed bundle manifest. The manifest enumerates
 every relative file path, byte size, and SHA-256; downloads land in a private
 staging directory and become visible atomically only after all files verify.
 Absolute paths, parent traversal, links, undeclared files, and arbitrary external
-references remain rejected. The generic user-supplied YOLO backend stays
-single-file until this shared bundle loader exists.
+references remain rejected. The shared zero-copy bundle loader and generic YOLO
+wiring are implemented; their Linux, Windows, and macOS real-model gates remain
+mandatory for every runtime/provider change.
 
 | Order | Model capability                                                          | Distribution policy                                                      | Reason                                                            |
 | ----- | ------------------------------------------------------------------------- | ------------------------------------------------------------------------ | ----------------------------------------------------------------- |
@@ -386,6 +387,10 @@ and source gates in `docs/onnx_model_sources.md`.
 I10. Add OWLv2, Grounding DINO, RTMDet OBB, and RapidOCR only from validated ONNX
 artifacts; keep framework-native runtimes out of `anylearning.inference`.
 I11. Verify custom exported models and packaged runtime behavior.
+I12. Keep the shared external-data loader compatible with multi-gigabyte ONNX
+bundles: exact SHA-256 coverage, bounded relative references, no links, zero-copy
+read-only mappings, bundle-bound model revisions, and real-model validation on
+Linux, Windows, and macOS.
 
 ### P0: Workflow correctness and performance
 

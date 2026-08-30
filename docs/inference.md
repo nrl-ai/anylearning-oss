@@ -47,6 +47,30 @@ result = session.predict(request, rgb_image)
 session.unload()
 ```
 
+Models whose tensors are stored outside the graph add an exact digest map. Each
+key is the relative `location` recorded by the graph; the map must cover every
+referenced file and may not contain extras:
+
+```python
+config.update(
+    {
+        "model_path": "/models/large-detector/model.onnx",
+        "sha256": "<graph SHA-256>",
+        "external_data_sha256": {
+            "weights-0001.bin": "<file SHA-256>",
+            "weights-0002.bin": "<file SHA-256>",
+        },
+        "max_external_data_bytes": 100 * 1024**3,
+    }
+)
+```
+
+External files are read-only memory mapped and supplied to ONNX Runtime through
+its external-initializer buffer API. This avoids a second multi-gigabyte disk
+copy and avoids reading the complete bundle into Python memory. The graph and
+all external digests contribute to the model revision, so embedding and result
+caches cannot alias two bundles with different tensor data.
+
 `format="auto"` accepts a raw tensor only when its channel count and orientation
 identify one layout unambiguously. For actionable errors and stable deployment,
 production configuration should set the exact model family explicitly. The
@@ -78,7 +102,8 @@ more important than reference parity.
 at least twice through the public inference contract. It fails expectations or
 non-repeatable shapes, and writes `summary.json`, every contract result,
 per-stage timings, model/image SHA-256 values, annotated PNGs, and a local HTML
-visual report beneath `validation-results/`. See
+visual report beneath `validation-results/`. External bundles additionally log
+each tensor file's relative location, bytes, and verified digest. See
 `tests/fixtures/inference/real_models/README.md` for the manifest and opt-in
 pytest workflow. Weights remain outside the repository.
 
@@ -97,11 +122,15 @@ The backend validates configuration and model size before parsing, verifies a
 configured SHA-256, and binds graph parsing plus runtime loading to the same
 opened artifact. On platforms without stable descriptor paths, it uses a private
 temporary snapshot and removes it immediately after session construction. It
-rejects external-data tensor references at every nesting level and limits graph
-messages, nesting, inputs, outputs, nodes, decoded image pixels, runtime output
-elements, box-coordinate magnitude, mask polygon complexity, raw predictions,
-pre-NMS candidates, and final detections. Provider fallback is explicit in
-result warnings and session capabilities.
+accepts external-data tensor references only with exact SHA-256 coverage and
+ONNX Runtime 1.29 or newer. Relative-path containment, metadata whitelisting,
+offset/length bounds, regular-file checks, symlink/hardlink rejection, secure
+post-open identity checks, and a total byte/file ceiling are enforced before
+runtime construction. Graph messages, nesting, inputs, outputs, nodes, decoded
+image pixels, runtime output elements, box-coordinate magnitude, mask polygon
+complexity, raw predictions, pre-NMS candidates, and final detections are also
+bounded. Provider fallback is explicit in result warnings and session
+capabilities.
 
 ONNX execution is cooperatively cancellable before and after the runtime call.
 An in-progress provider call is not preemptible in-process; the server profile

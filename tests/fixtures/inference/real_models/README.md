@@ -58,6 +58,11 @@ ANYLEARNING_REAL_MODEL_MANIFEST=path/to/manifest.json pytest -q tests/e2e/test_r
 
 Each run creates a new directory under `validation-results/` with `summary.json`,
 all repeated contract results, annotated PNGs, timing and memory metadata, model
-and image SHA-256 values, and a local `index.html` visual report. The directory
-is git-ignored so multi-gigabyte model assets and local evidence cannot be
-committed accidentally.
+and image SHA-256 values, external-file sizes/digests when present, and a local
+`index.html` visual report. The directory is git-ignored so multi-gigabyte model
+assets and local evidence cannot be committed accidentally.
+
+The hosted real-model workflow also derives an external-data form of the same
+official ONNX model using `scripts/prepare_external_onnx_validation.py`. It runs
+both forms through identical golden detections and lifecycle cycles on Linux,
+Windows, and macOS, and uploads the visual/machine-readable reports per OS.
