@@ -1,3 +1,5 @@
+import gc
+import weakref
 from concurrent.futures import CancelledError
 from threading import Event
 from typing import Any
@@ -222,6 +224,30 @@ def test_backend_failure_does_not_kill_worker_or_block_retry():
     session.unload()
     assert queue.progress.failed == 1
     assert queue.progress.succeeded == 1
+
+
+def test_idle_queue_releases_successful_and_failed_image_objects():
+    session = FailingOnceSession()
+    session.load()
+    queue = InferenceQueue(session, max_pending=2)
+    failed_image = np.zeros((8, 8, 3), dtype=np.uint8)
+    successful_image = np.zeros((8, 8, 3), dtype=np.uint8)
+    failed_reference = weakref.ref(failed_image)
+    successful_reference = weakref.ref(successful_image)
+    failed = queue.submit(_request(1), failed_image)
+    succeeded = queue.submit(_request(2), successful_image)
+    del failed_image, successful_image
+
+    with pytest.raises(RuntimeError, match="fixture inference failed"):
+        failed.result(1)
+    succeeded.result(1)
+    del failed, succeeded
+    gc.collect()
+
+    assert failed_reference() is None
+    assert successful_reference() is None
+    queue.close()
+    session.unload()
 
 
 def _real_constant_yolo_model(path) -> None:

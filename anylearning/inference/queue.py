@@ -80,10 +80,6 @@ class InferenceJob:
         self._future = future
         self._token = token
 
-    @property
-    def future(self) -> Future[InferenceResult]:
-        return self._future
-
     def cancel(self, reason: str = "inference job cancelled") -> bool:
         token_changed = self._token.cancel(reason)
         future_changed = self._future.cancel()
@@ -118,12 +114,26 @@ class InferenceQueue:
         progress: ProgressCallback | None = None,
         thread_name: str | None = None,
     ) -> None:
-        if not 1 <= max_pending <= _MAX_PENDING_ITEMS:
+        if (
+            not isinstance(max_pending, int)
+            or isinstance(max_pending, bool)
+            or not 1 <= max_pending <= _MAX_PENDING_ITEMS
+        ):
             raise ValueError(f"max_pending must be between 1 and {_MAX_PENDING_ITEMS}")
-        if max_image_bytes < 1:
+        if (
+            not isinstance(max_image_bytes, int)
+            or isinstance(max_image_bytes, bool)
+            or max_image_bytes < 1
+        ):
             raise ValueError("max_image_bytes must be positive")
-        if max_pending_bytes < max_image_bytes:
+        if (
+            not isinstance(max_pending_bytes, int)
+            or isinstance(max_pending_bytes, bool)
+            or max_pending_bytes < max_image_bytes
+        ):
             raise ValueError("max_pending_bytes must be at least max_image_bytes")
+        if progress is not None and not callable(progress):
+            raise TypeError("progress must be callable")
         if session.state is not SessionState.READY:
             raise ValueError("Inference queue requires a ready session")
 
@@ -132,7 +142,10 @@ class InferenceQueue:
         self._max_image_bytes = max_image_bytes
         self._max_pending_bytes = max_pending_bytes
         self._progress_callback = progress
-        self._queue: Queue[_QueueEntry | object] = Queue(maxsize=max_pending)
+        # The extra slot guarantees shutdown can enqueue its sentinel without
+        # waiting behind a backend that may already be stuck in inference. The
+        # explicit admission check still caps retained request entries exactly.
+        self._queue: Queue[_QueueEntry | object] = Queue(maxsize=max_pending + 1)
         self._lock = RLock()
         self._entries: dict[str, _QueueEntry] = {}
         self._pending_bytes = 0
@@ -145,7 +158,7 @@ class InferenceQueue:
         self._stop_enqueued = False
         self._worker = Thread(
             target=self._run,
-            name=thread_name or f"inference-{session.capabilities.model_id}",
+            name=thread_name or "anylearning-inference",
             daemon=True,
         )
         self._worker.start()
@@ -245,6 +258,9 @@ class InferenceQueue:
                 self._execute(queued)
             finally:
                 self._queue.task_done()
+                # A thread blocked on its next Queue.get otherwise retains the
+                # prior entry (and image) in this loop local indefinitely.
+                del queued
 
     def _execute(self, entry: _QueueEntry) -> None:
         if not entry.future.set_running_or_notify_cancel():
@@ -274,7 +290,9 @@ class InferenceQueue:
 
         snapshot = self._finish(entry, cancelled=cancelled, succeeded=error is None)
         if error is not None:
-            entry.future.set_exception(error)
+            # Future retains its exception. Drop the backend traceback so that
+            # it cannot retain this frame, the queue entry, and its image.
+            entry.future.set_exception(error.with_traceback(None))
         elif result is None:  # pragma: no cover - defensive invariant
             entry.future.set_exception(RuntimeError("Inference returned no result"))
         else:
