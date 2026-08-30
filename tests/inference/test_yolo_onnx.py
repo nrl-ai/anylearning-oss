@@ -558,6 +558,35 @@ def test_external_data_size_limit_is_enforced_before_runtime_load(tmp_path):
         session.load()
 
 
+def test_external_data_declared_length_must_match_tensor_shape(tmp_path):
+    path = tmp_path / "external.onnx"
+    _external_prediction_model(path, np.zeros((1, 6, 1), dtype=np.float32))
+    model = onnx.load_model(path, load_external_data=False)
+    length = next(
+        entry
+        for entry in model.graph.initializer[0].external_data
+        if entry.key == "length"
+    )
+    length.value = "4"
+    path.write_bytes(model.SerializeToString())
+    data = tmp_path / "weights.bin"
+    session = YoloOnnxBackend().create_session(
+        {
+            "name": "external-fixture",
+            "model_path": path,
+            "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+            "external_data_sha256": {
+                "weights.bin": hashlib.sha256(data.read_bytes()).hexdigest()
+            },
+            "format": "yolov8",
+            "class_names": ["cat", "dog"],
+        }
+    )
+
+    with pytest.raises(OnnxArtifactError, match="does not match tensor dimensions"):
+        session.load()
+
+
 @pytest.mark.skipif(not hasattr(__import__("os"), "symlink"), reason="no symlinks")
 def test_external_data_symlink_is_rejected(tmp_path):
     path = tmp_path / "external.onnx"

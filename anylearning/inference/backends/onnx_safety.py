@@ -189,9 +189,12 @@ class ExternalDataFiles:
             if tensor.data_location != onnx.TensorProto.EXTERNAL:
                 continue
             reference = _external_reference(tensor)
-            length = reference.length
-            if length is None:
-                length = _tensor_raw_data_size(tensor)
+            expected_length = _tensor_raw_data_size(tensor)
+            length = expected_length if reference.length is None else reference.length
+            if length != expected_length:
+                raise OnnxArtifactError(
+                    "ONNX external-data length does not match tensor dimensions"
+                )
             if length > _MAX_HYDRATED_TENSOR_BYTES:
                 continue
             if hydrated_bytes + length > _MAX_HYDRATED_EXTERNAL_BYTES:
