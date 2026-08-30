@@ -20,8 +20,9 @@
   "instance-segmentation": "6. Instance Segmentation",
   "keypoint-detection": "7. Keypoint Detection",
   "auto-labeling": "8. Auto Labeling",
-  "tabular-ai": "9. Tabular AI",
-  "text-llm": "10. Text AI (NLP)",
+  "samexporter": "9. SAMExporter and ONNX",
+  "tabular-ai": "10. Tabular AI",
+  "text-llm": "11. Text AI (NLP)",
 
   "Blog": {
     "type": "separator",
