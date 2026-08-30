@@ -32,7 +32,9 @@
         "minimum_shapes": 1,
         "maximum_shapes": 1,
         "minimum_label_counts": { "AUTOLABEL_OBJECT": 1 },
-        "detections": [{ "label": "AUTOLABEL_OBJECT", "box": [133, 223, 308, 537], "minimum_iou": 0.97 }]
+        "detections": [
+          { "label": "AUTOLABEL_OBJECT", "box": [133, 223, 308, 537], "minimum_iou": 0.97 }
+        ]
       }
     },
     {
@@ -43,7 +45,9 @@
         "minimum_shapes": 1,
         "maximum_shapes": 1,
         "minimum_label_counts": { "AUTOLABEL_OBJECT": 1 },
-        "detections": [{ "label": "AUTOLABEL_OBJECT", "box": [133, 223, 308, 537], "minimum_iou": 0.97 }]
+        "detections": [
+          { "label": "AUTOLABEL_OBJECT", "box": [133, 223, 308, 537], "minimum_iou": 0.97 }
+        ]
       }
     },
     {
@@ -54,7 +58,9 @@
         "minimum_shapes": 1,
         "maximum_shapes": 1,
         "minimum_label_counts": { "AUTOLABEL_OBJECT": 1 },
-        "detections": [{ "label": "AUTOLABEL_OBJECT", "box": [35, 133, 352, 308], "minimum_iou": 0.97 }]
+        "detections": [
+          { "label": "AUTOLABEL_OBJECT", "box": [35, 133, 352, 308], "minimum_iou": 0.97 }
+        ]
       }
     },
     {
@@ -65,7 +71,9 @@
         "minimum_shapes": 1,
         "maximum_shapes": 1,
         "minimum_label_counts": { "AUTOLABEL_OBJECT": 1 },
-        "detections": [{ "label": "AUTOLABEL_OBJECT", "box": [35, 133, 353, 307], "minimum_iou": 0.97 }]
+        "detections": [
+          { "label": "AUTOLABEL_OBJECT", "box": [35, 133, 353, 307], "minimum_iou": 0.97 }
+        ]
       }
     }
   ]
