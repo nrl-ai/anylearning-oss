@@ -21,6 +21,7 @@ _SENSITIVE_KEY = re.compile(r"(?:password|passwd|secret|token|api.?key)", re.I)
 # their own model-format, resource-bound, and license review.
 _SERVER_BACKENDS = frozenset(
     {
+        "detector_sam",
         "dfine_onnx",
         "efficient_sam",
         "efficientvit_sam",
@@ -29,6 +30,10 @@ _SERVER_BACKENDS = frozenset(
         "segment_anything",
         "yolo_onnx",
     }
+)
+_SERVER_DETECTOR_BACKENDS = frozenset({"dfine_onnx", "rfdetr_onnx", "yolo_onnx"})
+_SERVER_SEGMENTER_BACKENDS = frozenset(
+    {"efficient_sam", "efficientvit_sam", "sam3", "segment_anything"}
 )
 
 
@@ -54,6 +59,24 @@ class ServerModelDefinition(BaseModel):
     def reject_sensitive_configuration(cls, value: dict[str, Any]) -> dict[str, Any]:
         _check_configuration(value)
         return value
+
+    @model_validator(mode="after")
+    def validate_pipeline_backends(self) -> Self:
+        if self.backend != "detector_sam":
+            return self
+        detector = self.config.get("detector")
+        segmenter = self.config.get("segmenter")
+        if not isinstance(detector, dict) or not isinstance(segmenter, dict):
+            raise ValueError(
+                "detector_sam server models require detector and segmenter"
+            )
+        if detector.get("backend") not in _SERVER_DETECTOR_BACKENDS:
+            raise ValueError("detector_sam detector is not approved for public serving")
+        if segmenter.get("backend") not in _SERVER_SEGMENTER_BACKENDS:
+            raise ValueError(
+                "detector_sam segmenter is not approved for public serving"
+            )
+        return self
 
 
 class ServerModelManifest(BaseModel):

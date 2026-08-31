@@ -86,6 +86,7 @@ def test_default_registry_keeps_sam_lazy():
     registry = create_default_registry()
 
     assert registry.backend_ids() == (
+        "detector_sam",
         "dfine_onnx",
         "efficient_sam",
         "efficientvit_sam",
@@ -94,6 +95,7 @@ def test_default_registry_keeps_sam_lazy():
         "segment_anything",
         "yolo_onnx",
     )
+    assert "detector_sam" not in registry._backends
     assert "dfine_onnx" not in registry._backends
     assert "efficient_sam" not in registry._backends
     assert "efficientvit_sam" not in registry._backends
@@ -110,6 +112,7 @@ import sys
 sys.modules['yaml'] = None
 sys.modules['loguru'] = None
 import anylearning.inference.backends.sam
+import anylearning.inference.backends.detector_sam
 import anylearning.inference.backends.efficient_sam
 import anylearning.inference.backends.efficientvit_sam
 """

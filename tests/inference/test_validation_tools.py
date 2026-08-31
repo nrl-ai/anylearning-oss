@@ -1,6 +1,7 @@
 import hashlib
 import importlib.util
 import json
+import os
 import stat
 import zipfile
 from pathlib import Path
@@ -11,10 +12,18 @@ import pytest
 from onnx import TensorProto, helper, numpy_helper
 from PIL import Image
 
-from anylearning.inference import InferenceRequest, InferenceResult, TextPrompt
+from anylearning.inference import (
+    InferenceRequest,
+    InferenceResult,
+    InferenceShape,
+    Point,
+    ShapeType,
+    TextPrompt,
+)
 from anylearning.inference.backends.yolo_onnx import YoloOnnxBackend
 from anylearning.inference.validation import (
     ValidationTextPrompt,
+    _caption_shape_indexes,
     _lifecycle_rss_metrics,
     _model_artifact_details,
     _prediction_digest,
@@ -23,6 +32,15 @@ from anylearning.inference.validation import (
 )
 
 _ROOT = Path(__file__).resolve().parents[2]
+
+
+def _assert_output_permissions(path: Path) -> None:
+    mode = stat.S_IMODE(path.stat().st_mode)
+    assert mode & stat.S_IRUSR
+    assert mode & stat.S_IWUSR
+    assert not mode & stat.S_IXUSR
+    if os.name != "nt":
+        assert mode == 0o644
 
 
 def test_lifecycle_rss_metrics_separate_allocator_warmup_from_growth():
@@ -549,7 +567,7 @@ def test_efficientvit_decoder_transform_is_deterministic_and_runnable(tmp_path):
     assert first.read_bytes() == second.read_bytes()
     assert first_report["output_sha256"] == second_report["output_sha256"]
     assert first_report["source_sha256"] == source_digest
-    assert first.stat().st_mode & 0o777 == 0o644
+    _assert_output_permissions(first)
     prepared = onnx.load_model(first, load_external_data=False)
     assert [
         (item.name, item.type.tensor_type.elem_type) for item in prepared.graph.output
@@ -684,7 +702,7 @@ def test_sam2_encoder_transform_is_deterministic_strict_and_runnable(tmp_path, f
     assert first_report["output_sha256"] == second_report["output_sha256"]
     assert first_report["source_sha256"] == source_digest
     assert first_report["removed_initializers"] == ["unused"]
-    assert first.stat().st_mode & 0o777 == 0o644
+    _assert_output_permissions(first)
     prepared = onnx.load_model(first, load_external_data=False)
     assert {item.key: item.value for item in prepared.metadata_props} == {
         "anylearning.family": family,
@@ -874,6 +892,7 @@ def test_all_committed_real_model_manifests_are_schema_valid():
     for path in manifests:
         manifest = load_validation_manifest(path)
         assert manifest.provenance.source_revision
+        assert all(item.source_revision for item in manifest.component_provenance)
         assert manifest.runs >= 2
         assert manifest.lifecycle_cycles >= 2
 
@@ -899,6 +918,27 @@ def test_prediction_digest_ignores_transport_identity_and_timings():
 
     assert _prediction_digest(equivalent) == _prediction_digest(result)
     assert _prediction_digest(changed) != _prediction_digest(result)
+
+
+def test_visual_report_captions_only_largest_shape_in_each_instance_group():
+    shapes = (
+        InferenceShape(
+            type=ShapeType.POLYGON,
+            points=(Point(x=0, y=0), Point(x=1, y=0), Point(x=1, y=1)),
+            group_id=7,
+        ),
+        InferenceShape(
+            type=ShapeType.POLYGON,
+            points=(Point(x=0, y=0), Point(x=5, y=0), Point(x=5, y=5)),
+            group_id=7,
+        ),
+        InferenceShape(
+            type=ShapeType.RECTANGLE,
+            points=(Point(x=10, y=10), Point(x=12, y=12)),
+        ),
+    )
+
+    assert _caption_shape_indexes(shapes) == {1, 2}
 
 
 def test_external_validation_converter_produces_loadable_real_onnx_bundle(tmp_path):
@@ -997,3 +1037,45 @@ def test_validation_evidence_hashes_sam3_graph_triplet_and_external_data(tmp_pat
     assert details["graphs"][0]["external_files"][0]["location"] == (
         "image_encoder.onnx.data"
     )
+
+
+def test_validation_evidence_hashes_composite_child_artifacts(tmp_path):
+    detector = tmp_path / "detector.onnx"
+    encoder = tmp_path / "encoder.onnx"
+    decoder = tmp_path / "decoder.onnx"
+    detector.write_bytes(b"detector")
+    encoder.write_bytes(b"encoder")
+    decoder.write_bytes(b"decoder")
+    config = {
+        "detector": {
+            "backend": "yolo_onnx",
+            "config": {
+                "model_path": detector.name,
+                "sha256": hashlib.sha256(detector.read_bytes()).hexdigest(),
+            },
+        },
+        "segmenter": {
+            "backend": "segment_anything",
+            "config": {
+                "encoder_model_path": encoder.name,
+                "encoder_sha256": hashlib.sha256(encoder.read_bytes()).hexdigest(),
+                "decoder_model_path": decoder.name,
+                "decoder_sha256": hashlib.sha256(decoder.read_bytes()).hexdigest(),
+            },
+        },
+    }
+
+    details = _model_artifact_details(config, tmp_path)
+
+    assert details["bytes"] == sum(
+        path.stat().st_size for path in (detector, encoder, decoder)
+    )
+    assert [component["role"] for component in details["components"]] == [
+        "detector",
+        "segmenter",
+    ]
+    assert details["components"][0]["filename"] == detector.name
+    assert [graph["role"] for graph in details["components"][1]["graphs"]] == [
+        "encoder",
+        "decoder",
+    ]

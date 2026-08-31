@@ -22,6 +22,19 @@ process; they are not runtime dependencies of `anylearning.inference`.
 | RTMDet OBB                                | [MMDetection RTMDet deployment](https://github.com/open-mmlab/mmdetection/blob/main/configs/rtmdet/README.md) and [MMDeploy](https://github.com/open-mmlab/mmdeploy)                                                                                                                                                                                                                                                                    | Official static ONNX Runtime deployment configuration                                                                                                                                                                                                                                                                                | Add only after oriented-box editing and export are correct. Reuse documented end-to-end ONNX outputs, not MMDetection/MMDeploy at inference time.                                                                                                                                                                                                                        |
 | RapidOCR PP-OCR                           | [RapidOCR](https://github.com/RapidAI/RapidOCR), [official model manifest](https://github.com/RapidAI/RapidOCR/blob/main/python/rapidocr/default_models.yaml)                                                                                                                                                                                                                                                                           | Official detector/classifier/recognizer ONNX URLs with SHA-256 values                                                                                                                                                                                                                                                                | The manifest is a strong integrity source. Build a three-stage ONNX pipeline, but keep assets download-only until the Baidu-owned weight license is independently recorded; do not mirror them to Hugging Face yet.                                                                                                                                                      |
 
+### Composed detector-to-SAM refinement
+
+The refinement workflow adds no model format and copies no external code. It
+combines the already reviewed detector and promptable-segmentation ONNX
+adapters. Its encode-once flow follows the official SAM
+[`SamPredictor`](https://github.com/facebookresearch/segment-anything/blob/main/segment_anything/predictor.py),
+which computes an image embedding in `set_image` and then accepts repeated box
+prompts. The real validation fixture combines the official Apache-2.0
+[YOLOX-S ONNX release](https://github.com/Megvii-BaseDetection/YOLOX/releases/tag/0.1.1rc0)
+with the Apache-2.0 [MobileSAM](https://github.com/ChaoningZhang/MobileSAM)
+encoder/decoder pair. Both component revisions, licenses, URLs, and graph
+digests remain independently recorded.
+
 ## Reuse rules
 
 1. Record immutable source, exporter, checkpoint, tokenizer/config, and dataset
