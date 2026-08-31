@@ -1,0 +1,79 @@
+{
+  "name": "official-efficientvit-sam-xl1-dog-aspect-ratios",
+  "backend": "efficientvit_sam",
+  "provenance": {
+    "source_url": "https://github.com/mit-han-lab/efficientvit/tree/de7d7733cc0329f391b33f1f459271562ec27bd5/applications/efficientvit_sam",
+    "artifact_url": "https://huggingface.co/mit-han-lab/efficientvit-sam/tree/a2f0c5929196a13ef1ffc9338d3f9e482e1e0e68/onnx",
+    "source_revision": "de7d7733cc0329f391b33f1f459271562ec27bd5",
+    "code_license": "Apache-2.0",
+    "artifact_license": "Apache-2.0 official EfficientViT-SAM ONNX pair with deterministic data-only decoder output transform",
+    "license_url": "https://github.com/mit-han-lab/efficientvit/blob/de7d7733cc0329f391b33f1f459271562ec27bd5/LICENSE"
+  },
+  "config": {
+    "name": "official-efficientvit-sam-xl1",
+    "encoder_model_path": "efficientvit_sam_xl1_encoder.onnx",
+    "decoder_model_path": "efficientvit_sam_xl1_decoder_multimask.onnx",
+    "encoder_sha256": "eb281937fbd06645fb3cafc09c34c6b729dc7167a33a73356b9d69af071e5b04",
+    "decoder_sha256": "e2dae95e7e91bdd3c0d52133c9e12d3a420eb3a035204e8d92499380ae1d22b9",
+    "providers": ["CPUExecutionProvider"],
+    "intra_op_threads": 1,
+    "inter_op_threads": 1
+  },
+  "runs": 3,
+  "lifecycle_cycles": 3,
+  "maximum_steady_state_rss_growth_bytes": 1073741824,
+  "images": [
+    {
+      "path": "dog.jpg",
+      "prompts": [{ "type": "point", "point": [240, 330], "foreground": true }],
+      "output_shape": "polygon",
+      "expected": {
+        "minimum_shapes": 1,
+        "maximum_shapes": 1,
+        "minimum_label_counts": { "AUTOLABEL_OBJECT": 1 },
+        "detections": [
+          { "label": "AUTOLABEL_OBJECT", "box": [133, 224, 308, 538], "minimum_iou": 0.97 }
+        ]
+      }
+    },
+    {
+      "path": "dog.jpg",
+      "prompts": [{ "type": "box", "box": [125, 215, 315, 550] }],
+      "output_shape": "polygon",
+      "expected": {
+        "minimum_shapes": 1,
+        "maximum_shapes": 1,
+        "minimum_label_counts": { "AUTOLABEL_OBJECT": 1 },
+        "detections": [
+          { "label": "AUTOLABEL_OBJECT", "box": [133, 223, 308, 538], "minimum_iou": 0.97 }
+        ]
+      }
+    },
+    {
+      "path": "dog_portrait.png",
+      "prompts": [{ "type": "point", "point": [245, 240], "foreground": true }],
+      "output_shape": "polygon",
+      "expected": {
+        "minimum_shapes": 1,
+        "maximum_shapes": 1,
+        "minimum_label_counts": { "AUTOLABEL_OBJECT": 1 },
+        "detections": [
+          { "label": "AUTOLABEL_OBJECT", "box": [36, 134, 352, 307], "minimum_iou": 0.97 }
+        ]
+      }
+    },
+    {
+      "path": "dog_portrait.png",
+      "prompts": [{ "type": "box", "box": [25, 125, 360, 315] }],
+      "output_shape": "polygon",
+      "expected": {
+        "minimum_shapes": 1,
+        "maximum_shapes": 1,
+        "minimum_label_counts": { "AUTOLABEL_OBJECT": 1 },
+        "detections": [
+          { "label": "AUTOLABEL_OBJECT", "box": [36, 134, 352, 307], "minimum_iou": 0.97 }
+        ]
+      }
+    }
+  ]
+}

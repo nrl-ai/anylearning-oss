@@ -87,11 +87,13 @@ def test_default_registry_keeps_sam_lazy():
 
     assert registry.backend_ids() == (
         "efficient_sam",
+        "efficientvit_sam",
         "sam3",
         "segment_anything",
         "yolo_onnx",
     )
     assert "efficient_sam" not in registry._backends
+    assert "efficientvit_sam" not in registry._backends
     assert "sam3" not in registry._backends
     assert "segment_anything" not in registry._backends
     assert "yolo_onnx" not in registry._backends
@@ -105,6 +107,7 @@ sys.modules['yaml'] = None
 sys.modules['loguru'] = None
 import anylearning.inference.backends.sam
 import anylearning.inference.backends.efficient_sam
+import anylearning.inference.backends.efficientvit_sam
 """
     completed = subprocess.run(
         [sys.executable, "-c", script],

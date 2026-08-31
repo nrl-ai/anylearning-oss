@@ -292,11 +292,10 @@ Implementation status (2026-08-31):
       authenticated-server matrix on Linux, Windows, and macOS. All 36 annotated
       image pairs were pixel-identical between transports, and normalized model
       output matched across operating systems.
-- [ ] Complete exact-head hosted graph/load/inference coverage for SAM2.1
-      Small/Base+/Large without turning their large assets into per-PR downloads.
-      All sizes have checksum-pinned manifests and scheduled jobs; local real
-      in-process and password-authenticated HTTP validation passes for Tiny,
-      Small, Base+, and Large. The exact-head hosted matrix remains the merge gate.
+- [x] SAM2.1 Tiny/Small/Base+/Large passed the exact-head hosted in-process and
+      authenticated-server matrix on Linux, Windows, and macOS. All 24 jobs and
+      96 retained images passed with identical inference-semantic prediction
+      sequences and decoded pixels across transports and operating systems.
 - [ ] Re-export or optimize the SAM2 and SAM2.1 bundles so their ONNX metadata no
       longer reports stale convolution output shapes or unused initializers. Prove
       exact result parity before replacing the pinned artifacts; do not hide
@@ -308,6 +307,13 @@ Implementation status (2026-08-31):
       multi-gigabyte unload reclamation. Real local in-process and authenticated
       HTTP validation passes with retained visual reports. Its Linux, Windows,
       and macOS job is scheduled/manual rather than a per-PR download.
+- [ ] EfficientViT-SAM has a distinct `efficientvit_sam` ONNX backend with
+      checksum-gated deterministic decoder preparation, native multimask policy,
+      512/1024 encoder profiles, 1024-frame prompt scaling, point-only padding,
+      resource bounds, embedding cache, and authenticated-server support. L0
+      native-checkpoint parity and local direct/server landscape/portrait visual
+      validation pass; Linux, Windows, and macOS hosted evidence plus the larger
+      variant matrix remain required before this item is complete.
 
 Every merge gate uses real ONNX graphs and real images, never mocked model
 outputs. It records graph and image SHA-256 values, cold/warm latency, peak RSS,

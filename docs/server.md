@@ -35,8 +35,9 @@ Give it a bounded startup manifest instead:
 Relative artifact paths are resolved from the manifest. The manifest must be a
 regular non-link JSON file and cannot contain credential-like fields. Public
 serving permits the safety-checked `yolo_onnx`, `segment_anything`,
-`efficient_sam`, and `sam3` backends. Promptable pairs use separate encoder and
-decoder paths plus `encoder_sha256` and `decoder_sha256`; each graph may also
+`efficient_sam`, `efficientvit_sam`, and `sam3` backends. Promptable pairs use
+separate encoder and decoder paths plus `encoder_sha256` and `decoder_sha256`;
+each graph may also
 declare an exact external-data digest map. SAM3 instead requires
 `image_encoder_model_path`, `language_encoder_model_path`, and
 `decoder_model_path`, independent graph hashes, and exact external-data maps
