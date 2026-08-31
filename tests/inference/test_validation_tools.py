@@ -1,6 +1,7 @@
 import hashlib
 import importlib.util
 import json
+import os
 import stat
 import zipfile
 from pathlib import Path
@@ -31,6 +32,15 @@ from anylearning.inference.validation import (
 )
 
 _ROOT = Path(__file__).resolve().parents[2]
+
+
+def _assert_output_permissions(path: Path) -> None:
+    mode = stat.S_IMODE(path.stat().st_mode)
+    assert mode & stat.S_IRUSR
+    assert mode & stat.S_IWUSR
+    assert not mode & stat.S_IXUSR
+    if os.name != "nt":
+        assert mode == 0o644
 
 
 def test_lifecycle_rss_metrics_separate_allocator_warmup_from_growth():
@@ -557,7 +567,7 @@ def test_efficientvit_decoder_transform_is_deterministic_and_runnable(tmp_path):
     assert first.read_bytes() == second.read_bytes()
     assert first_report["output_sha256"] == second_report["output_sha256"]
     assert first_report["source_sha256"] == source_digest
-    assert first.stat().st_mode & 0o777 == 0o644
+    _assert_output_permissions(first)
     prepared = onnx.load_model(first, load_external_data=False)
     assert [
         (item.name, item.type.tensor_type.elem_type) for item in prepared.graph.output
@@ -692,7 +702,7 @@ def test_sam2_encoder_transform_is_deterministic_strict_and_runnable(tmp_path, f
     assert first_report["output_sha256"] == second_report["output_sha256"]
     assert first_report["source_sha256"] == source_digest
     assert first_report["removed_initializers"] == ["unused"]
-    assert first.stat().st_mode & 0o777 == 0o644
+    _assert_output_permissions(first)
     prepared = onnx.load_model(first, load_external_data=False)
     assert {item.key: item.value for item in prepared.metadata_props} == {
         "anylearning.family": family,

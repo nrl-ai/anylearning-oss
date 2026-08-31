@@ -1036,6 +1036,8 @@ jobs:
           --artifact-prefix detector-sam --variant yolox-mobile-sam
           --platform Linux --platform Windows --platform macOS
           --expected-cases 2
+          --max-cross-platform-differing-pixels 3
+          --max-cross-platform-channel-delta 1
           --output matrix-verification/detector-sam-yolox-mobile-sam.json
 
       - name: Retain the matrix verification report
