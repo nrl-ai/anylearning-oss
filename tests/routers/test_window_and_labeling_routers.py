@@ -110,6 +110,8 @@ def test_close_destroys_the_window(window_api):
 
 @pytest.fixture
 def labeling_api(tmp_path, monkeypatch):
+    from sqlalchemy.orm import Session
+
     from anylearning import config, database
 
     projects_root = tmp_path / "projects"
@@ -123,6 +125,16 @@ def labeling_api(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "DATABASE_PATH", str(tmp_path / "main.db"))
 
     manager = database.DatabaseManager()
+    with Session(manager.main_engine) as session:
+        session.add(
+            database.Project(
+                id=1,
+                name="Auto-labeling test",
+                type="Object Detection",
+                labels=[{"id": 0, "name": "dog", "color": "#ffffff"}],
+            )
+        )
+        session.commit()
     monkeypatch.setattr(database, "db_manager", manager)
 
     from anylearning.routers import labeling
@@ -157,6 +169,83 @@ def test_advertised_models_match_the_shipped_config(labeling_api):
     payload = response.json()
     models = payload if isinstance(payload, list) else payload.get("models", [])
     assert len(models) == len(configured)
+
+
+def test_trained_rfdetr_onnx_is_discovered_for_the_project(labeling_api):
+    from pathlib import Path
+
+    from sqlalchemy.orm import Session
+
+    from anylearning import config
+    from anylearning.database import Model, db_manager
+
+    exported = (
+        Path(config.PROJECTS_ROOT)
+        / "1"
+        / "models"
+        / "session_7"
+        / "exported_model.onnx"
+    )
+    exported.parent.mkdir(parents=True)
+    exported.write_bytes(b"local onnx artifact")
+    with Session(db_manager.get_project_engine(1)) as session:
+        session.add(
+            Model(
+                id=7,
+                training_session_id=7,
+                name="Warehouse detector",
+                description="Trained model",
+                path="session_7/model.pth",
+                exported_path="session_7/exported_model.onnx",
+                model_architecture="rfdetr",
+                model_size="nano",
+                config_file="data:\n  class_names: [dog, car]\n",
+            )
+        )
+        session.commit()
+
+    response = labeling_api.get("/api/projects/1/auto_labeling/models")
+    assert response.status_code == 200
+    trained = next(
+        model for model in response.json() if model["name"] == "project-1-trained-7"
+    )
+    assert trained["display_name"] == "Warehouse detector (Trained RF-DETR)"
+    assert trained["tasks"] == ["detection"]
+    assert trained["interaction_mode"] == "automatic"
+    assert trained["is_project_model"] is True
+
+
+@pytest.mark.parametrize("config_file", ["data: [not-a-mapping]", "data: ["])
+def test_invalid_trained_model_configs_are_ignored(labeling_api, config_file):
+    from pathlib import Path
+
+    from sqlalchemy.orm import Session
+
+    from anylearning import config
+    from anylearning.database import Model, db_manager
+
+    exported = Path(config.PROJECTS_ROOT) / "1" / "models" / "bad" / "model.onnx"
+    exported.parent.mkdir(parents=True)
+    exported.write_bytes(b"not loaded during discovery")
+    with Session(db_manager.get_project_engine(1)) as session:
+        session.add(
+            Model(
+                id=8,
+                training_session_id=8,
+                name="Invalid detector",
+                description="Invalid config must not break the picker",
+                path="bad/model.pth",
+                exported_path="bad/model.onnx",
+                model_architecture="rfdetr",
+                model_size="nano",
+                config_file=config_file,
+            )
+        )
+        session.commit()
+
+    response = labeling_api.get("/api/projects/1/auto_labeling/models")
+    assert response.status_code == 200
+    assert all(model["name"] != "project-1-trained-8" for model in response.json())
 
 
 def test_status_before_any_model_is_loaded(labeling_api):

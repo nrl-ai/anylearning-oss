@@ -1,9 +1,12 @@
 import hashlib
 import io
+import re
 import stat
+import time
 import zipfile
 from importlib import resources
-from unittest.mock import patch
+from threading import Event, Thread
+from unittest.mock import Mock, patch
 
 import pytest
 import yaml
@@ -44,16 +47,175 @@ def test_bundled_model_downloads_are_pinned_and_checksum_verified():
     model_file = resources.files(auto_labeling_configs).joinpath("models.yaml")
     models = yaml.safe_load(model_file.read_text())
 
-    assert len(models) == 5
+    assert len(models) == 13
     for model in models:
-        assert model["download_url"].startswith(
-            "https://huggingface.co/nrl-ai/anylearning-labeling-models/resolve/v1.0.0/"
+        assert re.match(
+            r"^https://huggingface\.co/nrl-ai/anylearning-labeling-models/resolve/"
+            r"[0-9a-f]{40}/[^/]+\.zip$",
+            model["download_url"],
         )
         assert len(model["sha256"]) == 64
         int(model["sha256"], 16)
         assert 0 < model["archive_size_bytes"] <= MAX_MODEL_DOWNLOAD_BYTES
 
     assert MAX_MODEL_DOWNLOAD_BYTES >= 10 * 1024**3
+    assert {model["name"] for model in models}.issuperset(
+        {
+            "efficientvit_sam_l0",
+            "dfine_n_coco",
+            "rfdetr_nano_detection",
+            "rfdetr_nano_segmentation",
+            "sam2_1_hiera_small",
+        }
+    )
+    for model in (item for item in models if item["type"] == "inference"):
+        assert model["archive_members"]
+        assert model["inference_config"]
+
+
+def test_project_models_are_isolated_to_the_active_project():
+    with patch.object(ModelManager, "load_model_configs"):
+        manager = ModelManager()
+
+    bundled = {"name": "bundled", "is_project_model": False}
+    first = {
+        "name": "project-1-trained-1",
+        "project_id": 1,
+        "is_project_model": True,
+    }
+    second = {
+        "name": "project-2-trained-2",
+        "project_id": 2,
+        "is_project_model": True,
+    }
+    manager.model_configs = [bundled]
+    manager.set_project_model_configs(1, [first])
+    assert [item["name"] for item in manager.model_configs] == [
+        "bundled",
+        "project-1-trained-1",
+    ]
+
+    loaded = Mock()
+    manager.loaded_model_config = {**first, "model": loaded}
+    manager.set_project_model_configs(2, [second])
+
+    assert [item["name"] for item in manager.model_configs] == [
+        "bundled",
+        "project-2-trained-2",
+    ]
+    assert manager.loaded_model_config is None
+    loaded.unload.assert_called_once_with()
+
+
+def test_project_model_load_is_discarded_after_project_switch():
+    with patch.object(ModelManager, "load_model_configs"):
+        manager = ModelManager()
+
+    manager.set_project_model_configs(1, [])
+    old_generation = manager.project_model_scope_generation
+    loaded = Mock()
+    stale_config = {
+        "name": "project-1-trained-1",
+        "display_name": "Old project model",
+        "project_id": 1,
+        "is_project_model": True,
+        "type": "inference",
+        "has_downloaded": True,
+    }
+    manager.set_project_model_configs(2, [])
+
+    with patch(
+        "anylearning.auto_labeling.inference_model.InferenceModel",
+        return_value=loaded,
+    ):
+        result = manager._load_model(stale_config, old_generation)
+
+    assert result is None
+    assert manager.loaded_model_config is None
+    loaded.unload.assert_called_once_with()
+
+
+def test_prediction_keeps_each_requests_prompts_isolated():
+    with patch.object(ModelManager, "load_model_configs"):
+        manager = ModelManager()
+
+    first_entered = Event()
+    release_first = Event()
+
+    class RecordingModel:
+        def __init__(self):
+            self.marks = []
+            self.seen = []
+
+        def set_auto_labeling_marks(self, marks):
+            self.marks = list(marks)
+
+        def predict_shapes(self, _image, _filename, *, preload_paths):
+            del preload_paths
+            if self.marks == [{"request": "first"}]:
+                first_entered.set()
+                release_first.wait(timeout=1)
+            self.seen.append(list(self.marks))
+            return []
+
+    model = RecordingModel()
+    manager.loaded_model_config = {
+        "name": "promptable",
+        "type": "segment_anything",
+        "model": model,
+    }
+    errors = []
+
+    def run(marks):
+        try:
+            manager.predict_shapes("image", marks=marks)
+        except Exception as error:  # pragma: no cover - asserted below
+            errors.append(error)
+
+    first = Thread(target=run, args=([{"request": "first"}],))
+    second = Thread(target=run, args=([{"request": "second"}],))
+    first.start()
+    assert first_entered.wait(timeout=1)
+    second.start()
+    time.sleep(0.05)
+    release_first.set()
+    first.join(timeout=1)
+    second.join(timeout=1)
+
+    assert not first.is_alive()
+    assert not second.is_alive()
+    assert errors == []
+    assert model.seen == [
+        [{"request": "first"}],
+        [{"request": "second"}],
+    ]
+
+
+def test_model_selection_queues_only_the_latest_request_while_loading():
+    with patch.object(ModelManager, "load_model_configs"):
+        manager = ModelManager()
+
+    configs = [
+        {
+            "name": name,
+            "display_name": name.upper(),
+            "config_file": f"/{name}/config.yaml",
+        }
+        for name in ("first", "second", "third")
+    ]
+    manager.model_configs = configs
+    manager.model_download_thread = Mock()
+    manager.model_download_thread.is_alive.return_value = True
+    manager.loading_model_name = "first"
+
+    manager.load_model(configs[1]["config_file"])
+    assert manager.queued_model_request[0]["name"] == "second"
+    manager.load_model(configs[2]["config_file"])
+    assert manager.queued_model_request[0]["name"] == "third"
+
+    # Choosing the model already loading cancels the queued alternative.
+    manager.load_model(configs[0]["config_file"])
+    assert manager.queued_model_request is None
 
 
 def test_persisted_config_cannot_override_pinned_download_metadata(tmp_path):
@@ -216,3 +378,40 @@ def test_safe_extract_accepts_expected_model_files(tmp_path):
     assert (destination / "config.yaml").read_text() == "type: segment_anything\n"
     assert (destination / "encoder.onnx").read_bytes() == b"encoder"
     assert (destination / "decoder.onnx").read_bytes() == b"decoder"
+
+
+def test_safe_extract_installs_only_declared_checksum_verified_members(tmp_path):
+    model = b"verified onnx"
+    archive_path = make_archive(
+        tmp_path / "model.zip",
+        [
+            ("model.onnx", model),
+            ("export_checked.py", b"raise RuntimeError('must not be installed')"),
+        ],
+    )
+    destination = tmp_path / "extract"
+    with zipfile.ZipFile(archive_path) as archive:
+        ModelManager._safe_extract(
+            archive,
+            destination,
+            expected_members={
+                "model.onnx": {
+                    "sha256": hashlib.sha256(model).hexdigest(),
+                    "size_bytes": len(model),
+                }
+            },
+        )
+
+    assert (destination / "model.onnx").read_bytes() == model
+    assert not (destination / "export_checked.py").exists()
+
+
+def test_safe_extract_rejects_declared_member_checksum_mismatch(tmp_path):
+    archive_path = make_archive(tmp_path / "model.zip", [("model.onnx", b"model")])
+    with zipfile.ZipFile(archive_path) as archive:
+        with pytest.raises(ValueError, match="checksum"):
+            ModelManager._safe_extract(
+                archive,
+                tmp_path / "extract",
+                expected_members={"model.onnx": {"sha256": "0" * 64, "size_bytes": 5}},
+            )

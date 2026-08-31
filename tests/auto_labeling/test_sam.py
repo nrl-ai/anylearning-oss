@@ -9,6 +9,7 @@ import yaml
 from anylearning.auto_labeling.model_manager import _complete_bundled_config
 from anylearning.auto_labeling.sam2_onnx import SAM2ImageEncoder
 from anylearning.auto_labeling.sam_onnx import SegmentAnythingONNX
+from anylearning.auto_labeling.segment_anything import SegmentAnything
 from anylearning.configs import auto_labeling as auto_labeling_configs
 
 
@@ -85,6 +86,13 @@ def test_get_input_points_rejects_invalid_prompts(sam_model):
         sam_model.get_input_points([])
 
 
+def test_desktop_sam_rejects_non_binary_point_labels():
+    with pytest.raises(ValueError, match="must be 0 or 1"):
+        SegmentAnything._prompts(
+            [{"type": "point", "data": [10, 20], "label": "foreground"}]
+        )
+
+
 def test_get_preprocess_shape():
     result = SegmentAnythingONNX.get_preprocess_shape(100, 200, 400)
     assert result == (200, 400)
@@ -157,7 +165,10 @@ def test_sam2_small_is_the_default_bundled_auto_labeling_model():
     models = yaml.safe_load(model_file.read_text())
 
     assert models[0]["name"] == "sam2_hiera_small_20240803"
-    assert all(model["type"] == "segment_anything" for model in models)
+    assert models[0]["type"] == "segment_anything"
+    assert all(
+        model["interaction_mode"] in {"prompted", "automatic"} for model in models
+    )
 
 
 def test_bundled_config_recovers_metadata_from_legacy_stub(tmp_path):

@@ -1,4 +1,9 @@
-import { autoLabelingOutputShape, createAutoLabelingPreview, persistableAnnotationShapes } from "./auto-labeling-shape"
+import {
+    autoLabelingOutputShape,
+    createAutoLabelingPrediction,
+    createAutoLabelingPreview,
+    persistableAnnotationShapes,
+} from "./auto-labeling-shape"
 
 describe("SAM output geometry", () => {
     const contour = [
@@ -25,7 +30,44 @@ describe("SAM output geometry", () => {
     })
 
     it("keeps the contour for image segmentation", () => {
-        expect(createAutoLabelingPreview(contour, "Image Segmentation", "polygon", "preview").points).toBe(contour)
+        expect(createAutoLabelingPreview(contour, "Image Segmentation", "polygon", "preview").points).toEqual(contour)
+    })
+
+    it("turns a neutral two-corner detector result into an editable labeled box", () => {
+        expect(
+            createAutoLabelingPrediction(
+                {
+                    shape_type: "rectangle",
+                    points: [
+                        { x: 10, y: 20 },
+                        { x: 40, y: 60 },
+                    ],
+                    label: "dog",
+                    score: 0.95,
+                    group_id: 2,
+                    attributes: { class_id: 16 },
+                },
+                "Object Detection",
+                "rectangle",
+                "prediction",
+                "dfine_n_coco"
+            )
+        ).toEqual({
+            type: "rectangle",
+            points: [
+                [10, 20],
+                [10, 60],
+                [40, 60],
+                [40, 20],
+            ],
+            categories: ["dog"],
+            phi: 0,
+            id: "prediction",
+            score: 0.95,
+            group_id: 2,
+            attributes: { class_id: 16 },
+            auto_labeling_model: "dfine_n_coco",
+        })
     })
 
     it("keeps prompts and previews out of saved annotations", () => {

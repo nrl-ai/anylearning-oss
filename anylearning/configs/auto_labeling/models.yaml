@@ -1,30 +1,224 @@
-- name: "sam2_hiera_small_20240803"
+# Every URL is pinned to an immutable Hugging Face revision. New inference
+# bundles also pin each installed member; undeclared archive files are never
+# extracted. Model execution remains ONNX-only through anylearning.inference.
+
+- name: sam2_hiera_small_20240803
   display_name: Segment Anything 2 (Hiera-Small)
   type: segment_anything
-  download_url: https://huggingface.co/nrl-ai/anylearning-labeling-models/resolve/v1.0.0/sam2_hiera_small.zip
-  sha256: 4ef9047eb7fc7e36041c88a9f968c3c0b1d1640b88ef66d754b7d558a10cee38
-  archive_size_bytes: 183345019
-- name: "sam2_hiera_tiny_20240803"
+  tasks: [promptable_segmentation]
+  interaction_mode: prompted
+  output_modes: [polygon, rectangle]
+  project_types: [Object Detection, Image Segmentation, Instance Segmentation]
+  download_url: https://huggingface.co/nrl-ai/anylearning-labeling-models/resolve/b71a0c8d3fc1219548e028afd8a192c6be1e574a/sam2_hiera_small.zip
+  sha256: 90aa65e8b9c98cca73916c0b579d0b63139ef60e8b508946c389204819195261
+  archive_size_bytes: 169638840
+
+- name: efficientvit_sam_l0
+  display_name: EfficientViT-SAM L0 (Fast)
+  type: inference
+  backend: efficientvit_sam
+  tasks: [promptable_segmentation]
+  interaction_mode: prompted
+  output_modes: [polygon, rectangle]
+  project_types: [Object Detection, Image Segmentation, Instance Segmentation]
+  download_url: https://huggingface.co/nrl-ai/anylearning-labeling-models/resolve/b71a0c8d3fc1219548e028afd8a192c6be1e574a/efficientvit_sam_l0.zip
+  sha256: ef48c8f4c6d72da3df0690d9f16aa794035978d23a637acbd24a984220020072
+  archive_size_bytes: 129322579
+  archive_members:
+    efficientvit_sam_l0.encoder.onnx:
+      sha256: 7a37ebd16e65c31253416e33897e7e6b07699127765d538e99ecbfaa3ad1e727
+      size_bytes: 123112917
+    efficientvit_sam_l0.decoder.onnx:
+      sha256: adf8028a47950d40cd8add1f11ae31bf33ccd9b94858b7e873ad78311943cdf1
+      size_bytes: 16470352
+    LICENSE:
+      sha256: 3c3976a8a7a11c899b2dcdf71cb61198cb302e9542cd99cdad5f1d5d0afe3803
+      size_bytes: 11341
+  inference_config:
+    name: efficientvit-sam-l0
+    encoder_model_path: efficientvit_sam_l0.encoder.onnx
+    decoder_model_path: efficientvit_sam_l0.decoder.onnx
+    encoder_sha256: 7a37ebd16e65c31253416e33897e7e6b07699127765d538e99ecbfaa3ad1e727
+    decoder_sha256: adf8028a47950d40cd8add1f11ae31bf33ccd9b94858b7e873ad78311943cdf1
+    providers: [CPUExecutionProvider]
+    intra_op_threads: 1
+    inter_op_threads: 1
+
+- name: dfine_n_coco
+  display_name: D-FINE N (COCO Detection)
+  type: inference
+  backend: dfine_onnx
+  tasks: [detection]
+  interaction_mode: automatic
+  output_modes: [rectangle]
+  project_types: [Object Detection]
+  download_url: https://huggingface.co/nrl-ai/anylearning-labeling-models/resolve/b71a0c8d3fc1219548e028afd8a192c6be1e574a/dfine_n_coco_956d170.zip
+  sha256: f753f6e552632ef1696ec53c92ccb1ca374dbf2f014c6e4ab005ab98efa3a6e8
+  archive_size_bytes: 13979719
+  archive_members:
+    dfine_n_coco.onnx:
+      sha256: 47593baffd2b340a124939356515043edae9ba0d1cd59473146349ab7a87d832
+      size_bytes: 15557424
+    LICENSE:
+      sha256: c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4
+      size_bytes: 11357
+  inference_config:
+    name: dfine-n-coco
+    model_path: dfine_n_coco.onnx
+    model_revision: dfine-n-coco-956d1709314c2c6a4df6f34de232054578a7449f
+    sha256: 47593baffd2b340a124939356515043edae9ba0d1cd59473146349ab7a87d832
+    label_space: coco80
+    max_detections: 100
+    providers: [CPUExecutionProvider]
+    intra_op_threads: 1
+    inter_op_threads: 1
+
+- name: rfdetr_nano_detection
+  display_name: RF-DETR Nano (COCO Detection)
+  type: inference
+  backend: rfdetr_onnx
+  tasks: [detection]
+  interaction_mode: automatic
+  output_modes: [rectangle]
+  project_types: [Object Detection]
+  download_url: https://huggingface.co/nrl-ai/anylearning-labeling-models/resolve/b71a0c8d3fc1219548e028afd8a192c6be1e574a/rfdetr_nano_detection_1_9_4.zip
+  sha256: 5b130a1c2eb01be3bfbda703367b5d993821690de26f4abbb14a94ee3660c5fe
+  archive_size_bytes: 99769055
+  archive_members:
+    rfdetr_nano.onnx:
+      sha256: a003720edd0a47821dd2259f9029307bbcea4b9088c64bb3cbd379eec7b9790a
+      size_bytes: 107830095
+    LICENSE:
+      sha256: 8cabf52c61130fc97a7e5da5e3685ccf44841c0c53d6f881189369b136603cca
+      size_bytes: 11345
+  inference_config:
+    name: rfdetr-nano-detection
+    model_path: rfdetr_nano.onnx
+    model_revision: rfdetr-1.9.4-9b009fa928d6218320439803d1da01869a85c072
+    sha256: a003720edd0a47821dd2259f9029307bbcea4b9088c64bb3cbd379eec7b9790a
+    task: detection
+    label_space: coco91
+    background_class_id: null
+    max_detections: 100
+    providers: [CPUExecutionProvider]
+    intra_op_threads: 1
+    inter_op_threads: 1
+
+- name: rfdetr_nano_segmentation
+  display_name: RF-DETR Nano (COCO Instance Segmentation)
+  type: inference
+  backend: rfdetr_onnx
+  tasks: [instance_segmentation]
+  interaction_mode: automatic
+  output_modes: [polygon, rectangle]
+  project_types: [Object Detection, Image Segmentation, Instance Segmentation]
+  download_url: https://huggingface.co/nrl-ai/anylearning-labeling-models/resolve/b71a0c8d3fc1219548e028afd8a192c6be1e574a/rfdetr_nano_segmentation_1_9_4.zip
+  sha256: 133fdb5aed76233a6959addbdb7d64f5132f3cf2b2705a1994c2cbdfc2e93f4d
+  archive_size_bytes: 113602026
+  archive_members:
+    rfdetr_seg_nano.onnx:
+      sha256: 6fa4baf9f7f6c938da9e05a99f61a9f267d5e30d268287c967b5bd6f74b12d6f
+      size_bytes: 122833543
+    LICENSE:
+      sha256: 8cabf52c61130fc97a7e5da5e3685ccf44841c0c53d6f881189369b136603cca
+      size_bytes: 11345
+  inference_config:
+    name: rfdetr-nano-segmentation
+    model_path: rfdetr_seg_nano.onnx
+    model_revision: rfdetr-1.9.4-9b009fa928d6218320439803d1da01869a85c072-segmentation
+    sha256: 6fa4baf9f7f6c938da9e05a99f61a9f267d5e30d268287c967b5bd6f74b12d6f
+    task: instance_segmentation
+    label_space: coco91
+    background_class_id: null
+    max_detections: 100
+    providers: [CPUExecutionProvider]
+    intra_op_threads: 1
+    inter_op_threads: 1
+
+- name: sam2_hiera_tiny_20240803
   display_name: Segment Anything 2 (Hiera-Tiny)
   type: segment_anything
-  download_url: https://huggingface.co/nrl-ai/anylearning-labeling-models/resolve/v1.0.0/sam2_hiera_tiny.zip
-  sha256: 7454c3afd835b2acaad863afe3acb11f4e4af039c96e886989ad3873a338e1ec
-  archive_size_bytes: 154902833
-- name: "mobile_sam_20230629"
+  tasks: [promptable_segmentation]
+  interaction_mode: prompted
+  output_modes: [polygon, rectangle]
+  project_types: [Object Detection, Image Segmentation, Instance Segmentation]
+  download_url: https://huggingface.co/nrl-ai/anylearning-labeling-models/resolve/b71a0c8d3fc1219548e028afd8a192c6be1e574a/sam2_hiera_tiny.zip
+  sha256: f96e764cf19ba63e7870f8d588cfbfe772cda40a13180f19e73100e28f8c92da
+  archive_size_bytes: 143293170
+
+- name: mobile_sam_20230629
   display_name: MobileSAM
   type: segment_anything
-  download_url: https://huggingface.co/nrl-ai/anylearning-labeling-models/resolve/v1.0.0/mobile_sam_20230629.zip
+  tasks: [promptable_segmentation]
+  interaction_mode: prompted
+  output_modes: [polygon, rectangle]
+  project_types: [Object Detection, Image Segmentation, Instance Segmentation]
+  download_url: https://huggingface.co/nrl-ai/anylearning-labeling-models/resolve/b71a0c8d3fc1219548e028afd8a192c6be1e574a/mobile_sam_20230629.zip
   sha256: 41aff2660b7531becfee21fb257c49933ddc892c554507bdb775bf504d443942
   archive_size_bytes: 36655105
-- name: "sam2_hiera_base_plus_20240803"
+
+- name: sam2_1_hiera_small
+  display_name: Segment Anything 2.1 (Hiera-Small)
+  type: segment_anything
+  tasks: [promptable_segmentation]
+  interaction_mode: prompted
+  output_modes: [polygon, rectangle]
+  project_types: [Object Detection, Image Segmentation, Instance Segmentation]
+  download_url: https://huggingface.co/nrl-ai/anylearning-labeling-models/resolve/b71a0c8d3fc1219548e028afd8a192c6be1e574a/sam2_1_hiera_small.zip
+  sha256: 5802f9e3b05d41b9a5ce03f32d3935fe6cc94294b77956f37c58b7f2581471ce
+  archive_size_bytes: 142921559
+
+- name: sam2_1_hiera_tiny
+  display_name: Segment Anything 2.1 (Hiera-Tiny)
+  type: segment_anything
+  tasks: [promptable_segmentation]
+  interaction_mode: prompted
+  output_modes: [polygon, rectangle]
+  project_types: [Object Detection, Image Segmentation, Instance Segmentation]
+  download_url: https://huggingface.co/nrl-ai/anylearning-labeling-models/resolve/b71a0c8d3fc1219548e028afd8a192c6be1e574a/sam2_1_hiera_tiny.zip
+  sha256: b15c3d3265392901f6dbe45a42e2f64709bf265b15fde899b2439bc04496ba04
+  archive_size_bytes: 116527977
+
+- name: sam2_1_hiera_base_plus
+  display_name: Segment Anything 2.1 (Hiera-Base+)
+  type: segment_anything
+  tasks: [promptable_segmentation]
+  interaction_mode: prompted
+  output_modes: [polygon, rectangle]
+  project_types: [Object Detection, Image Segmentation, Instance Segmentation]
+  download_url: https://huggingface.co/nrl-ai/anylearning-labeling-models/resolve/b71a0c8d3fc1219548e028afd8a192c6be1e574a/sam2_1_hiera_base_plus.zip
+  sha256: 389aae8f1e552275326e13a10973e822583989dba95aa7c3ffc80022460ac7eb
+  archive_size_bytes: 272032266
+
+- name: sam2_1_hiera_large
+  display_name: Segment Anything 2.1 (Hiera-Large)
+  type: segment_anything
+  tasks: [promptable_segmentation]
+  interaction_mode: prompted
+  output_modes: [polygon, rectangle]
+  project_types: [Object Detection, Image Segmentation, Instance Segmentation]
+  download_url: https://huggingface.co/nrl-ai/anylearning-labeling-models/resolve/b71a0c8d3fc1219548e028afd8a192c6be1e574a/sam2_1_hiera_large.zip
+  sha256: 15f74c68530b0bc9f37d2189394a100b81541f55362b34f55a309ba12b9e1fa4
+  archive_size_bytes: 805293551
+
+- name: sam2_hiera_base_plus_20240803
   display_name: Segment Anything 2 (Hiera-Base+)
   type: segment_anything
-  download_url: https://huggingface.co/nrl-ai/anylearning-labeling-models/resolve/v1.0.0/sam2_hiera_base_plus.zip
-  sha256: c56282103c2bf99bdab07d2dddb1be67c03d71659ade3f9dcf1d7001fda582fb
-  archive_size_bytes: 360422777
-- name: "sam2_hiera_large_20240803"
+  tasks: [promptable_segmentation]
+  interaction_mode: prompted
+  output_modes: [polygon, rectangle]
+  project_types: [Object Detection, Image Segmentation, Instance Segmentation]
+  download_url: https://huggingface.co/nrl-ai/anylearning-labeling-models/resolve/b71a0c8d3fc1219548e028afd8a192c6be1e574a/sam2_hiera_base_plus.zip
+  sha256: c30ce8030d9be4ee68afb825285d0d50b706571a671847ba0d7cb36e7aab75c3
+  archive_size_bytes: 302582623
+
+- name: sam2_hiera_large_20240803
   display_name: Segment Anything 2 (Hiera-Large)
   type: segment_anything
-  download_url: https://huggingface.co/nrl-ai/anylearning-labeling-models/resolve/v1.0.0/sam2_hiera_large.zip
-  sha256: a967ef6e54794e9494c8b71201766532b7b2929fe18f56b8e63940e97dc671ac
-  archive_size_bytes: 910003530
+  tasks: [promptable_segmentation]
+  interaction_mode: prompted
+  output_modes: [polygon, rectangle]
+  project_types: [Object Detection, Image Segmentation, Instance Segmentation]
+  download_url: https://huggingface.co/nrl-ai/anylearning-labeling-models/resolve/b71a0c8d3fc1219548e028afd8a192c6be1e574a/sam2_hiera_large.zip
+  sha256: 97d5841ca0827acb3ae54ed896adedb23cc77a4fa23118402efca3e169d20542
+  archive_size_bytes: 843636551

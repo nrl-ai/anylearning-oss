@@ -5,7 +5,12 @@ import React, { useCallback, useEffect, useReducer, useRef, useState } from "rea
 import { Dot, ImageAnnotator, Shape, useImageAnnotator } from "@/components/react-image-label"
 import { ShapeColor } from "@/components/react-image-label/base/types"
 import { api } from "@/lib/api"
-import { createAutoLabelingPreview, persistableAnnotationShapes } from "@/lib/auto-labeling-shape"
+import {
+    AutoLabelingPrediction,
+    createAutoLabelingPrediction,
+    createAutoLabelingPreview,
+    persistableAnnotationShapes,
+} from "@/lib/auto-labeling-shape"
 import { generateUniqueId } from "@/lib/random"
 import { getAnnotation, putAnnotation } from "@/lib/use-annotation"
 import { putClassId } from "@/lib/use-annotation"
@@ -69,9 +74,10 @@ const LabelingScreen: React.FC<LabelingScreenProps> = ({ projectId, subset, onEx
     const { dataItems, setDataItems, totalCount, fetchDataItems, isLoading, isError } = useDataItems(projectId, subset)
     const [isInferencing, setIsInferencing] = useState<boolean>(false)
     const [selectedModel, setSelectedModel] = useState<string>("")
+    const [selectedModelMode, setSelectedModelMode] = useState<"prompted" | "automatic">("prompted")
     const [aiShape, setAiShape] = useState<string>("polygon")
     const [isReady, setReady] = useState(false)
-    const hasPreloadFirstImageRef = useRef(false)
+    const autoPredictionIdsRef = useRef<Map<number, Set<string>>>(new Map())
     const [isLoadingImage, setIsLoadingImage] = useState<boolean>(false)
     const [isLoadingAnnotation, setIsLoadingAnnotation] = useState<boolean>(false)
     const [isSavingAnnotation, setSavingAnnotation] = useState<boolean>(false)
@@ -179,31 +185,6 @@ const LabelingScreen: React.FC<LabelingScreenProps> = ({ projectId, subset, onEx
         const offset = (currentPage - 1) * imagesPerPage
         fetchDataItems(offset, imagesPerPage)
     }, [currentPage, fetchDataItems])
-
-    useEffect(() => {
-        if (
-            project?.type !== "Keypoint Detection" &&
-            !hasPreloadFirstImageRef.current &&
-            typeof dataItems?.[0]?.id !== "undefined"
-        ) {
-            // Warms the model and the first image; failures here are not
-            // worth surfacing, the real call reports its own errors.
-            api.post(`/api/projects/${projectId}/auto_labeling/inference`, {
-                // Keep the background preload aligned with the first bundled
-                // model selected by AutoLabellingToolbar. SAM 2 Small is the
-                // accuracy-oriented default; it is already in the offline
-                // bundle, so this does not add a first-run download.
-                model_name: "sam2_hiera_small_20240803",
-                data_item_id: 1,
-                marks: [{ type: "point", data: [12, 12], label: 1 }],
-                preload_data_item_ids: [dataItems[0].id],
-                // So the toolbar does not announce a finished inference on a
-                // screen the user has only just opened.
-                warm_up: true,
-            }).catch(() => {})
-            hasPreloadFirstImageRef.current = true
-        }
-    }, [dataItems, project?.type, projectId])
 
     const annotatorRef = useRef(annotator)
     annotatorRef.current = annotator
@@ -371,6 +352,35 @@ const LabelingScreen: React.FC<LabelingScreenProps> = ({ projectId, subset, onEx
         [annotator]
     )
 
+    const clearAutomaticPredictions = useCallback(() => {
+        const imageId = currentImage?.id
+        if (!imageId) return
+        const predictionIds = autoPredictionIdsRef.current.get(imageId) ?? new Set<string>()
+        const shapes = annotator?.getShapes() || []
+        const retained = shapes.filter(
+            (shape) => !predictionIds.has(shape.id) && shape.auto_labeling_model !== selectedModel
+        )
+        if (retained.length !== shapes.length) {
+            annotator?.setShapes(retained)
+        }
+        autoPredictionIdsRef.current.delete(imageId)
+    }, [annotator, currentImage?.id, selectedModel])
+
+    const selectAutoLabelingModel = useCallback(
+        (name: string, interactionMode: "prompted" | "automatic") => {
+            clearAutoLabelingShapes(false)
+            setSelectedModel(name)
+            setSelectedModelMode(interactionMode)
+            setMode("auto_labeling")
+            if (interactionMode === "automatic") {
+                setAiToolSelected("")
+                annotator?.stop()
+                annotator?.setEditable(true)
+            }
+        },
+        [annotator, clearAutoLabelingShapes]
+    )
+
     const clearNoCategoryShapes = useCallback(() => {
         const shapes = annotator?.getShapes() || []
         const newShapes = shapes.filter((shape) => shape.categories && shape.categories.length > 0)
@@ -531,6 +541,7 @@ const LabelingScreen: React.FC<LabelingScreenProps> = ({ projectId, subset, onEx
     }, [annotator, isLoadingImage, isLoadingAnnotation])
 
     const inferenceShape = async (newShapes: Shape[]) => {
+        if (!currentImage || !selectedModel) return
         setIsInferencing(true)
         // Remove any existing AUTOLABEL_TMP_SHAPE before adding new one
         newShapes = newShapes.filter((shape) => !shape.categories?.includes("AUTOLABEL_TMP_SHAPE"))
@@ -576,15 +587,52 @@ const LabelingScreen: React.FC<LabelingScreenProps> = ({ projectId, subset, onEx
                 data_item_id: dataItems[currentImageIndex].id,
                 marks,
                 preload_data_item_ids: nextImageIds,
+                output_shape: project?.type === "Object Detection" ? "rectangle" : aiShape,
             })
 
-            // Model loading happens in a worker. A prompt can land in the
-            // short interval before that worker publishes a result, so a 2xx
-            // response may legitimately contain no preview yet.
-            const predictedShape = response.data?.result?.shapes?.[0]
-            if (!predictedShape?.points?.length) return
-            const points = predictedShape.points.map((p: any) => [p.x, p.y])
+            const predictions = (response.data?.result?.shapes || []) as AutoLabelingPrediction[]
+            if (selectedModelMode === "automatic") {
+                const previousIds = autoPredictionIdsRef.current.get(currentImage.id) ?? new Set<string>()
+                const existingShapes = newShapes.filter(
+                    (shape) =>
+                        !previousIds.has(shape.id) &&
+                        shape.auto_labeling_model !== selectedModel &&
+                        !shape.categories?.some((category) => category.startsWith("AUTOLABEL_"))
+                )
+                const projectLabels = new Set(project?.labels.map((label) => label.name) || [])
+                const ids = new Set<string>()
+                const predictedShapes = predictions
+                    .filter(
+                        (prediction) =>
+                            prediction.points?.length > 0 &&
+                            typeof prediction.label === "string" &&
+                            projectLabels.has(prediction.label)
+                    )
+                    .map((prediction) => {
+                        const id = generateUniqueId()
+                        ids.add(id)
+                        return createAutoLabelingPrediction(
+                            prediction,
+                            project?.type,
+                            aiShape,
+                            id,
+                            selectedModel
+                        ) as any as Shape
+                    })
+                autoPredictionIdsRef.current.set(currentImage.id, ids)
+                setShapesHandle([...existingShapes, ...predictedShapes])
+                setSavingStatus(
+                    predictedShapes.length === 0
+                        ? "No predictions matched this project's labels"
+                        : `Added ${predictedShapes.length} model prediction${predictedShapes.length === 1 ? "" : "s"}`
+                )
+                setTimeout(() => setSavingStatus(""), 5000)
+                return
+            }
 
+            const predictedShape = predictions[0]
+            if (!predictedShape?.points?.length) return
+            const points = predictedShape.points.map((point) => [point.x, point.y])
             const tmpShape = createAutoLabelingPreview(
                 points,
                 project?.type,
@@ -595,8 +643,10 @@ const LabelingScreen: React.FC<LabelingScreenProps> = ({ projectId, subset, onEx
             newShapes = [...newShapes, tmpShape]
             annotator?.updateCategories(tmpShape.id, tmpShape.categories)
             setShapesHandle(newShapes)
-        } catch (error) {
+        } catch (error: any) {
             console.error("Auto labeling inference failed:", error)
+            setSavingStatus(error?.response?.data?.detail || "Auto-labeling inference failed")
+            setTimeout(() => setSavingStatus(""), 5000)
         } finally {
             setIsInferencing(false)
         }
@@ -725,11 +775,14 @@ const LabelingScreen: React.FC<LabelingScreenProps> = ({ projectId, subset, onEx
                     projectType={project?.type || ""}
                     handleToolSelect={handleToolSelect}
                     model={selectedModel}
-                    selectModel={setSelectedModel}
+                    selectModel={selectAutoLabelingModel}
                     clear={() => {
                         clearAutoLabelingShapes(false)
+                        clearAutomaticPredictions()
                     }}
                     finish={handleFinishAutoLabel}
+                    run={() => inferenceShape(annotator?.getShapes() || [])}
+                    isInferencing={isInferencing}
                 />
             )}
             <div className="flex min-h-0 flex-1 overflow-hidden">

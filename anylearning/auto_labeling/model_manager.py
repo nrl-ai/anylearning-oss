@@ -36,15 +36,29 @@ MAX_MODEL_MEMBER_BYTES = 40 * GIBIBYTE
 MAX_MODEL_COMPRESSION_RATIO = 100
 MODEL_DOWNLOAD_CHUNK_BYTES = 1024 * 1024
 MODEL_DOWNLOAD_TIMEOUT_SECONDS = 60
-PINNED_MODEL_FIELDS = ("download_url", "sha256", "archive_size_bytes")
+PINNED_MODEL_FIELDS = (
+    "download_url",
+    "sha256",
+    "archive_size_bytes",
+    "archive_members",
+    "type",
+    "backend",
+    "tasks",
+    "interaction_mode",
+    "output_modes",
+    "project_types",
+    "inference_config",
+)
 ALLOWED_MODEL_FILE_SUFFIXES = {
     ".json",
+    ".md",
     ".names",
     ".onnx",
     ".txt",
     ".yaml",
     ".yml",
 }
+ALLOWED_MODEL_FILE_NAMES = {"LICENSE", "NOTICE"}
 
 
 def _validate_https_url(url: str, *, redirected: bool = False) -> None:
@@ -186,11 +200,17 @@ class ModelManager:
         self.model_configs: List[Dict[str, Any]] = []
         self.loaded_model_config = None
         self.loaded_model_config_lock = Lock()
+        self.project_model_scope: int | None = None
+        self.project_model_scope_generation = 0
         self.status = ModelStatus.NOT_LOADED.value
 
         self.model_download_thread = None
+        self.model_load_lock = Lock()
+        self.loading_model_name: str | None = None
+        self.queued_model_request = None
         self.model_execution_thread = None
         self.model_execution_thread_lock = Lock()
+        self.model_inference_lock = Lock()
 
         # Callbacks
         self._on_model_configs_changed: List[Callable[[List[Dict]], None]] = []
@@ -312,6 +332,60 @@ class ModelManager:
         """Return model infos"""
         return self.model_configs
 
+    def set_project_model_configs(
+        self, project_id: int, model_configs: List[Dict[str, Any]]
+    ) -> None:
+        """Replace discoverable trained models with those for one project.
+
+        These entries point at local, already-exported ONNX artifacts, so they
+        never enter the download path. Names include the project and database
+        model IDs and cannot collide with bundled catalog names. Only one
+        project's entries may be visible at a time; this prevents model names
+        and label spaces leaking between projects in the long-lived desktop
+        process.
+        """
+        copied_configs = [copy.deepcopy(item) for item in model_configs]
+        desired_names = {item.get("name") for item in copied_configs}
+        with self.model_load_lock:
+            current_names = {
+                item.get("name")
+                for item in self.model_configs
+                if item.get("is_project_model")
+            }
+            if self.project_model_scope != project_id or current_names != desired_names:
+                self.project_model_scope_generation += 1
+            self.project_model_scope = project_id
+            if self.queued_model_request is not None:
+                queued_config, _queued_generation = self.queued_model_request
+                if (
+                    queued_config.get("is_project_model")
+                    and queued_config.get("project_id") != project_id
+                ):
+                    self.queued_model_request = None
+            retained = [
+                item for item in self.model_configs if not item.get("is_project_model")
+            ]
+            self.model_configs = retained + copied_configs
+
+        stale_loaded_model = None
+        with self.model_inference_lock, self.loaded_model_config_lock:
+            if (
+                self.loaded_model_config
+                and self.loaded_model_config.get("is_project_model")
+                and (
+                    self.loaded_model_config.get("project_id") != project_id
+                    or self.loaded_model_config.get("name") not in desired_names
+                )
+            ):
+                stale_loaded_model = self.loaded_model_config.get("model")
+                self.loaded_model_config = None
+
+        if stale_loaded_model is not None:
+            stale_loaded_model.unload()
+            self.notify_callbacks("model_status_changed", ModelStatus.NOT_LOADED.value)
+
+        self.notify_callbacks("model_configs_changed", self.model_configs)
+
     def set_output_mode(self, mode):
         """Set output mode"""
         if self.loaded_model_config and self.loaded_model_config["model"]:
@@ -361,7 +435,8 @@ class ModelManager:
             "type" not in model_config
             or "display_name" not in model_config
             or "name" not in model_config
-            or model_config["type"] not in ["segment_anything", "yolov5", "yolov8"]
+            or model_config["type"]
+            not in ["segment_anything", "inference", "yolov5", "yolov8"]
         ):
             self.notify_callbacks(
                 "model_status_changed", ModelStatus.ERROR_INVALID_FORMAT.value
@@ -404,43 +479,76 @@ class ModelManager:
 
     def load_model(self, config_file):
         """Run model loading in a thread"""
-        # Don't reload if model is already loaded
-        if (
-            self.loaded_model_config is not None
-            and self.loaded_model_config.get("config_file") == config_file
-        ):
-            return
-        if (
-            self.model_download_thread is not None
-            and self.model_download_thread.is_alive()
-        ):
-            logger.info("Another model is already loading")
-            return
-        if not config_file:
-            self.unload_model()
-            self.notify_callbacks("model_status_changed", ModelStatus.NO_MODEL.value)
-            return
+        with self.model_load_lock:
+            if not config_file:
+                self.unload_model()
+                self.notify_callbacks(
+                    "model_status_changed", ModelStatus.NO_MODEL.value
+                )
+                return
 
-        # Check and get model id
-        model_id = None
-        for i, model_config in enumerate(self.model_configs):
-            if model_config["config_file"] == config_file:
-                model_id = i
-                break
-        if model_id is None:
-            self.notify_callbacks(
-                "model_status_changed", ModelStatus.ERROR_INVALID_NAME.value
+            selected_config = next(
+                (
+                    copy.deepcopy(model_config)
+                    for model_config in self.model_configs
+                    if model_config["config_file"] == config_file
+                ),
+                None,
             )
-            return
+            if selected_config is None:
+                self.notify_callbacks(
+                    "model_status_changed", ModelStatus.ERROR_INVALID_NAME.value
+                )
+                raise ValueError(ModelStatus.ERROR_INVALID_NAME.value)
 
-        self.model_download_thread = Thread(target=self._load_model, args=(model_id,))
-        self.notify_callbacks(
-            "model_status_changed",
-            ModelStatus.LOADING.value.format(
-                model_name=self.model_configs[model_id]["display_name"]
-            ),
-        )
-        self.model_download_thread.start()
+            project_scope_generation = (
+                self.project_model_scope_generation
+                if selected_config.get("is_project_model")
+                else None
+            )
+            if (
+                self.model_download_thread is not None
+                and self.model_download_thread.is_alive()
+            ):
+                if self.loading_model_name == selected_config["name"]:
+                    # The latest request is the model already loading, so drop
+                    # a previously queued alternative.
+                    self.queued_model_request = None
+                    return
+                # Model construction and downloads are not safely cancellable.
+                # Keep only the user's latest selection and start it as soon as
+                # the current worker exits.
+                self.queued_model_request = (
+                    selected_config,
+                    project_scope_generation,
+                )
+                self.notify_callbacks(
+                    "model_status_changed",
+                    f"Queued {selected_config['display_name']} while another model loads.",
+                )
+                return
+
+            # Don't reload if the requested model is already active.
+            with self.loaded_model_config_lock:
+                loaded_inference_config = (
+                    self.loaded_model_config.get("inference_config", {})
+                    if self.loaded_model_config
+                    else {}
+                )
+                selected_inference_config = selected_config.get("inference_config", {})
+                if (
+                    self.loaded_model_config is not None
+                    and self.loaded_model_config.get("config_file") == config_file
+                    and (
+                        not selected_config.get("is_project_model")
+                        or loaded_inference_config.get("sha256")
+                        == selected_inference_config.get("sha256")
+                    )
+                ):
+                    self.queued_model_request = None
+                    return
+
+            self._start_model_load_locked(selected_config, project_scope_generation)
 
     def load_model_by_name(self, model_name):
         """Load model by name"""
@@ -450,13 +558,80 @@ class ModelManager:
                 return
         raise ValueError(f"Model {model_name} not found.")
 
+    def _start_model_load_locked(
+        self, model_config, project_scope_generation=None
+    ) -> None:
+        """Start one worker while ``model_load_lock`` is held."""
+        self.loading_model_name = model_config["name"]
+        self.model_download_thread = Thread(
+            target=self._load_model_thread,
+            args=(model_config, project_scope_generation),
+        )
+        self.notify_callbacks(
+            "model_status_changed",
+            ModelStatus.LOADING.value.format(model_name=model_config["display_name"]),
+        )
+        self.model_download_thread.start()
+
+    def _load_model_thread(self, model_config, project_scope_generation=None):
+        try:
+            return self._load_model(model_config, project_scope_generation)
+        except Exception as error:
+            logger.exception("Unexpected error loading auto-labeling model")
+            self.notify_callbacks(
+                "model_status_changed", f"Error in loading model: {error}"
+            )
+            return None
+        finally:
+            with self.model_load_lock:
+                if self.loading_model_name == model_config.get("name"):
+                    self.loading_model_name = None
+                queued_request = self.queued_model_request
+                self.queued_model_request = None
+                if queued_request is not None:
+                    self._start_model_load_locked(*queued_request)
+
     @staticmethod
-    def _safe_extract(archive: zipfile.ZipFile, destination: pathlib.Path) -> None:
-        """Validate and extract a small, data-only model archive."""
+    def _safe_extract(
+        archive: zipfile.ZipFile,
+        destination: pathlib.Path,
+        *,
+        expected_members: Dict[str, Dict[str, Any]] | None = None,
+    ) -> None:
+        """Validate and extract a bounded data-only model archive.
+
+        New catalog entries declare every file that may be installed, including
+        its uncompressed size and SHA-256. Undeclared files are inspected for
+        unsafe archive metadata but are not extracted. This permits provenance
+        archives that contain exporter source while guaranteeing the desktop
+        never installs or executes that source.
+        """
         destination = destination.resolve()
         members = archive.infolist()
         if len(members) > MAX_MODEL_ARCHIVE_FILES:
             raise ValueError("Model archive contains too many files.")
+
+        expected: Dict[str, Dict[str, Any]] | None = None
+        if expected_members is not None:
+            if not isinstance(expected_members, dict) or not expected_members:
+                raise ValueError("Model archive member manifest must be non-empty.")
+            expected = {}
+            for filename, metadata in expected_members.items():
+                if not isinstance(filename, str) or not isinstance(metadata, dict):
+                    raise ValueError("Model archive member manifest is invalid.")
+                digest = metadata.get("sha256")
+                size = metadata.get("size_bytes")
+                if not isinstance(digest, str) or not re.fullmatch(
+                    r"[0-9a-fA-F]{64}", digest
+                ):
+                    raise ValueError("Model archive member requires a SHA-256.")
+                if (
+                    isinstance(size, bool)
+                    or not isinstance(size, int)
+                    or not 0 <= size <= MAX_MODEL_MEMBER_BYTES
+                ):
+                    raise ValueError("Model archive member requires a bounded size.")
+                expected[filename] = metadata
 
         validated = []
         extracted_paths = set()
@@ -493,10 +668,9 @@ class ModelManager:
                 )
 
             if member.is_dir():
-                validated.append((member, target))
+                if expected is None:
+                    validated.append((member, target, None))
                 continue
-            if path.suffix.lower() not in ALLOWED_MODEL_FILE_SUFFIXES:
-                raise ValueError(f"Unsupported file type in model archive: {filename}")
             if member.file_size > MAX_MODEL_MEMBER_BYTES:
                 raise ValueError("Model archive member is too large.")
             total_size += member.file_size
@@ -507,16 +681,40 @@ class ModelManager:
                 or member.file_size > member.compress_size * MAX_MODEL_COMPRESSION_RATIO
             ):
                 raise ValueError("Model archive has an unsafe compression ratio.")
-            validated.append((member, target))
+
+            metadata = expected.get(filename) if expected is not None else None
+            if expected is not None and metadata is None:
+                continue
+            if (
+                path.suffix.lower() not in ALLOWED_MODEL_FILE_SUFFIXES
+                and path.name not in ALLOWED_MODEL_FILE_NAMES
+            ):
+                raise ValueError(f"Unsupported file type in model archive: {filename}")
+            if metadata is not None and member.file_size != metadata["size_bytes"]:
+                raise ValueError(
+                    f"Model archive member size does not match manifest: {filename}"
+                )
+            validated.append((member, target, metadata))
+
+        if expected is not None:
+            archived_names = {
+                member.filename for member in members if not member.is_dir()
+            }
+            missing = sorted(set(expected) - archived_names)
+            if missing:
+                raise ValueError(
+                    "Model archive is missing declared member(s): " + ", ".join(missing)
+                )
 
         destination.mkdir(parents=True, exist_ok=True)
         extracted_size = 0
-        for member, target in validated:
+        for member, target, metadata in validated:
             if member.is_dir():
                 target.mkdir(parents=True, exist_ok=True)
                 continue
             target.parent.mkdir(parents=True, exist_ok=True)
             member_size = 0
+            digest = hashlib.sha256()
             with archive.open(member) as source, target.open("xb") as output:
                 while chunk := source.read(MODEL_DOWNLOAD_CHUNK_BYTES):
                     member_size += len(chunk)
@@ -528,8 +726,17 @@ class ModelManager:
                     ):
                         raise ValueError("Model archive is too large after extraction.")
                     output.write(chunk)
+                    digest.update(chunk)
             if member_size != member.file_size:
                 raise ValueError("Model archive member size does not match metadata.")
+            if (
+                metadata is not None
+                and digest.hexdigest().lower() != str(metadata["sha256"]).lower()
+            ):
+                raise ValueError(
+                    f"Model archive member checksum does not match manifest: "
+                    f"{member.filename}"
+                )
 
     def _download_and_extract_model(self, model_config):
         """Download a model archive and atomically install its model folder."""
@@ -580,15 +787,26 @@ class ModelManager:
                 )
                 unpacked = tmp_dir / "extract"
                 with zipfile.ZipFile(zip_model_path) as archive:
-                    self._safe_extract(archive, unpacked)
-                configs = list(unpacked.rglob("config.yaml"))
-                if len(configs) != 1:
-                    raise ValueError(
-                        "Model archive must contain exactly one config.yaml"
+                    self._safe_extract(
+                        archive,
+                        unpacked,
+                        expected_members=manifest_config.get("archive_members"),
                     )
-
                 staged = tmp_dir / "staged"
-                shutil.copytree(configs[0].parent, staged)
+                if manifest_config.get("archive_members"):
+                    shutil.copytree(unpacked, staged)
+                    installed_config = copy.deepcopy(manifest_config)
+                    installed_config.pop("config_file", None)
+                    installed_config["has_downloaded"] = True
+                    with (staged / "config.yaml").open("x", encoding="utf-8") as stream:
+                        yaml.safe_dump(installed_config, stream, sort_keys=False)
+                else:
+                    configs = list(unpacked.rglob("config.yaml"))
+                    if len(configs) != 1:
+                        raise ValueError(
+                            "Model archive must contain exactly one config.yaml"
+                        )
+                    shutil.copytree(configs[0].parent, staged)
                 backup = tmp_dir / "previous"
                 if extract_dir.exists():
                     shutil.move(str(extract_dir), backup)
@@ -616,22 +834,19 @@ class ModelManager:
 
         return model_config
 
-    def _load_model(self, model_id):
+    def _load_model(self, model_config, project_scope_generation=None):
         """Load and return model info"""
-        if self.loaded_model_config is not None:
-            self.loaded_model_config["model"].unload()
-            self.loaded_model_config = None
-            self.notify_callbacks("auto_segmentation_unselected")
-
-        model_config = copy.deepcopy(self.model_configs[model_id])
-
         # Download and extract model
         if not model_config.get("has_downloaded", True):
             model_config = self._download_and_extract_model(model_config)
             if model_config is None:
                 return
-
-            self.model_configs[model_id].update(model_config)
+            for current in self.model_configs:
+                if current.get("name") == model_config.get("name") and current.get(
+                    "config_file"
+                ) == model_config.get("config_file"):
+                    current.update(model_config)
+                    break
 
         if model_config["type"] == "segment_anything":
             from .segment_anything import SegmentAnything
@@ -643,7 +858,6 @@ class ModelManager:
                         "model_status_changed", msg
                     ),
                 )
-                self.notify_callbacks("auto_segmentation_selected")
             except Exception as e:  # noqa
                 logger.exception("Error loading model")
                 self.notify_callbacks(
@@ -651,12 +865,59 @@ class ModelManager:
                 )
                 return
 
-            # Request next files for prediction
-            self.notify_callbacks("request_next_files")
-        else:
-            raise Exception(f"Unknown model type: {model_config['type']}")
+        elif model_config["type"] == "inference":
+            from .inference_model import InferenceModel
 
-        self.loaded_model_config = model_config
+            try:
+                model_config["model"] = InferenceModel(
+                    model_config,
+                    on_message=lambda msg: self.notify_callbacks(
+                        "model_status_changed", msg
+                    ),
+                )
+            except Exception as e:
+                logger.exception("Error loading inference model")
+                self.notify_callbacks(
+                    "model_status_changed", f"Error in loading model: {str(e)}"
+                )
+                return
+        else:
+            self.notify_callbacks(
+                "model_status_changed",
+                f"Error in loading model: unknown type {model_config['type']}",
+            )
+            return
+
+        previous_model_config = None
+        with self.model_inference_lock:
+            with self.loaded_model_config_lock:
+                stale_project_load = bool(
+                    model_config.get("is_project_model")
+                    and (
+                        project_scope_generation != self.project_model_scope_generation
+                        or model_config.get("project_id") != self.project_model_scope
+                    )
+                )
+                if not stale_project_load:
+                    previous_model_config = self.loaded_model_config
+                    self.loaded_model_config = model_config
+
+            if previous_model_config is not None:
+                previous_model_config["model"].unload()
+
+        if stale_project_load:
+            model_config["model"].unload()
+            self.notify_callbacks("model_status_changed", ModelStatus.NOT_LOADED.value)
+            return None
+
+        if previous_model_config is not None:
+            self.notify_callbacks("auto_segmentation_unselected")
+        if (
+            model_config["type"] == "segment_anything"
+            or model_config.get("interaction_mode") == "prompted"
+        ):
+            self.notify_callbacks("auto_segmentation_selected")
+        self.notify_callbacks("request_next_files")
         self.on_model_download_finished()
         return self.loaded_model_config
 
@@ -664,39 +925,93 @@ class ModelManager:
         """Set auto labeling marks
         (For example, for segment_anything model, it is the marks for)
         """
-        if (
-            self.loaded_model_config is None
-            or self.loaded_model_config["type"] != "segment_anything"
-        ):
+        if self.loaded_model_config is None:
             return
-        self.loaded_model_config["model"].set_auto_labeling_marks(marks)
+        setter = getattr(
+            self.loaded_model_config["model"], "set_auto_labeling_marks", None
+        )
+        if callable(setter):
+            setter(marks)
+
+    def is_model_ready(self, model_name: str) -> bool:
+        with self.loaded_model_config_lock:
+            return bool(
+                self.loaded_model_config
+                and self.loaded_model_config.get("name") == model_name
+                and self.loaded_model_config.get("model") is not None
+            )
+
+    @property
+    def loaded_model_name(self) -> str | None:
+        with self.loaded_model_config_lock:
+            if self.loaded_model_config is None:
+                return None
+            value = self.loaded_model_config.get("name")
+        return value if isinstance(value, str) else None
 
     def unload_model(self):
         """Unload model"""
-        if self.loaded_model_config is not None:
-            self.loaded_model_config["model"].unload()
-            self.loaded_model_config = None
+        with self.model_inference_lock:
+            with self.loaded_model_config_lock:
+                model_config = self.loaded_model_config
+                self.loaded_model_config = None
+            if model_config is not None:
+                model_config["model"].unload()
 
-    def predict_shapes(self, image, filename=None, preload_paths=None):
+    def predict_shapes(
+        self,
+        image,
+        filename=None,
+        preload_paths=None,
+        *,
+        allowed_labels=None,
+        parameters=None,
+        marks=None,
+        output_mode=None,
+    ):
         """Predict shapes.
         NOTE: This function is blocking. The model can take a long time to
         predict. So it is recommended to use predict_shapes_threading instead.
         """
-        if self.loaded_model_config is None:
-            self.notify_callbacks("model_status_changed", ModelStatus.NOT_LOADED.value)
-            self.notify_callbacks("prediction_finished")
-            return
         auto_labeling_result = None
         try:
-            auto_labeling_result = self.loaded_model_config["model"].predict_shapes(
-                image, filename, preload_paths=preload_paths
-            )
+            with self.model_inference_lock:
+                if self.loaded_model_config is None:
+                    raise ValueError(ModelStatus.NOT_LOADED.value)
+                model_config = self.loaded_model_config
+                model = model_config["model"]
+                if output_mode is not None:
+                    model.set_output_mode(output_mode)
+                if marks is not None:
+                    setter = getattr(model, "set_auto_labeling_marks", None)
+                    if callable(setter):
+                        setter(marks)
+                if model_config["type"] == "inference":
+                    auto_labeling_result = model.predict_shapes(
+                        image,
+                        filename,
+                        preload_paths=preload_paths,
+                        allowed_labels=allowed_labels,
+                        parameters=parameters,
+                    )
+                else:
+                    auto_labeling_result = model.predict_shapes(
+                        image, filename, preload_paths=preload_paths
+                    )
             self.notify_callbacks("auto_labeling_result", auto_labeling_result)
-        except Exception as e:  # noqa
+        except Exception as error:
             logger.exception("Error predicting shapes")
             self.notify_callbacks(
-                "model_status_changed", ModelStatus.ERROR_PREDICTION.value
+                "model_status_changed",
+                (
+                    ModelStatus.NOT_LOADED.value
+                    if isinstance(error, ValueError)
+                    and str(error) == ModelStatus.NOT_LOADED.value
+                    else ModelStatus.ERROR_PREDICTION.value
+                ),
             )
+            self.notify_callbacks("prediction_finished")
+            raise
         self.notify_callbacks("model_status_changed", ModelStatus.INFERENCE_DONE.value)
         self.notify_callbacks("prediction_finished")
         return auto_labeling_result
@@ -729,10 +1044,6 @@ class ModelManager:
     def on_next_files_changed(self, next_files):
         """Run prediction on next files in advance to save inference time later"""
         if self.loaded_model_config is None:
-            return
-
-        # Currently only segment_anything model supports this feature
-        if self.loaded_model_config["type"] != "segment_anything":
             return
 
         self.loaded_model_config["model"].on_next_files_changed(next_files)

@@ -1,7 +1,7 @@
 # AnyLearning Platform Roadmap
 
 Status: active implementation plan
-Last updated: 2026-08-31
+Last updated: 2026-09-01
 Primary repository: `nrl-ai/anylearning-oss`
 Integration branch: `develop`
 
@@ -537,6 +537,40 @@ end-to-end ONNX output profiles.
 I7. Add confidence, IoU, class filters, dynamic shapes, and provider diagnostics.
 I8. Connect AnyLearning-trained artifacts to auto-labeling through the same
 contracts.
+  - The desktop integration now consumes `anylearning.inference` through one
+    generic adapter instead of adding another per-model inference stack. The
+    picker is task-aware: promptable models expose point/box tools while
+    detection and instance-segmentation models expose a bounded one-click run
+    and return every matching editable result.
+  - The bundled desktop catalog now uses immutable Hugging Face revisions and
+    exposes SAM 2/2.1, MobileSAM, EfficientViT-SAM L0, D-FINE N, and RF-DETR
+    Nano detection/instance segmentation. New bundles pin every installed
+    member; undeclared archive files are not extracted or executed.
+  - Project-trained RF-DETR detection and instance-segmentation ONNX artifacts
+    are discovered beside bundled models. Picker discovery only stats the
+    graph; SHA-256 verification is deferred to model load, cached by exact file
+    identity, and rechecked by the inference backend before ONNX Runtime starts.
+  - Automatic predictions are intersected with the project's label vocabulary
+    in the backend, retain protocol/model/revision/score/timing metadata in the
+    API result, and support multiple editable boxes or polygons in one run.
+    Shape scores, instance IDs, attributes, and model provenance survive the
+    canvas save/reload round trip so reruns and clearing do not duplicate or
+    discard inference identity.
+  - The long-lived desktop process isolates project-trained model catalogs and
+    unloads removed/cross-project sessions. Inference, model swaps, prompts, and
+    output modes are serialized at the session boundary; rapid picker changes
+    retain only the latest queued model without cancelling a native load in an
+    unsafe state.
+  - Linux real-model desktop-adapter and desktop-API evidence is retained under
+    `/home/vietanhdev/Workspaces/anylearning-real-validation/desktop-autolabeling-local`.
+    D-FINE, EfficientViT-SAM, RF-DETR detection, RF-DETR segmentation, clean
+    network install, and project-model discovery/load/inference passed visual
+    review without mocked model outputs. Windows and macOS desktop gates remain
+    required before this milestone merges.
+  - Other trained exports are not mislabeled as usable: NanoDet, semantic
+    segmentation, Mask R-CNN, classification, handpose, and keypoint artifacts
+    enter this picker only after their ONNX graph contracts have a first-party
+    `anylearning.inference` adapter and real exporter-parity evidence.
 I9. Benchmark the ONNX-only YOLOX adapter, close the audited SAMExporter matrix,
 then add EfficientViT-SAM, RF-DETR, and D-FINE backends in that order, enabling
 only those that satisfy the model and source gates in
@@ -597,7 +631,7 @@ gates.
 
 ## Existing backlog incorporated
 
-GitHub had no open issues at the 2026-08-30 audit. The following active items
+GitHub had no open issues at the 2026-09-01 re-audit. The following active items
 come from `docs/TODO.md` and are promoted into this plan:
 
 - Cross-platform packaged builds are not yet green on Windows and macOS.

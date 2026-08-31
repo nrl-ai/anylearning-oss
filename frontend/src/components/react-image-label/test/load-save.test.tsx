@@ -718,6 +718,91 @@ it("getShapes", () => {
     expect(ellipse.type).toBe("ellipse")
 })
 
+it("preserves auto-labeling metadata through canvas load and save", () => {
+    const imageUrl = "test-auto-labeling-metadata.png"
+    const rawShapes = [
+        {
+            id: "detected-dog",
+            type: "rectangle",
+            categories: ["dog"],
+            points: [
+                [10, 20],
+                [80, 20],
+                [80, 90],
+                [10, 90],
+            ],
+            score: 0.9123,
+            group_id: 4,
+            attributes: { class_id: 16, occluded: false },
+            auto_labeling_model: "rfdetr-nano",
+        },
+        {
+            id: "segmented-dog",
+            type: "polygon",
+            categories: ["dog"],
+            points: [
+                [20, 30],
+                [70, 30],
+                [60, 80],
+            ],
+            score: 0.8765,
+            group_id: "instance-5",
+            attributes: { class_id: 16 },
+            auto_labeling_model: "rfdetr-nano-seg",
+        },
+    ]
+    const res = renderHook(useImageAnnotator)
+    const view = render(
+        <ImageAnnotator
+            setHandles={res.result.current.setHandles}
+            naturalSize
+            imageUrl={imageUrl}
+            shapes={rawShapes}
+            width={100}
+            height={100}
+        />
+    )
+    const image = view.container.querySelector("svg")!.children[0] as SVGImageElement
+    fireEvent(
+        image,
+        new CustomEvent("testEvent", {
+            detail: { testRil: { naturalWidth: 100, naturalHeight: 100 } },
+        })
+    )
+
+    const firstSave = res.result.current.annotator!.getShapes()!
+    expect(firstSave).toMatchObject([
+        {
+            score: 0.9123,
+            group_id: 4,
+            attributes: { class_id: 16, occluded: false },
+            auto_labeling_model: "rfdetr-nano",
+        },
+        {
+            score: 0.8765,
+            group_id: "instance-5",
+            attributes: { class_id: 16 },
+            auto_labeling_model: "rfdetr-nano-seg",
+        },
+    ])
+
+    res.result.current.annotator!.setShapes(firstSave)
+    expect(res.result.current.annotator!.getShapes()).toMatchObject([
+        {
+            score: 0.9123,
+            group_id: 4,
+            attributes: { class_id: 16, occluded: false },
+            auto_labeling_model: "rfdetr-nano",
+        },
+        {
+            score: 0.8765,
+            group_id: "instance-5",
+            attributes: { class_id: 16 },
+            auto_labeling_model: "rfdetr-nano-seg",
+        },
+    ])
+})
+
 it("loads keypoints from canvas and LabelMe formats and preserves metadata", () => {
     const imageUrl = "test-keypoints.png"
     const rawShapes = [

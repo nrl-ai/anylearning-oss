@@ -1,5 +1,5 @@
-import { BrainIcon, CheckCircle, Circle, CircleMinus, Square as SquareIcon, X } from "lucide-react"
-import React, { useEffect } from "react"
+import { BrainIcon, CheckCircle, Circle, CircleMinus, Play, Square as SquareIcon, X } from "lucide-react"
+import React, { useEffect, useMemo } from "react"
 
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -16,10 +16,12 @@ interface LabelingScreenProps {
     model: string
     mode: LabelingMode
     setAiShape: (value: string) => void
-    selectModel: (value: string) => void
+    selectModel: (value: string, interactionMode: "prompted" | "automatic") => void
     handleToolSelect: (tool: string, isAI: boolean) => void
     clear: () => void
     finish: () => void
+    run: () => void
+    isInferencing: boolean
 }
 
 /**
@@ -37,22 +39,32 @@ export default function AutoLabellingToolbar({
     aiShape,
     model,
     mode,
+    setMode,
     setAiShape,
     selectModel,
     handleToolSelect,
     clear,
     finish,
+    run,
+    isInferencing,
 }: LabelingScreenProps) {
-    const { models, status, loadModel } = useAutoLabeling(projectId)
+    const { models, status, loadedModel, loadModel, loadError, isLoadingModel } = useAutoLabeling(projectId)
     const requiresBoundingBoxes = projectType === "Object Detection"
+    const compatibleModels = useMemo(
+        () => models.filter((candidate) => candidate.project_types?.includes(projectType)),
+        [models, projectType]
+    )
+    const selectedModel = compatibleModels.find((candidate) => candidate.name === model)
+    const isPromptable = selectedModel?.interaction_mode !== "automatic"
+    const modelReady = loadedModel === model && !isLoadingModel
 
     useEffect(() => {
-        if (models.length > 0 && !model) {
-            const firstModel = models[0].name
-            selectModel(firstModel)
-            loadModel(firstModel)
+        if (compatibleModels.length > 0 && !selectedModel) {
+            const firstModel = compatibleModels[0].name
+            selectModel(firstModel, compatibleModels[0].interaction_mode)
+            void loadModel(firstModel).catch(() => undefined)
         }
-    }, [models, selectModel, loadModel, model])
+    }, [compatibleModels, selectedModel, selectModel, loadModel])
 
     const isArmed = (tool: string) => mode === "auto_labeling" && aiToolSelected === tool
 
@@ -64,17 +76,20 @@ export default function AutoLabellingToolbar({
                     <Select
                         value={model}
                         onValueChange={(value) => {
-                            loadModel(value)
-                            selectModel(value)
+                            void loadModel(value).catch(() => undefined)
+                            const candidate = compatibleModels.find((item) => item.name === value)
+                            selectModel(value, candidate?.interaction_mode ?? "prompted")
+                            setMode("auto_labeling")
                         }}
                     >
                         <SelectTrigger size="sm" className="w-[230px] truncate">
                             <SelectValue placeholder="Select a model" />
                         </SelectTrigger>
                         <SelectContent>
-                            {models.map((model) => (
+                            {compatibleModels.map((model) => (
                                 <SelectItem key={model.name} value={model.name} className="truncate">
                                     {model.display_name}
+                                    {model.is_project_model ? " · This project" : ""}
                                 </SelectItem>
                             ))}
                         </SelectContent>
@@ -84,7 +99,7 @@ export default function AutoLabellingToolbar({
                 <Select
                     value={requiresBoundingBoxes ? "rectangle" : aiShape}
                     onValueChange={setAiShape}
-                    disabled={requiresBoundingBoxes}
+                    disabled={requiresBoundingBoxes || selectedModel?.output_modes?.length === 1}
                 >
                     <SelectTrigger size="sm" className="w-[130px]">
                         <SelectValue placeholder="Shape" />
@@ -95,56 +110,74 @@ export default function AutoLabellingToolbar({
                     </SelectContent>
                 </Select>
 
-                <div className="flex items-center gap-0.5">
-                    <Button
-                        size="sm"
-                        variant="ghost"
-                        className={cn("text-ok", isArmed("addPoint") && "bg-ok-surface")}
-                        onClick={() => handleToolSelect("addPoint", true)}
-                    >
-                        <Circle />
-                        Include point
-                        <kbd className="text-muted-foreground ml-1 font-mono text-[0.6875rem]">a</kbd>
-                    </Button>
+                {isPromptable ? (
+                    <div className="flex items-center gap-0.5">
+                        <Button
+                            size="sm"
+                            variant="ghost"
+                            disabled={!modelReady || isInferencing}
+                            className={cn("text-ok", isArmed("addPoint") && "bg-ok-surface")}
+                            onClick={() => handleToolSelect("addPoint", true)}
+                        >
+                            <Circle />
+                            Include point
+                            <kbd className="text-muted-foreground ml-1 font-mono text-[0.6875rem]">a</kbd>
+                        </Button>
 
-                    <Button
-                        size="sm"
-                        variant="ghost"
-                        className={cn("text-fail", isArmed("removePoint") && "bg-fail-surface")}
-                        onClick={() => handleToolSelect("removePoint", true)}
-                    >
-                        <CircleMinus />
-                        Exclude point
-                        <kbd className="text-muted-foreground ml-1 font-mono text-[0.6875rem]">d</kbd>
-                    </Button>
+                        <Button
+                            size="sm"
+                            variant="ghost"
+                            disabled={!modelReady || isInferencing}
+                            className={cn("text-fail", isArmed("removePoint") && "bg-fail-surface")}
+                            onClick={() => handleToolSelect("removePoint", true)}
+                        >
+                            <CircleMinus />
+                            Exclude point
+                            <kbd className="text-muted-foreground ml-1 font-mono text-[0.6875rem]">d</kbd>
+                        </Button>
 
-                    <Button
-                        size="sm"
-                        variant="ghost"
-                        className={cn("text-ok", isArmed("addRect") && "bg-ok-surface")}
-                        onClick={() => handleToolSelect("addRect", true)}
-                    >
-                        <SquareIcon />
-                        Include box
-                        <kbd className="text-muted-foreground ml-1 font-mono text-[0.6875rem]">r</kbd>
-                    </Button>
+                        <Button
+                            size="sm"
+                            variant="ghost"
+                            disabled={!modelReady || isInferencing}
+                            className={cn("text-ok", isArmed("addRect") && "bg-ok-surface")}
+                            onClick={() => handleToolSelect("addRect", true)}
+                        >
+                            <SquareIcon />
+                            Include box
+                            <kbd className="text-muted-foreground ml-1 font-mono text-[0.6875rem]">r</kbd>
+                        </Button>
 
-                    <Button size="sm" variant="ghost" className="text-muted-foreground" onClick={clear}>
-                        <X />
-                        Clear
-                        <kbd className="ml-1 font-mono text-[0.6875rem]">c</kbd>
-                    </Button>
+                        <Button size="sm" variant="ghost" className="text-muted-foreground" onClick={clear}>
+                            <X />
+                            Clear
+                            <kbd className="ml-1 font-mono text-[0.6875rem]">c</kbd>
+                        </Button>
 
-                    <Button size="sm" onClick={finish}>
-                        <CheckCircle />
-                        Finish object
-                        <kbd className="ml-1 font-mono text-[0.6875rem] opacity-70">f</kbd>
-                    </Button>
-                </div>
+                        <Button size="sm" disabled={!modelReady || isInferencing} onClick={finish}>
+                            <CheckCircle />
+                            Finish object
+                            <kbd className="ml-1 font-mono text-[0.6875rem] opacity-70">f</kbd>
+                        </Button>
+                    </div>
+                ) : (
+                    <div className="flex items-center gap-1">
+                        <Button size="sm" disabled={!modelReady || isInferencing} onClick={run}>
+                            <Play />
+                            Run model
+                        </Button>
+                        <Button size="sm" variant="ghost" className="text-muted-foreground" onClick={clear}>
+                            <X />
+                            Clear predictions
+                        </Button>
+                    </div>
+                )}
             </div>
 
-            {status && (
-                <p className="text-muted-foreground truncate border-t px-3 py-1 font-mono text-[0.6875rem]">{status}</p>
+            {(loadError || status) && (
+                <p className="text-muted-foreground truncate border-t px-3 py-1 font-mono text-[0.6875rem]">
+                    {loadError || status}
+                </p>
             )}
         </div>
     )

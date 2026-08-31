@@ -12,6 +12,13 @@ class AutoLabelingResult:
 
     shapes: Sequence[Any]
     replace: bool = True
+    protocol_version: str | None = None
+    request_id: str | None = None
+    source_id: str | None = None
+    model_id: str | None = None
+    model_revision: str | None = None
+    warnings: Sequence[str] = ()
+    timings_ms: dict[str, float] | None = None
 
 
 @dataclass(frozen=True, slots=True)
