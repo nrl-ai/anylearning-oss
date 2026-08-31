@@ -311,9 +311,12 @@ Implementation status (2026-08-31):
       checksum-gated deterministic decoder preparation, native multimask policy,
       512/1024 encoder profiles, 1024-frame prompt scaling, point-only padding,
       resource bounds, embedding cache, and authenticated-server support. L0
-      native-checkpoint parity and local direct/server landscape/portrait visual
-      validation pass; Linux, Windows, and macOS hosted evidence plus the larger
-      variant matrix remain required before this item is complete.
+      native-checkpoint parity and all five variants' local direct/server
+      landscape/portrait visual validation pass. License-complete, checksum-
+      enumerated bundles are published at immutable model revision
+      `e5848b5d032cc9b5f3a3af199325005c45e24b50`; Linux, Windows, and macOS hosted
+      evidence for L0 and the larger variant matrix remain required before this
+      item is complete.
 
 Every merge gate uses real ONNX graphs and real images, never mocked model
 outputs. It records graph and image SHA-256 values, cold/warm latency, peak RSS,

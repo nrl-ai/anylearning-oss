@@ -32,6 +32,13 @@ then chooses the highest-IoU candidate among native tokens 1–3. Static graph
 dimensions, prompt count, image pixels, intermediate mask elements, contours,
 shapes, and polygon points are bounded independently.
 
+Checksum-pinned, license-complete bundles for L0/L1/L2/XL0/XL1 are published
+in the [immutable AnyLearning model revision](https://huggingface.co/nrl-ai/anylearning-labeling-models/tree/e5848b5d032cc9b5f3a3af199325005c45e24b50).
+Each ZIP contains one encoder, the deterministically prepared decoder, the
+backend configuration, and the upstream Apache-2.0 license. The repository
+manifest records archive and member SHA-256 values; consumers must still verify
+those values before loading either graph.
+
 `sam3` is a separate three-graph backend for text-driven and geometrically
 guided segmentation. It accepts one bounded `TextPrompt`, plus point or box
 geometry up to the decoder graph's fixed exported capacity. Text-only requests
