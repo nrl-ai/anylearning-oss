@@ -250,7 +250,9 @@ class ModelManager:
     def load_model_configs(self):
         """Load model configs"""
         # Load list of default models
-        model_catalog = pkg_resources.files(auto_labeling_configs).joinpath("models.yaml")
+        model_catalog = pkg_resources.files(auto_labeling_configs).joinpath(
+            "models.yaml"
+        )
         with model_catalog.open("r", encoding="utf-8") as f:
             model_list = yaml.safe_load(f)
             for model in model_list:
