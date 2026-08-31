@@ -3,17 +3,17 @@
   "backend": "segment_anything",
   "provenance": {
     "source_url": "https://github.com/facebookresearch/sam2",
-    "artifact_url": "https://huggingface.co/nrl-ai/anylearning-labeling-models/blob/b8abc71ec07279a978cc1682fd91cd50a7d7b207/sam2_hiera_base_plus.zip",
+    "artifact_url": "https://huggingface.co/nrl-ai/anylearning-labeling-models/blob/90e36cbeec58d3f5273a101875e603c20d2cfed3/sam2_hiera_base_plus.zip",
     "source_revision": "071f58077599431edd0e5d2ac52ecca4c78f1cab",
     "code_license": "Apache-2.0",
     "artifact_license": "Apache-2.0 SAM 2 ONNX bundle",
-    "license_url": "https://github.com/facebookresearch/sam2/blob/2b90b9f5ceec907a1c18123530e92e794ad901a4/LICENSE"
+    "license_url": "https://huggingface.co/nrl-ai/anylearning-labeling-models/blob/90e36cbeec58d3f5273a101875e603c20d2cfed3/LICENSES.md"
   },
   "config": {
     "name": "official-sam2-hiera-base-plus",
     "encoder_model_path": "sam2_hiera_base_plus.encoder.onnx",
     "decoder_model_path": "sam2_hiera_base_plus.decoder.onnx",
-    "encoder_sha256": "53b79cec15f2078b3c7410f00f00950a09ef02007dccf238859fec156e42cc8d",
+    "encoder_sha256": "487ed5004fe8f71498a026ead0846fc3eb12cc1a84df3fbf7b5a7e5fe3be7ae0",
     "decoder_sha256": "666f00ce2664de31211a71068b6b74c3fc5aeee089ebeb2fc9c37834b9ce03b4",
     "family": "sam2",
     "providers": ["CPUExecutionProvider"],

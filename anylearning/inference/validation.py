@@ -505,6 +505,33 @@ def _rss_bytes() -> int:
     return int(psutil.Process().memory_info().rss)
 
 
+def _lifecycle_rss_metrics(after_unload_samples: list[int]) -> dict[str, int]:
+    """Separate one-time allocator warm-up from repeated lifecycle growth.
+
+    Native runtimes and platform allocators can retain a bounded pool only after
+    the second load/unload. Comparing that warmed pool with the cold process
+    reports initialization retention as a leak. With at least three lifecycle
+    samples, the first repeated cycle is therefore the steady-state baseline;
+    two-cycle manifests retain the historical cold-to-warm measurement because
+    they do not contain enough evidence to distinguish the two effects.
+    """
+    if len(after_unload_samples) < 2:
+        raise ValueError("Lifecycle RSS metrics require at least two samples")
+    if any(isinstance(sample, bool) or sample < 0 for sample in after_unload_samples):
+        raise ValueError("Lifecycle RSS samples must be non-negative integers")
+
+    warmup_growth = max(0, after_unload_samples[1] - after_unload_samples[0])
+    baseline_index = 1 if len(after_unload_samples) >= 3 else 0
+    baseline = after_unload_samples[baseline_index]
+    steady_state_growth = max(0, after_unload_samples[-1] - baseline)
+    return {
+        "warmup_retained_rss_growth_bytes": warmup_growth,
+        "steady_state_rss_baseline_bytes": baseline,
+        "steady_state_rss_baseline_cycle": baseline_index + 1,
+        "steady_state_rss_growth_bytes": steady_state_growth,
+    }
+
+
 def _model_artifact_details(
     config: dict[str, Any], manifest_dir: Path
 ) -> dict[str, Any]:
@@ -710,7 +737,7 @@ def run_real_model_validation(
 
     lifecycle_metrics: list[dict[str, Any]] = []
     global_failures: list[str] = []
-    steady_state_rss = rss_samples["after_unload"]
+    after_unload_rss_samples = [rss_samples["after_unload"]]
     for cycle in range(1, manifest.lifecycle_cycles):
         lifecycle_session = registry.create_session(manifest.backend, config)
         cycle_load_started = time.perf_counter()
@@ -753,6 +780,7 @@ def run_real_model_validation(
             lifecycle_session.unload()
             cycle_unload_ms = (time.perf_counter() - cycle_unload_started) * 1000
         after_unload_rss = _rss_bytes()
+        after_unload_rss_samples.append(after_unload_rss)
         peak_rss_bytes = max(peak_rss_bytes, after_unload_rss)
         lifecycle_metrics.append(
             {
@@ -763,7 +791,8 @@ def run_real_model_validation(
                 "rss_bytes_after_unload": after_unload_rss,
             }
         )
-    steady_state_growth = max(0, _rss_bytes() - steady_state_rss)
+    lifecycle_rss = _lifecycle_rss_metrics(after_unload_rss_samples)
+    steady_state_growth = lifecycle_rss["steady_state_rss_growth_bytes"]
     if steady_state_growth > manifest.maximum_steady_state_rss_growth_bytes:
         global_failures.append(
             f"steady-state RSS grew {steady_state_growth} bytes; limit is "
@@ -786,7 +815,8 @@ def run_real_model_validation(
         "runs_per_image": manifest.runs,
         "lifecycle_cycles": manifest.lifecycle_cycles,
         "lifecycle": lifecycle_metrics,
-        "steady_state_rss_growth_bytes": steady_state_growth,
+        "rss_bytes_after_unload_by_cycle": after_unload_rss_samples,
+        **lifecycle_rss,
         "maximum_steady_state_rss_growth_bytes": (
             manifest.maximum_steady_state_rss_growth_bytes
         ),

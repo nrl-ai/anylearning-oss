@@ -63,11 +63,15 @@ and image SHA-256 values, external-file sizes/digests when present, and a local
 assets and local evidence cannot be committed accidentally.
 
 The steady-state RSS limit is calibrated per model from retained results on all
-hosted operating systems. It includes native runtime and platform allocator
-caches, not only live tensors. Raising a limit therefore requires an exact
-before/after report and visual/consistency review; keep only bounded headroom
-above the highest valid platform result so a later memory regression still
-fails the gate.
+hosted operating systems. With three or more lifecycle cycles, the first
+repeated load/unload establishes the warmed native-runtime and platform-
+allocator baseline; the report records its one-time retention separately as
+`warmup_retained_rss_growth_bytes`. The leak gate then measures later growth
+from that warmed baseline. Two-cycle manifests conservatively keep the cold
+baseline because they lack a second post-warm-up sample. Raising a limit
+therefore requires an exact before/after report and visual/consistency review;
+keep only bounded headroom above the highest valid platform result so a later
+memory regression still fails the gate.
 
 The hosted real-model workflow also derives an external-data form of the same
 official ONNX model using `scripts/prepare_external_onnx_validation.py`. It runs
@@ -87,9 +91,10 @@ channel-order defects are visible during review. The committed
 `efficient_sam_s_official.json` and `sam_vit_b_official.json` exercise the
 larger scheduled graph variants. `sam2_hiera_small_official.json`,
 `sam2_hiera_base_plus_official.json`, and `sam2_hiera_large_official.json`
-exercise every larger SAM2 encoder against the shared decoder contract.
-The corresponding `sam2_1_hiera_*_official.json` manifests exercise every
-SAM 2.1 size from immutable, checksum-pinned archives. Tiny remains a
+exercise every larger prepared SAM2 encoder against the unchanged decoder
+contract. The corresponding `sam2_1_hiera_*_official.json` manifests exercise
+every SAM 2.1 size from immutable, checksum-pinned prepared archives. Each
+archive pins the encoder, decoder, configuration, and bundled license. Tiny remains a
 cross-platform pull-request gate; Small, Base+, and Large run in the scheduled
 or manually dispatched resource-qualified matrix.
 `efficientvit_sam_l0_official.json` downloads the immutable official encoder

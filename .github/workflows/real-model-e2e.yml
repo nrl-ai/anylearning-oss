@@ -10,6 +10,7 @@ on:
       - "scripts/download_verified_file.py"
       - "scripts/prepare_external_onnx_validation.py"
       - "scripts/prepare_efficientvit_sam_decoder.py"
+      - "scripts/prepare_sam2_encoder.py"
       - "scripts/verify_real_model_matrix.py"
       - "tests/e2e/test_real_onnx_models_e2e.py"
       - "tests/fixtures/inference/real_models/**"
@@ -24,6 +25,7 @@ on:
       - "scripts/download_verified_file.py"
       - "scripts/prepare_external_onnx_validation.py"
       - "scripts/prepare_efficientvit_sam_decoder.py"
+      - "scripts/prepare_sam2_encoder.py"
       - "scripts/verify_real_model_matrix.py"
       - "tests/e2e/test_real_onnx_models_e2e.py"
       - "tests/fixtures/inference/real_models/**"
@@ -622,7 +624,7 @@ jobs:
         os: [ubuntu-latest, windows-latest, macos-latest]
     env:
       ASSET_DIR: tests/fixtures/inference/real_models
-      ARCHIVE_SHA256: 7454c3afd835b2acaad863afe3acb11f4e4af039c96e886989ad3873a338e1ec
+      ARCHIVE_SHA256: f96e764cf19ba63e7870f8d588cfbfe772cda40a13180f19e73100e28f8c92da
       IMAGE_SHA256: 5a9522051c3cec2bbd2f6323fccba32e8fbf3ddcc2b3e2fd46b04c720bc6f866
       OPENBLAS_NUM_THREADS: "1"
       OMP_NUM_THREADS: "1"
@@ -651,7 +653,7 @@ jobs:
         run: |
           set -euo pipefail
           python scripts/download_verified_file.py \
-            "https://huggingface.co/nrl-ai/anylearning-labeling-models/resolve/b8abc71ec07279a978cc1682fd91cd50a7d7b207/sam2_hiera_tiny.zip" \
+            "https://huggingface.co/nrl-ai/anylearning-labeling-models/resolve/90e36cbeec58d3f5273a101875e603c20d2cfed3/sam2_hiera_tiny.zip" \
             "$ASSET_DIR/sam2_hiera_tiny.zip" \
             --sha256 "$ARCHIVE_SHA256" --max-bytes 209715200
           python scripts/download_verified_file.py \
@@ -666,8 +668,9 @@ jobs:
           python scripts/extract_verified_zip.py \
             "$ASSET_DIR/sam2_hiera_tiny.zip" "$ASSET_DIR" \
             --member "config.yaml:248" \
-            --member "sam2_hiera_tiny.encoder.onnx:134261315" \
+            --member "sam2_hiera_tiny.encoder.onnx:134261398" \
             --member "sam2_hiera_tiny.decoder.onnx:20640886" \
+            --member "LICENSE:11357" \
             --remove-archive
           python - <<'PY'
           import os
@@ -702,6 +705,43 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
+  sam2-hiera-tiny-consistency:
+    name: SAM2 Hiera-Tiny cross-platform identity
+    needs: sam2-hiera-tiny
+    if: always() && needs.sam2-hiera-tiny.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+
+      - name: Install image verification dependency
+        run: python -m pip install "Pillow>=12,<13"
+
+      - name: Download all operating-system reports
+        uses: actions/download-artifact@v6
+        with:
+          pattern: sam2-hiera-tiny-real-model-validation-*
+          path: matrix-artifacts
+
+      - name: Verify transport and cross-platform decoded pixels
+        run: >-
+          python scripts/verify_real_model_matrix.py matrix-artifacts
+          --artifact-prefix sam2-hiera --variant tiny
+          --platform Linux --platform Windows --platform macOS
+          --output matrix-verification/sam2-hiera-tiny.json
+
+      - name: Retain the matrix verification report
+        uses: actions/upload-artifact@v6
+        with:
+          name: sam2-hiera-tiny-matrix-verification
+          path: matrix-verification/
+          if-no-files-found: error
+          retention-days: 30
+
   sam2-larger:
     name: SAM2 Hiera-${{ matrix.display }} / ${{ matrix.os }}
     if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'all' || inputs.suite == 'sam2-larger'))
@@ -716,9 +756,9 @@ jobs:
           - variant: small
             display: Small
             stem: sam2_hiera_small
-            archive_sha256: 4ef9047eb7fc7e36041c88a9f968c3c0b1d1640b88ef66d754b7d558a10cee38
+            archive_sha256: 90aa65e8b9c98cca73916c0b579d0b63139ef60e8b508946c389204819195261
             archive_max_bytes: 209715200
-            encoder_bytes: 162703493
+            encoder_bytes: 162703576
             decoder_bytes: 20640886
             config_bytes: 252
             manifest: sam2_hiera_small_official.json
@@ -726,9 +766,9 @@ jobs:
           - variant: base-plus
             display: Base+
             stem: sam2_hiera_base_plus
-            archive_sha256: c56282103c2bf99bdab07d2dddb1be67c03d71659ade3f9dcf1d7001fda582fb
+            archive_sha256: c30ce8030d9be4ee68afb825285d0d50b706571a671847ba0d7cb36e7aab75c3
             archive_max_bytes: 419430400
-            encoder_bytes: 339781223
+            encoder_bytes: 306089295
             decoder_bytes: 20640886
             config_bytes: 264
             manifest: sam2_hiera_base_plus_official.json
@@ -736,9 +776,9 @@ jobs:
           - variant: large
             display: Large
             stem: sam2_hiera_large
-            archive_sha256: a967ef6e54794e9494c8b71201766532b7b2929fe18f56b8e63940e97dc671ac
+            archive_sha256: 97d5841ca0827acb3ae54ed896adedb23cc77a4fa23118402efca3e169d20542
             archive_max_bytes: 1073741824
-            encoder_bytes: 889361980
+            encoder_bytes: 889349833
             decoder_bytes: 20640910
             config_bytes: 252
             manifest: sam2_hiera_large_official.json
@@ -781,7 +821,7 @@ jobs:
         run: |
           set -euo pipefail
           python scripts/download_verified_file.py \
-            "https://huggingface.co/nrl-ai/anylearning-labeling-models/resolve/b8abc71ec07279a978cc1682fd91cd50a7d7b207/${MODEL_STEM}.zip" \
+            "https://huggingface.co/nrl-ai/anylearning-labeling-models/resolve/90e36cbeec58d3f5273a101875e603c20d2cfed3/${MODEL_STEM}.zip" \
             "$ASSET_DIR/${MODEL_STEM}.zip" \
             --sha256 "$ARCHIVE_SHA256" --max-bytes "$ARCHIVE_MAX_BYTES" \
             --timeout-seconds 1800
@@ -799,6 +839,7 @@ jobs:
             --member "config.yaml:${CONFIG_BYTES}" \
             --member "${MODEL_STEM}.encoder.onnx:${ENCODER_BYTES}" \
             --member "${MODEL_STEM}.decoder.onnx:${DECODER_BYTES}" \
+            --member "LICENSE:11357" \
             --remove-archive
           python - <<'PY'
           import os
@@ -833,6 +874,44 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
+  sam2-larger-consistency:
+    name: SAM2 larger cross-platform identity
+    needs: sam2-larger
+    if: always() && needs.sam2-larger.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+
+      - name: Install image verification dependency
+        run: python -m pip install "Pillow>=12,<13"
+
+      - name: Download all larger-variant operating-system reports
+        uses: actions/download-artifact@v6
+        with:
+          pattern: sam2-hiera-*-real-model-validation-*
+          path: matrix-artifacts
+
+      - name: Verify transport and cross-platform decoded pixels
+        run: >-
+          python scripts/verify_real_model_matrix.py matrix-artifacts
+          --artifact-prefix sam2-hiera
+          --variant small --variant base-plus --variant large
+          --platform Linux --platform Windows --platform macOS
+          --output matrix-verification/sam2-larger.json
+
+      - name: Retain the matrix verification report
+        uses: actions/upload-artifact@v6
+        with:
+          name: sam2-larger-matrix-verification
+          path: matrix-verification/
+          if-no-files-found: error
+          retention-days: 30
+
   sam2-1-hiera-tiny:
     name: SAM2.1 Hiera-Tiny aspect ratios / ${{ matrix.os }}
     if: github.event_name != 'workflow_dispatch' || inputs.suite == 'all' || inputs.suite == 'pull-request'
@@ -844,7 +923,7 @@ jobs:
         os: [ubuntu-latest, windows-latest, macos-latest]
     env:
       ASSET_DIR: tests/fixtures/inference/real_models
-      ARCHIVE_SHA256: c602cb3f6fd297312a415f885f0df3f0eef9fbb334b069c9d30e828f2ae7c69a
+      ARCHIVE_SHA256: b15c3d3265392901f6dbe45a42e2f64709bf265b15fde899b2439bc04496ba04
       IMAGE_SHA256: 5a9522051c3cec2bbd2f6323fccba32e8fbf3ddcc2b3e2fd46b04c720bc6f866
       OPENBLAS_NUM_THREADS: "1"
       OMP_NUM_THREADS: "1"
@@ -873,7 +952,7 @@ jobs:
         run: |
           set -euo pipefail
           python scripts/download_verified_file.py \
-            "https://huggingface.co/nrl-ai/anylearning-labeling-models/resolve/142e56234c727348d5fc5ec22c89fd7be52a0965/sam2_1_hiera_tiny.zip" \
+            "https://huggingface.co/nrl-ai/anylearning-labeling-models/resolve/90e36cbeec58d3f5273a101875e603c20d2cfed3/sam2_1_hiera_tiny.zip" \
             "$ASSET_DIR/sam2_1_hiera_tiny.zip" \
             --sha256 "$ARCHIVE_SHA256" --max-bytes 157286400
           python scripts/download_verified_file.py \
@@ -888,8 +967,9 @@ jobs:
           python scripts/extract_verified_zip.py \
             "$ASSET_DIR/sam2_1_hiera_tiny.zip" "$ASSET_DIR" \
             --member "config.yaml:260" \
-            --member "sam2.1_hiera_tiny.encoder.onnx:109471931" \
+            --member "sam2.1_hiera_tiny.encoder.onnx:109657594" \
             --member "sam2.1_hiera_tiny.decoder.onnx:16519561" \
+            --member "LICENSE:11357" \
             --remove-archive
           python - <<'PY'
           import os
@@ -924,6 +1004,43 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
+  sam2-1-hiera-tiny-consistency:
+    name: SAM2.1 Hiera-Tiny cross-platform identity
+    needs: sam2-1-hiera-tiny
+    if: always() && needs.sam2-1-hiera-tiny.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+
+      - name: Install image verification dependency
+        run: python -m pip install "Pillow>=12,<13"
+
+      - name: Download all operating-system reports
+        uses: actions/download-artifact@v6
+        with:
+          pattern: sam2-1-hiera-tiny-real-model-validation-*
+          path: matrix-artifacts
+
+      - name: Verify transport and cross-platform decoded pixels
+        run: >-
+          python scripts/verify_real_model_matrix.py matrix-artifacts
+          --artifact-prefix sam2-1-hiera --variant tiny
+          --platform Linux --platform Windows --platform macOS
+          --output matrix-verification/sam2-1-hiera-tiny.json
+
+      - name: Retain the matrix verification report
+        uses: actions/upload-artifact@v6
+        with:
+          name: sam2-1-hiera-tiny-matrix-verification
+          path: matrix-verification/
+          if-no-files-found: error
+          retention-days: 30
+
   sam2-1-larger:
     name: SAM2.1 Hiera-${{ matrix.display }} / ${{ matrix.os }}
     if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'all' || inputs.suite == 'sam2-1-larger'))
@@ -939,9 +1056,9 @@ jobs:
             display: Small
             archive: sam2_1_hiera_small
             stem: sam2.1_hiera_small
-            archive_sha256: 7c232acd0a95053704aa2ae9f9a3e8f9e93899fa51335b14d38e34bb7267973d
+            archive_sha256: 5802f9e3b05d41b9a5ce03f32d3935fe6cc94294b77956f37c58b7f2581471ce
             archive_max_bytes: 157286400
-            encoder_bytes: 138018779
+            encoder_bytes: 138262518
             decoder_bytes: 16519569
             config_bytes: 264
             manifest: sam2_1_hiera_small_official.json
@@ -950,9 +1067,9 @@ jobs:
             display: Base+
             archive: sam2_1_hiera_base_plus
             stem: sam2.1_hiera_base_plus
-            archive_sha256: 389a2b0ba3209e4352887651d794a79e7518b186d85bd640b032ad6d5bee089a
+            archive_sha256: 389aae8f1e552275326e13a10973e822583989dba95aa7c3ffc80022460ac7eb
             archive_max_bytes: 314572800
-            encoder_bytes: 277472669
+            encoder_bytes: 277826401
             decoder_bytes: 16519587
             config_bytes: 276
             manifest: sam2_1_hiera_base_plus_official.json
@@ -961,9 +1078,9 @@ jobs:
             display: Large
             archive: sam2_1_hiera_large
             stem: sam2.1_hiera_large
-            archive_sha256: 07c8a5e445414529f0120f5d1c5699f3a70c38b217c249d699fa1308ef1645af
+            archive_sha256: 15f74c68530b0bc9f37d2189394a100b81541f55362b34f55a309ba12b9e1fa4
             archive_max_bytes: 943718400
-            encoder_bytes: 852451097
+            encoder_bytes: 853027503
             decoder_bytes: 16519627
             config_bytes: 264
             manifest: sam2_1_hiera_large_official.json
@@ -1005,7 +1122,7 @@ jobs:
         run: |
           set -euo pipefail
           python scripts/download_verified_file.py \
-            "https://huggingface.co/nrl-ai/anylearning-labeling-models/resolve/142e56234c727348d5fc5ec22c89fd7be52a0965/${ARCHIVE_STEM}.zip" \
+            "https://huggingface.co/nrl-ai/anylearning-labeling-models/resolve/90e36cbeec58d3f5273a101875e603c20d2cfed3/${ARCHIVE_STEM}.zip" \
             "$ASSET_DIR/${ARCHIVE_STEM}.zip" \
             --sha256 "$ARCHIVE_SHA256" --max-bytes "$ARCHIVE_MAX_BYTES" \
             --timeout-seconds 1800
@@ -1023,6 +1140,7 @@ jobs:
             --member "config.yaml:${CONFIG_BYTES}" \
             --member "${MODEL_STEM}.encoder.onnx:${ENCODER_BYTES}" \
             --member "${MODEL_STEM}.decoder.onnx:${DECODER_BYTES}" \
+            --member "LICENSE:11357" \
             --remove-archive
           python - <<'PY'
           import os
@@ -1054,6 +1172,44 @@ jobs:
         with:
           name: ${{ matrix.artifact }}-real-model-validation-${{ runner.os }}
           path: validation-results/
+          if-no-files-found: error
+          retention-days: 30
+
+  sam2-1-larger-consistency:
+    name: SAM2.1 larger cross-platform identity
+    needs: sam2-1-larger
+    if: always() && needs.sam2-1-larger.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+
+      - name: Install image verification dependency
+        run: python -m pip install "Pillow>=12,<13"
+
+      - name: Download all larger-variant operating-system reports
+        uses: actions/download-artifact@v6
+        with:
+          pattern: sam2-1-hiera-*-real-model-validation-*
+          path: matrix-artifacts
+
+      - name: Verify transport and cross-platform decoded pixels
+        run: >-
+          python scripts/verify_real_model_matrix.py matrix-artifacts
+          --artifact-prefix sam2-1-hiera
+          --variant small --variant base-plus --variant large
+          --platform Linux --platform Windows --platform macOS
+          --output matrix-verification/sam2-1-larger.json
+
+      - name: Retain the matrix verification report
+        uses: actions/upload-artifact@v6
+        with:
+          name: sam2-1-larger-matrix-verification
+          path: matrix-verification/
           if-no-files-found: error
           retention-days: 30
 
