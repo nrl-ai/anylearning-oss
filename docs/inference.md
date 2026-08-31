@@ -69,6 +69,15 @@ MobileSAM apply the official longest-side resize and aspect-ratio-aware
 low-resolution mask crop; EfficientSAM preserves its dynamic native image size.
 All image boundaries are explicitly `uint8` RGB.
 
+SAM 2 and SAM 2.1 Tiny/Small/Base+/Large bundles are pinned in the
+[immutable AnyLearning model revision](https://huggingface.co/nrl-ai/anylearning-labeling-models/tree/90e36cbeec58d3f5273a101875e603c20d2cfed3).
+Their decoders are unchanged source exports. Their encoders pass through
+`scripts/prepare_sam2_encoder.py`, a checksum-gated ONNX-only transform that
+repairs exact stale shape metadata, removes only unreachable initializers, and
+requires strict type/shape inference before publishing. The manifest records
+both source and prepared graph digests plus every archive member's exact size
+and SHA-256; each bundle includes the upstream Apache-2.0 license.
+
 Promptable models disable ONNX Runtime's per-session CPU memory arena and memory
 pattern optimization by default. Memory patterns can preallocate one large
 activation buffer after observing the first run; disabling them keeps peak and

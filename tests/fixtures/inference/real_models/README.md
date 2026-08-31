@@ -87,9 +87,10 @@ channel-order defects are visible during review. The committed
 `efficient_sam_s_official.json` and `sam_vit_b_official.json` exercise the
 larger scheduled graph variants. `sam2_hiera_small_official.json`,
 `sam2_hiera_base_plus_official.json`, and `sam2_hiera_large_official.json`
-exercise every larger SAM2 encoder against the shared decoder contract.
-The corresponding `sam2_1_hiera_*_official.json` manifests exercise every
-SAM 2.1 size from immutable, checksum-pinned archives. Tiny remains a
+exercise every larger prepared SAM2 encoder against the unchanged decoder
+contract. The corresponding `sam2_1_hiera_*_official.json` manifests exercise
+every SAM 2.1 size from immutable, checksum-pinned prepared archives. Each
+archive pins the encoder, decoder, configuration, and bundled license. Tiny remains a
 cross-platform pull-request gate; Small, Base+, and Large run in the scheduled
 or manually dispatched resource-qualified matrix.
 `efficientvit_sam_l0_official.json` downloads the immutable official encoder
