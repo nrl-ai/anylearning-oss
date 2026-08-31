@@ -95,6 +95,10 @@ graphs expose normalized `dets` boxes and per-class `labels` logits;
 instance-segmentation graphs additionally expose raw `masks` logits. The
 backend reproduces the official float32, half-pixel bilinear resize, ImageNet
 normalization, sigmoid multiclass top-k selection, and mask resize flow.
+Thresholding and ranking use full runtime precision. Serialized scores are
+stabilized to four decimal places, box coordinates to three decimal places,
+and mask logits to three decimal places before contour extraction so equivalent
+CPU kernels produce consistent annotations across operating systems.
 
 Graph input/output names, float32 dtypes, static ranks and dimensions, opset,
 operator domains, query/class counts, mask elements, output elements, image

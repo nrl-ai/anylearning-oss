@@ -43,6 +43,9 @@ _MAX_MASK_COMPONENTS = 32
 _MAX_POLYGON_POINTS = 4_096
 _MAX_TOTAL_SHAPE_POINTS = 100_000
 _FLOAT_TENSOR_TYPE = 1
+_OUTPUT_COORDINATE_DECIMALS = 3
+_OUTPUT_SCORE_DECIMALS = 4
+_MASK_LOGIT_DECIMALS = 3
 _IMAGENET_MEAN = np.asarray((0.485, 0.456, 0.406), dtype=np.float32)
 _IMAGENET_STD = np.asarray((0.229, 0.224, 0.225), dtype=np.float32)
 
@@ -476,8 +479,12 @@ def _mask_shapes(
     group_id: int,
     config: RfDetrOnnxConfig,
 ) -> tuple[list[InferenceShape], int, int]:
+    # ONNX Runtime kernels can differ by a few ULPs across CPU architectures.
+    # Stabilize logits before resizing so numerically equivalent exports do not
+    # acquire a different one-pixel contour at the probability boundary.
+    stable_logits = np.round(mask_logits, decimals=_MASK_LOGIT_DECIMALS)
     resized = cv2.resize(
-        mask_logits,
+        stable_logits,
         (original_width, original_height),
         interpolation=cv2.INTER_LINEAR,
     )
@@ -709,7 +716,15 @@ class RfDetrOnnxSession(BaseInferenceSession):
             )
             if x2 <= x1 or y2 <= y1:
                 continue
-            score_float = float(score)
+            # Preserve thresholding and ordering at full runtime precision, but
+            # keep the serialized protocol stable across equivalent CPU kernels.
+            x1 = round(x1, _OUTPUT_COORDINATE_DECIMALS)
+            y1 = round(y1, _OUTPUT_COORDINATE_DECIMALS)
+            x2 = round(x2, _OUTPUT_COORDINATE_DECIMALS)
+            y2 = round(y2, _OUTPUT_COORDINATE_DECIMALS)
+            if x2 <= x1 or y2 <= y1:
+                continue
+            score_float = round(float(score), _OUTPUT_SCORE_DECIMALS)
             if output_shape is ShapeType.RECTANGLE:
                 if len(shapes) >= self.config.max_shapes:
                     raise ValueError("RF-DETR results exceed max_shapes")

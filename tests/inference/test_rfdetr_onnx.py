@@ -122,7 +122,7 @@ def test_real_onnx_detection_graph_runs_through_lifecycle(tmp_path):
     assert session.state is SessionState.READY
     assert [shape.label for shape in result.shapes] == ["cat", "dog"]
     assert [shape.attributes["class_id"] for shape in result.shapes] == [0, 1]
-    assert result.shapes[0].score == pytest.approx(0.993307, abs=1e-6)
+    assert result.shapes[0].score == 0.9933
     assert np.asarray(
         [(point.x, point.y) for point in result.shapes[0].points]
     ) == pytest.approx(np.asarray([(50, 30), (150, 70)]), abs=1e-5)
@@ -289,6 +289,65 @@ def test_preprocessing_uses_float_resize_without_uint8_quantization():
         - np.asarray([0.485, 0.456, 0.406])
     ) / np.asarray([0.229, 0.224, 0.225])
     assert tensor[0, :, 1, 1] == pytest.approx(expected_center, abs=1e-6)
+
+
+def test_serialized_outputs_are_stable_at_cross_platform_precision(tmp_path):
+    graph = tmp_path / "rfdetr.onnx"
+    _write_graph(
+        graph,
+        boxes=np.asarray(
+            [[[0.5000001, 0.4999999, 0.3333334, 0.2222223]]], dtype=np.float32
+        ),
+        logits=np.asarray([[[0.1234567, -5.0]]], dtype=np.float32),
+    )
+    session = RfDetrOnnxBackend().create_session(
+        _config(graph, class_names=["cat"], background_class_id=-1)
+    )
+    session.load()
+
+    result = session.predict(
+        _request(session),
+        np.zeros((101, 203, 3), dtype=np.uint8),
+    )
+
+    shape = result.shapes[0]
+    assert shape.score == 0.5308
+    assert [(point.x, point.y) for point in shape.points] == [
+        (67.667, 39.278),
+        (135.333, 61.722),
+    ]
+    session.unload()
+
+
+def test_mask_contours_ignore_sub_millilogit_platform_drift(tmp_path):
+    first = tmp_path / "first.onnx"
+    second = tmp_path / "second.onnx"
+    base = np.asarray(
+        [[-1.0, -1.0, -1.0], [-1.0, 0.0001, 1.0], [-1.0, 1.0, 1.0]],
+        dtype=np.float32,
+    )
+    masks = []
+    for path, drift in ((first, -0.0002), (second, 0.0002)):
+        mask = base.copy()
+        mask[1, 1] += drift
+        _write_graph(
+            path,
+            boxes=np.asarray([[[0.5, 0.5, 0.8, 0.8]]], dtype=np.float32),
+            logits=np.asarray([[[6.0, -6.0]]], dtype=np.float32),
+            masks=mask.reshape(1, 1, 3, 3),
+        )
+        session = RfDetrOnnxBackend().create_session(
+            _config(path, task="instance_segmentation", class_names=["dog"])
+        )
+        session.load()
+        result = session.predict(
+            _request(session),
+            np.zeros((90, 90, 3), dtype=np.uint8),
+        )
+        masks.append([shape.points for shape in result.shapes])
+        session.unload()
+
+    assert masks[0] == masks[1]
 
 
 def test_top_selection_is_deterministic_at_tied_cutoff():
