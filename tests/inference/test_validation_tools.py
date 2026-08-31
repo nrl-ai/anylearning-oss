@@ -15,6 +15,7 @@ from anylearning.inference import InferenceRequest, InferenceResult, TextPrompt
 from anylearning.inference.backends.yolo_onnx import YoloOnnxBackend
 from anylearning.inference.validation import (
     ValidationTextPrompt,
+    _lifecycle_rss_metrics,
     _model_artifact_details,
     _prediction_digest,
     _request_prompts,
@@ -22,6 +23,30 @@ from anylearning.inference.validation import (
 )
 
 _ROOT = Path(__file__).resolve().parents[2]
+
+
+def test_lifecycle_rss_metrics_separate_allocator_warmup_from_growth():
+    metrics = _lifecycle_rss_metrics([100, 420, 421])
+
+    assert metrics == {
+        "warmup_retained_rss_growth_bytes": 320,
+        "steady_state_rss_baseline_bytes": 420,
+        "steady_state_rss_baseline_cycle": 2,
+        "steady_state_rss_growth_bytes": 1,
+    }
+
+
+def test_two_cycle_lifecycle_rss_metrics_keep_conservative_cold_baseline():
+    metrics = _lifecycle_rss_metrics([100, 420])
+
+    assert metrics["steady_state_rss_baseline_cycle"] == 1
+    assert metrics["steady_state_rss_growth_bytes"] == 320
+
+
+@pytest.mark.parametrize("samples", [[], [1], [1, -1], [1, True]])
+def test_lifecycle_rss_metrics_reject_invalid_samples(samples):
+    with pytest.raises(ValueError, match="Lifecycle RSS"):
+        _lifecycle_rss_metrics(samples)
 
 
 def _script(name):
