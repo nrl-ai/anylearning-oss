@@ -506,7 +506,11 @@ class DetectorSamSession(BaseInferenceSession):
 
     def _unload(self) -> None:
         errors: list[Exception] = []
-        for session in (self._segmenter, self._detector):
+        # Release the detector first. Promptable segmenters perform the shared
+        # platform allocator pressure-relief step during their unload, so
+        # keeping that cleanup last also reclaims allocations just released by
+        # the detector's ONNX Runtime session.
+        for session in (self._detector, self._segmenter):
             try:
                 session.unload()
             except Exception as error:

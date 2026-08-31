@@ -44,6 +44,8 @@ class RecordingSession(BaseInferenceSession):
         result_factory: ResultFactory,
         *,
         fail_load: bool = False,
+        unload_log: list[str] | None = None,
+        session_name: str = "session",
     ) -> None:
         self.requests: list[InferenceRequest] = []
         self.images: list[Any] = []
@@ -51,6 +53,8 @@ class RecordingSession(BaseInferenceSession):
         self.unload_calls = 0
         self._result_factory = result_factory
         self._fail_load = fail_load
+        self._unload_log = unload_log
+        self._session_name = session_name
         super().__init__(capabilities)
 
     def _load(self, cancellation: CancellationToken) -> None:
@@ -76,6 +80,8 @@ class RecordingSession(BaseInferenceSession):
 
     def _unload(self) -> None:
         self.unload_calls += 1
+        if self._unload_log is not None:
+            self._unload_log.append(self._session_name)
 
 
 class RecordingBackend(InferenceBackend):
@@ -86,11 +92,13 @@ class RecordingBackend(InferenceBackend):
         result_factory: ResultFactory,
         *,
         fail_load: bool = False,
+        unload_log: list[str] | None = None,
     ) -> None:
         self.backend_id = backend_id
         self.tasks = tasks
         self.result_factory = result_factory
         self.fail_load = fail_load
+        self.unload_log = unload_log
         self.configs: list[dict[str, Any]] = []
         self.sessions: list[RecordingSession] = []
 
@@ -108,6 +116,8 @@ class RecordingBackend(InferenceBackend):
             self.capabilities(config),
             self.result_factory,
             fail_load=self.fail_load,
+            unload_log=self.unload_log,
+            session_name=self.backend_id,
         )
         self.sessions.append(session)
         return session
@@ -166,16 +176,19 @@ def _registry(
     segmenter_tasks: tuple[ModelTask, ...] = (ModelTask.PROMPTABLE_SEGMENTATION,),
     segmenter_fail_load: bool = False,
 ) -> tuple[ModelRegistry, RecordingBackend, RecordingBackend]:
+    unload_log: list[str] = []
     detector = RecordingBackend(
         "fake_detector",
         detector_tasks,
         detector_factory,
+        unload_log=unload_log,
     )
     segmenter = RecordingBackend(
         "fake_segmenter",
         segmenter_tasks,
         segmenter_factory,
         fail_load=segmenter_fail_load,
+        unload_log=unload_log,
     )
     registry = ModelRegistry()
     registry.register(detector.backend_id, lambda: detector)
@@ -302,6 +315,7 @@ def test_refines_one_box_at_a_time_and_preserves_detector_semantics():
     assert session.state is SessionState.CLOSED
     assert detector.sessions[0].unload_calls == 1
     assert segmenter.sessions[0].unload_calls == 1
+    assert detector.unload_log[-2:] == ["fake_detector", "fake_segmenter"]
 
 
 def test_quantizes_prompts_outward_and_stabilizes_serialized_scores():
