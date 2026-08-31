@@ -307,16 +307,19 @@ Implementation status (2026-08-31):
       multi-gigabyte unload reclamation. Real local in-process and authenticated
       HTTP validation passes with retained visual reports. Its Linux, Windows,
       and macOS job is scheduled/manual rather than a per-PR download.
-- [ ] EfficientViT-SAM has a distinct `efficientvit_sam` ONNX backend with
+- [x] EfficientViT-SAM has a distinct `efficientvit_sam` ONNX backend with
       checksum-gated deterministic decoder preparation, native multimask policy,
       512/1024 encoder profiles, 1024-frame prompt scaling, point-only padding,
       resource bounds, embedding cache, and authenticated-server support. L0
       native-checkpoint parity and all five variants' local direct/server
       landscape/portrait visual validation pass. License-complete, checksum-
       enumerated bundles are published at immutable model revision
-      `e5848b5d032cc9b5f3a3af199325005c45e24b50`; Linux, Windows, and macOS hosted
-      evidence for L0 and the larger variant matrix remain required before this
-      item is complete.
+      `e5848b5d032cc9b5f3a3af199325005c45e24b50`. Exact head
+      `489010c0ff58d557ceb660f9df33d25162c520f9` passed all 15 hosted variant/OS
+      jobs plus aggregate transport and cross-platform decoded-pixel identity
+      gates in runs `33347664285` and `33347671140`. All 120 retained renderings
+      are pixel-identical where required, and every unique landscape/portrait
+      point/box result passed visual review before PR #30 merged.
 
 Every merge gate uses real ONNX graphs and real images, never mocked model
 outputs. It records graph and image SHA-256 values, cold/warm latency, peak RSS,
