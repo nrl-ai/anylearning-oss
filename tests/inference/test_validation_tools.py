@@ -149,6 +149,171 @@ def _efficientvit_decoder_fixture(path, *, raw_mask_operation="Reshape", opset=1
     onnx.save_model(model, path)
 
 
+def _sam2_encoder_fixture(path, *, family="sam2", changed_contract=False):
+    image = helper.make_tensor_value_info(
+        "image", TensorProto.FLOAT, [1, 3, 1024, 1024]
+    )
+    outputs = [
+        helper.make_tensor_value_info(
+            "high_res_feats_0", TensorProto.FLOAT, [1, 32, 1024, 1024]
+        ),
+        helper.make_tensor_value_info(
+            "high_res_feats_1", TensorProto.FLOAT, [1, 64, 1024, 1024]
+        ),
+        helper.make_tensor_value_info(
+            "image_embed", TensorProto.FLOAT, [1, 3, 1024, 1024]
+        ),
+    ]
+    nodes = []
+    initializers = [
+        numpy_helper.from_array(np.asarray(9, dtype=np.int64), name="unused")
+    ]
+    value_info = []
+    if family == "sam2":
+        first = "/conv_s0/Conv_output_0"
+        second = "/conv_s1/Conv_output_0"
+        nodes.extend(
+            (
+                helper.make_node(
+                    "Conv",
+                    ["image", "first_weight"],
+                    [first],
+                    name="/conv_s0/Conv",
+                ),
+                helper.make_node(
+                    "Conv",
+                    ["image", "second_weight"],
+                    [second],
+                    name="/conv_s1/Conv",
+                ),
+                helper.make_node("Identity", [first], ["high_res_feats_0"]),
+                helper.make_node("Identity", [second], ["high_res_feats_1"]),
+                helper.make_node("Identity", ["image"], ["image_embed"]),
+            )
+        )
+        initializers.extend(
+            (
+                numpy_helper.from_array(
+                    np.zeros((32, 3, 1, 1), dtype=np.float32),
+                    name="first_weight",
+                ),
+                numpy_helper.from_array(
+                    np.zeros((64, 3, 1, 1), dtype=np.float32),
+                    name="second_weight",
+                ),
+            )
+        )
+        stale_shape = [1] if changed_contract else []
+        value_info.extend(
+            (
+                helper.make_tensor_value_info(first, TensorProto.FLOAT, stale_shape),
+                helper.make_tensor_value_info(second, TensorProto.FLOAT, stale_shape),
+            )
+        )
+        opset = 17
+        producer_version = "2.4.0"
+    else:
+        outputs = [
+            helper.make_tensor_value_info(name, TensorProto.FLOAT, [1, 3, 1024, 1024])
+            for name in ("high_res_feats_0", "high_res_feats_1", "image_embed")
+        ]
+        captured = numpy_helper.from_array(
+            np.asarray([1, 2], dtype=np.int64), name="captured"
+        )
+        initializers.extend(
+            (
+                numpy_helper.from_array(np.asarray(True), name="condition"),
+                captured,
+            )
+        )
+        then_output_shape = [4] if changed_contract else [5]
+        then_graph = helper.make_graph(
+            [
+                helper.make_node(
+                    "Constant",
+                    [],
+                    ["branch_values"],
+                    value=numpy_helper.from_array(np.asarray([3, 4], dtype=np.int64)),
+                ),
+                helper.make_node(
+                    "Concat",
+                    ["captured", "branch_values"],
+                    ["/image_encoder/trunk/Concat_3_output_0"],
+                    name="/image_encoder/trunk/Concat_3",
+                    axis=0,
+                ),
+            ],
+            "then_branch",
+            [],
+            [
+                helper.make_tensor_value_info(
+                    "/image_encoder/trunk/Concat_3_output_0",
+                    TensorProto.INT64,
+                    then_output_shape,
+                )
+            ],
+        )
+        else_graph = helper.make_graph(
+            [
+                helper.make_node(
+                    "Constant",
+                    [],
+                    ["else_values"],
+                    value=numpy_helper.from_array(
+                        np.asarray([1, 2, 3, 4], dtype=np.int64)
+                    ),
+                ),
+                helper.make_node(
+                    "Identity",
+                    ["else_values"],
+                    ["/image_encoder/trunk/Identity_output_0"],
+                    name="/image_encoder/trunk/Identity",
+                ),
+            ],
+            "else_branch",
+            [],
+            [
+                helper.make_tensor_value_info(
+                    "/image_encoder/trunk/Identity_output_0",
+                    TensorProto.INT64,
+                    [4],
+                )
+            ],
+        )
+        nodes.extend(
+            (
+                helper.make_node(
+                    "If",
+                    ["condition"],
+                    ["selected_shape"],
+                    name="/image_encoder/trunk/If",
+                    then_branch=then_graph,
+                    else_branch=else_graph,
+                ),
+                helper.make_node("Identity", ["image"], ["high_res_feats_0"]),
+                helper.make_node("Identity", ["image"], ["high_res_feats_1"]),
+                helper.make_node("Identity", ["image"], ["image_embed"]),
+            )
+        )
+        opset = 18
+        producer_version = "2.11.0"
+
+    graph = helper.make_graph(
+        nodes,
+        f"{family}-encoder-fixture",
+        [image],
+        outputs,
+        initializer=initializers,
+        value_info=value_info,
+    )
+    model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", opset)])
+    model.ir_version = 10
+    model.producer_name = "pytorch"
+    model.producer_version = producer_version
+    onnx.checker.check_model(model)
+    onnx.save_model(model, path)
+
+
 def _real_matrix_fixture(root, *, variant="l0"):
     for platform in ("Linux", "Windows", "macOS"):
         artifact = root / (
@@ -431,6 +596,166 @@ def test_efficientvit_decoder_transform_rejects_symlink_paths(tmp_path):
     with pytest.raises(ValueError, match="may not traverse a symlink"):
         module.prepare_decoder(
             source, linked_directory / "prepared.onnx", source_sha256=digest
+        )
+    assert not (real_directory / "prepared.onnx").exists()
+
+
+@pytest.mark.parametrize("family", ["sam2", "sam2_1"])
+def test_sam2_encoder_transform_is_deterministic_strict_and_runnable(tmp_path, family):
+    onnxruntime = pytest.importorskip("onnxruntime")
+    module = _script("prepare_sam2_encoder.py")
+    source = tmp_path / f"{family}.encoder.onnx"
+    _sam2_encoder_fixture(source, family=family)
+    source_digest = hashlib.sha256(source.read_bytes()).hexdigest()
+    first = tmp_path / f"{family}-prepared-one.onnx"
+    second = tmp_path / f"{family}-prepared-two.onnx"
+
+    first_report = module.prepare_encoder(
+        source,
+        first,
+        family=family,
+        source_sha256=source_digest.upper(),
+    )
+    second_report = module.prepare_encoder(
+        source,
+        second,
+        family=family,
+        source_sha256=source_digest,
+        expected_output_sha256=first_report["output_sha256"],
+    )
+
+    assert first.read_bytes() == second.read_bytes()
+    assert first_report["output_sha256"] == second_report["output_sha256"]
+    assert first_report["source_sha256"] == source_digest
+    assert first_report["removed_initializers"] == ["unused"]
+    assert first.stat().st_mode & 0o777 == 0o644
+    prepared = onnx.load_model(first, load_external_data=False)
+    assert {item.key: item.value for item in prepared.metadata_props} == {
+        "anylearning.family": family,
+        "anylearning.source_producer": "pytorch",
+        "anylearning.source_producer_version": (
+            "2.4.0" if family == "sam2" else "2.11.0"
+        ),
+        "anylearning.source_sha256": source_digest,
+        "anylearning.transform": "sam2-encoder-metadata-v1",
+    }
+    if family == "sam2_1":
+        assert "captured" in {item.name for item in prepared.graph.initializer}
+    onnx.shape_inference.infer_shapes(
+        prepared, check_type=True, strict_mode=True, data_prop=True
+    )
+    session = onnxruntime.InferenceSession(
+        str(first), providers=["CPUExecutionProvider"]
+    )
+    assert [item.name for item in session.get_outputs()] == [
+        "high_res_feats_0",
+        "high_res_feats_1",
+        "image_embed",
+    ]
+
+    if family == "sam2":
+        repaired = set(first_report["repaired_values"])
+        assert repaired == {
+            "/conv_s0/Conv_output_0",
+            "/conv_s1/Conv_output_0",
+        }
+        values = {item.name: item for item in prepared.graph.value_info}
+        assert len(values["/conv_s0/Conv_output_0"].type.tensor_type.shape.dim) == 4
+        assert len(values["/conv_s1/Conv_output_0"].type.tensor_type.shape.dim) == 4
+    else:
+        if_node = next(
+            item
+            for item in prepared.graph.node
+            if item.name == "/image_encoder/trunk/If"
+        )
+        then_graph = next(
+            item.g for item in if_node.attribute if item.name == "then_branch"
+        )
+        assert [
+            item.dim_value for item in then_graph.output[0].type.tensor_type.shape.dim
+        ] == [4]
+
+
+@pytest.mark.parametrize(
+    ("source_digest", "expected_digest", "message"),
+    [
+        ("invalid", None, "64 hexadecimal"),
+        ("0" * 64, None, "mismatch"),
+        (None, "invalid", "64 hexadecimal"),
+        (None, "0" * 64, "Prepared encoder SHA-256 mismatch"),
+    ],
+)
+def test_sam2_encoder_transform_rejects_unverified_artifacts(
+    tmp_path, source_digest, expected_digest, message
+):
+    module = _script("prepare_sam2_encoder.py")
+    source = tmp_path / "sam2.encoder.onnx"
+    output = tmp_path / "prepared.onnx"
+    _sam2_encoder_fixture(source)
+    actual_digest = hashlib.sha256(source.read_bytes()).hexdigest()
+
+    with pytest.raises(ValueError, match=message):
+        module.prepare_encoder(
+            source,
+            output,
+            family="sam2",
+            source_sha256=source_digest or actual_digest,
+            expected_output_sha256=expected_digest,
+        )
+    assert not output.exists()
+
+
+@pytest.mark.parametrize("family", ["sam2", "sam2_1"])
+def test_sam2_encoder_transform_rejects_changed_contract_and_overwrite(
+    tmp_path, family
+):
+    module = _script("prepare_sam2_encoder.py")
+    changed = tmp_path / f"changed-{family}.onnx"
+    _sam2_encoder_fixture(changed, family=family, changed_contract=True)
+    digest = hashlib.sha256(changed.read_bytes()).hexdigest()
+    output = tmp_path / "prepared.onnx"
+    expected_message = "stale SAM2 tensor" if family == "sam2" else "stale SAM2.1"
+    with pytest.raises(ValueError, match=expected_message):
+        module.prepare_encoder(
+            changed,
+            output,
+            family=family,
+            source_sha256=digest,
+        )
+
+    source = tmp_path / f"{family}.onnx"
+    _sam2_encoder_fixture(source, family=family)
+    digest = hashlib.sha256(source.read_bytes()).hexdigest()
+    output.write_bytes(b"keep existing artifact")
+    with pytest.raises(FileExistsError, match="already exists"):
+        module.prepare_encoder(
+            source,
+            output,
+            family=family,
+            source_sha256=digest,
+        )
+    assert output.read_bytes() == b"keep existing artifact"
+
+
+def test_sam2_encoder_transform_rejects_symlink_paths(tmp_path):
+    module = _script("prepare_sam2_encoder.py")
+    source = tmp_path / "sam2.encoder.onnx"
+    _sam2_encoder_fixture(source)
+    digest = hashlib.sha256(source.read_bytes()).hexdigest()
+    real_directory = tmp_path / "real"
+    real_directory.mkdir()
+    linked_directory = tmp_path / "linked"
+    try:
+        linked_directory.symlink_to(real_directory, target_is_directory=True)
+    except OSError as error:
+        pytest.skip(f"symlink creation is unavailable: {error}")
+
+    with pytest.raises(ValueError, match="may not traverse a symlink"):
+        module.prepare_encoder(
+            source,
+            linked_directory / "prepared.onnx",
+            family="sam2",
+            source_sha256=digest,
         )
     assert not (real_directory / "prepared.onnx").exists()
 
