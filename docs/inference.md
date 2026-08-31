@@ -270,6 +270,8 @@ config = {
     "max_shapes": 1000,
     "max_total_points": 100000,
     "box_padding_pixels": 0,
+    "box_prompt_grid_pixels": 4,
+    "output_score_decimals": 3,
     "fallback_to_box": false,
 }
 session = get_default_registry().create_session("detector_sam", config)
@@ -278,6 +280,11 @@ session = get_default_registry().create_session("detector_sam", config)
 Requests do not accept caller-supplied prompts. Confidence, IoU, and class
 filters are forwarded only to the detector; results retain the detector label,
 score, class attributes, and a stable group ID for disconnected mask polygons.
+Detector selection and NMS remain at full model precision. After selection,
+box prompts expand outward to the configured pixel grid and serialized scores
+are rounded to the configured decimals. This prevents harmless CPU-kernel
+drift from changing prompts or wire results without shrinking a detected box or
+moving a threshold decision.
 Image pixels, detector refinements, output shapes, total polygon points, nested
 configuration depth, warnings, and child model artifacts are independently
 bounded. Cancellation and serialized lifecycle control cover both child

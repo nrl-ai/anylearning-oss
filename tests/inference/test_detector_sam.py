@@ -304,6 +304,42 @@ def test_refines_one_box_at_a_time_and_preserves_detector_semantics():
     assert segmenter.sessions[0].unload_calls == 1
 
 
+def test_quantizes_prompts_outward_and_stabilizes_serialized_scores():
+    def detector_result(request, _image, _cancellation, _index):
+        return _result(
+            request,
+            shapes=(_rectangle(1.2, 2.1, 10.1, 11.9, score=0.9126),),
+        )
+
+    def segmenter_result(request, _image, _cancellation, _index):
+        return _result(
+            request,
+            shapes=(_polygon((1, 2), (10, 2), (10, 12), score=0.87654),),
+        )
+
+    registry, _detector, segmenter = _registry(
+        detector_result,
+        segmenter_result,
+    )
+    session = DetectorSamBackend(registry).create_session(
+        _config(box_prompt_grid_pixels=4, output_score_decimals=3)
+    )
+    session.load()
+
+    result = session.predict(
+        _request(session),
+        np.zeros((20, 20, 3), dtype=np.uint8),
+    )
+
+    prompt = segmenter.sessions[0].requests[0].prompts[0]
+    assert isinstance(prompt, BoxPrompt)
+    assert prompt.top_left == Point(x=0, y=0)
+    assert prompt.bottom_right == Point(x=12, y=12)
+    assert result.shapes[0].score == 0.913
+    assert result.shapes[0].attributes["segmenter_score"] == 0.877
+    session.unload()
+
+
 def test_bounds_refinements_and_falls_back_to_detection_box():
     detections = tuple(
         _rectangle(index, index, index + 10, index + 10, label=f"class-{index}")
@@ -546,9 +582,11 @@ def test_capabilities_validate_roles_revision_and_manifest_anchor(tmp_path: Path
 
     first = backend.capabilities(config)
     second = backend.capabilities({**config, "max_total_points": 200_000})
+    quantized = backend.capabilities({**config, "box_prompt_grid_pixels": 4})
     assert first.tasks == (ModelTask.INSTANCE_SEGMENTATION,)
     assert first.metadata["processing"] == "encode-once-box-per-object"
     assert first.model_revision != second.model_revision
+    assert first.model_revision != quantized.model_revision
     session = backend.create_session(config)
     assert detector.configs[0]["config_file"] == manifest
     assert segmenter.configs[0]["config_file"] == manifest

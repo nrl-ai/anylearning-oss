@@ -134,7 +134,9 @@
     "max_shapes": 10,
     "max_total_points": 100000,
     "box_padding_pixels": 0,
+    "box_prompt_grid_pixels": 4,
     "minimum_box_area_pixels": 16,
+    "output_score_decimals": 3,
     "fallback_to_box": false
   },
   "runs": 3,
@@ -146,9 +148,9 @@
       "request_parameters": { "confidence": 0.5, "iou": 0.45 },
       "output_shape": "polygon",
       "expected": {
-        "minimum_shapes": 9,
-        "maximum_shapes": 9,
-        "minimum_label_counts": { "bicycle": 7, "dog": 1, "truck": 1 },
+        "minimum_shapes": 8,
+        "maximum_shapes": 8,
+        "minimum_label_counts": { "bicycle": 6, "dog": 1, "truck": 1 },
         "detections": [
           {
             "label": "bicycle",

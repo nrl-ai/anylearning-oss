@@ -97,6 +97,13 @@ class DetectorSamConfig(BaseModel):
         le=10_000,
         allow_inf_nan=False,
     )
+    box_prompt_grid_pixels: float = Field(
+        default=1,
+        ge=0.25,
+        le=1_024,
+        allow_inf_nan=False,
+    )
+    output_score_decimals: int = Field(default=3, ge=0, le=8)
     minimum_box_area_pixels: float = Field(
         default=1,
         ge=0,
@@ -177,6 +184,7 @@ def _composite_capabilities(
         )
     identity = {
         "box_padding_pixels": config.box_padding_pixels,
+        "box_prompt_grid_pixels": config.box_prompt_grid_pixels,
         "configured_model_revision": config.model_revision,
         "detector_backend": config.detector.backend,
         "detector_model_id": detector.model_id,
@@ -187,6 +195,7 @@ def _composite_capabilities(
         "max_shapes": config.max_shapes,
         "max_total_points": config.max_total_points,
         "minimum_box_area_pixels": config.minimum_box_area_pixels,
+        "output_score_decimals": config.output_score_decimals,
         "schema": 1,
         "segmenter_backend": config.segmenter.backend,
         "segmenter_model_id": segmenter.model_id,
@@ -232,6 +241,7 @@ def _box_prompt(
     image_width: int,
     padding: float,
     minimum_area: float,
+    grid_pixels: float,
 ) -> BoxPrompt | None:
     if shape.type is not ShapeType.RECTANGLE:
         raise ValueError("detector_sam detector results must contain rectangles")
@@ -242,6 +252,10 @@ def _box_prompt(
     y2 = min(float(image_height), max(first.y, second.y) + padding)
     if x2 <= x1 or y2 <= y1 or (x2 - x1) * (y2 - y1) < minimum_area:
         return None
+    x1 = max(0.0, math.floor(x1 / grid_pixels) * grid_pixels)
+    y1 = max(0.0, math.floor(y1 / grid_pixels) * grid_pixels)
+    x2 = min(float(image_width), math.ceil(x2 / grid_pixels) * grid_pixels)
+    y2 = min(float(image_height), math.ceil(y2 / grid_pixels) * grid_pixels)
     return BoxPrompt(
         top_left=Point(x=x1, y=y1),
         bottom_right=Point(x=x2, y=y2),
@@ -267,6 +281,7 @@ def _refined_shape(
     detection: InferenceShape,
     *,
     detection_index: int,
+    score_decimals: int,
 ) -> InferenceShape:
     if mask.type is not ShapeType.POLYGON:
         raise ValueError("detector_sam segmenter results must contain polygons")
@@ -276,12 +291,14 @@ def _refined_shape(
         and "segmenter_score" not in attributes
         and len(attributes) < 128
     ):
-        attributes["segmenter_score"] = mask.score
+        attributes["segmenter_score"] = round(mask.score, score_decimals)
     return InferenceShape(
         type=ShapeType.POLYGON,
         points=mask.points,
         label=detection.label,
-        score=detection.score,
+        score=(
+            None if detection.score is None else round(detection.score, score_decimals)
+        ),
         group_id=(
             detection.group_id if detection.group_id is not None else detection_index
         ),
@@ -398,6 +415,7 @@ class DetectorSamSession(BaseInferenceSession):
                 image_width=image_width,
                 padding=self.config.box_padding_pixels,
                 minimum_area=self.config.minimum_box_area_pixels,
+                grid_pixels=self.config.box_prompt_grid_pixels,
             )
             if prompt is None:
                 _append_warning(
@@ -425,18 +443,31 @@ class DetectorSamSession(BaseInferenceSession):
             for warning in masks.warnings:
                 _append_warning(warnings, f"segmenter[{index}]: {warning}")
             refined = [
-                _refined_shape(mask, detection, detection_index=index)
+                _refined_shape(
+                    mask,
+                    detection,
+                    detection_index=index,
+                    score_decimals=self.config.output_score_decimals,
+                )
                 for mask in masks.shapes
             ]
             if not refined and self.config.fallback_to_box:
                 refined = [
                     detection.model_copy(
                         update={
+                            "score": (
+                                None
+                                if detection.score is None
+                                else round(
+                                    detection.score,
+                                    self.config.output_score_decimals,
+                                )
+                            ),
                             "group_id": (
                                 detection.group_id
                                 if detection.group_id is not None
                                 else index
-                            )
+                            ),
                         }
                     )
                 ]
