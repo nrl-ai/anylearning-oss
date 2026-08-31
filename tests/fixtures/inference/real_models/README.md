@@ -123,5 +123,8 @@ transport, and decoded-pixel identity across Linux, Windows, and macOS.
 archive. It validates the native direct-stretch preprocessing contract,
 contiguous COCO-80 labels, embedded top-k boxes/scores, landscape/portrait
 behavior, repeated lifecycle growth, authenticated-server transport, and exact
-cross-platform prediction and decoded-pixel identity. Objects365-derived
-weights are excluded from the artifact and test path.
+cross-platform prediction identity. Direct/server pixels must match exactly on
+each platform; the matrix permits at most two cross-platform decoded source
+pixels to differ by one channel value, covering the measured macOS JPEG decoder
+variance without masking prediction drift. Objects365-derived weights are
+excluded from the artifact and test path.

@@ -443,6 +443,8 @@ jobs:
           --variant n
           --platform Linux --platform Windows --platform macOS
           --expected-cases 2
+          --max-cross-platform-differing-pixels 2
+          --max-cross-platform-channel-delta 1
           --output matrix-verification/dfine-n.json
 
       - name: Retain the matrix verification report
