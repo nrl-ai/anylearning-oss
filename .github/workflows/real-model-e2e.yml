@@ -10,6 +10,7 @@ on:
       - "scripts/download_verified_file.py"
       - "scripts/prepare_external_onnx_validation.py"
       - "scripts/prepare_efficientvit_sam_decoder.py"
+      - "scripts/verify_real_model_matrix.py"
       - "tests/e2e/test_real_onnx_models_e2e.py"
       - "tests/fixtures/inference/real_models/**"
       - ".github/workflows/real-model-e2e.yml"
@@ -23,6 +24,7 @@ on:
       - "scripts/download_verified_file.py"
       - "scripts/prepare_external_onnx_validation.py"
       - "scripts/prepare_efficientvit_sam_decoder.py"
+      - "scripts/verify_real_model_matrix.py"
       - "tests/e2e/test_real_onnx_models_e2e.py"
       - "tests/fixtures/inference/real_models/**"
       - ".github/workflows/real-model-e2e.yml"
@@ -46,6 +48,7 @@ on:
           - sam3-vit-h
 
 permissions:
+  actions: read
   contents: read
 
 concurrency:
@@ -311,6 +314,44 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
+  efficientvit-sam-l0-consistency:
+    name: EfficientViT-SAM-L0 cross-platform identity
+    needs: efficientvit-sam-l0
+    if: always() && needs.efficientvit-sam-l0.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+
+      - name: Install image verification dependency
+        run: python -m pip install "Pillow>=12,<13"
+
+      - name: Download all L0 operating-system reports
+        uses: actions/download-artifact@v6
+        with:
+          pattern: efficientvit-sam-l0-real-model-validation-*
+          path: matrix-artifacts
+
+      - name: Verify transport and cross-platform decoded pixels
+        run: >-
+          python scripts/verify_real_model_matrix.py matrix-artifacts
+          --artifact-prefix efficientvit-sam
+          --variant l0
+          --platform Linux --platform Windows --platform macOS
+          --output matrix-verification/efficientvit-sam-l0.json
+
+      - name: Retain the matrix verification report
+        uses: actions/upload-artifact@v6
+        with:
+          name: efficientvit-sam-l0-matrix-verification
+          path: matrix-verification/
+          if-no-files-found: error
+          retention-days: 30
+
   efficientvit-sam-larger:
     name: EfficientViT-SAM-${{ matrix.display }} / ${{ matrix.os }}
     if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'all' || inputs.suite == 'efficientvit-sam-larger'))
@@ -438,6 +479,44 @@ jobs:
         with:
           name: ${{ matrix.artifact }}-real-model-validation-${{ runner.os }}
           path: validation-results/
+          if-no-files-found: error
+          retention-days: 30
+
+  efficientvit-sam-larger-consistency:
+    name: EfficientViT-SAM larger cross-platform identity
+    needs: efficientvit-sam-larger
+    if: always() && needs.efficientvit-sam-larger.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+
+      - name: Install image verification dependency
+        run: python -m pip install "Pillow>=12,<13"
+
+      - name: Download all larger-variant operating-system reports
+        uses: actions/download-artifact@v6
+        with:
+          pattern: efficientvit-sam-*-real-model-validation-*
+          path: matrix-artifacts
+
+      - name: Verify transport and cross-platform decoded pixels
+        run: >-
+          python scripts/verify_real_model_matrix.py matrix-artifacts
+          --artifact-prefix efficientvit-sam
+          --variant l1 --variant l2 --variant xl0 --variant xl1
+          --platform Linux --platform Windows --platform macOS
+          --output matrix-verification/efficientvit-sam-larger.json
+
+      - name: Retain the matrix verification report
+        uses: actions/upload-artifact@v6
+        with:
+          name: efficientvit-sam-larger-matrix-verification
+          path: matrix-verification/
           if-no-files-found: error
           retention-days: 30
 

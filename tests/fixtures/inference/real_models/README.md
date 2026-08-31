@@ -97,7 +97,10 @@ and decoder, checksum-gates a deterministic ONNX-only decoder output transform,
 and validates point/box prompts in landscape and portrait orientations both
 directly and through password-authenticated HTTP. L0 is the per-pull-request
 graph-contract gate; larger EfficientViT-SAM variants are scheduled/manual
-artifact-size cases after their exact transformed digests are published.
+artifact-size cases after their exact transformed digests are published. A
+downstream matrix verifier compares direct/server prediction digests and decoded
+annotated pixels across Linux, Windows, and macOS; per-run success alone is not
+sufficient.
 `sam3_vit_h_official.json` covers text, text+point, and box inference. These
 larger cases run only in the scheduled/manual resource-qualified workflow so
 per-PR checks do not repeatedly download hundreds of megabytes or several

@@ -36,6 +36,7 @@ _MAX_OUTPUT_ELEMENTS = 50_000_000
 _MAX_PROMPT_POINTS = 1_024
 _FIXED_CANDIDATE_ELEMENTS = 4 * 256 * 256 + 4
 _PROMPT_FRAME_ELEMENTS = 1024 * 1024
+_MASK_LOGIT_THRESHOLD = 1e-4
 
 
 class EfficientVitSamConfig(SamOnnxConfig):
@@ -154,6 +155,7 @@ class EfficientVitSamSession(BaseInferenceSession):
             shapes=mask_shapes(
                 masks[0, 0],
                 output_shape,
+                mask_threshold=_MASK_LOGIT_THRESHOLD,
                 max_mask_contours=self.config.max_mask_contours,
                 max_shapes=self.config.max_shapes,
                 max_polygon_points=self.config.max_polygon_points,

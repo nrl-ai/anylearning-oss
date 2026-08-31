@@ -9,6 +9,7 @@ import numpy as np
 import onnx
 import pytest
 from onnx import TensorProto, helper, numpy_helper
+from PIL import Image
 
 from anylearning.inference import InferenceRequest, InferenceResult, TextPrompt
 from anylearning.inference.backends.yolo_onnx import YoloOnnxBackend
@@ -148,6 +149,65 @@ def _efficientvit_decoder_fixture(path, *, raw_mask_operation="Reshape", opset=1
     onnx.save_model(model, path)
 
 
+def _real_matrix_fixture(root, *, variant="l0"):
+    for platform in ("Linux", "Windows", "macOS"):
+        artifact = root / (
+            f"efficientvit-sam-{variant}-real-model-validation-{platform}"
+        )
+        direct = artifact / platform / f"efficientvit-sam-{variant}" / "direct"
+        server = artifact / platform / f"server-efficientvit-sam-{variant}" / "server"
+        direct.mkdir(parents=True)
+        server.mkdir(parents=True)
+        direct_images = []
+        server_images = []
+        for index in range(2):
+            direct_name = f"{index:03d}-direct.png"
+            server_name = f"{index:03d}-server.png"
+            Image.new("RGB", (4, 3), (index * 20, 40, 80)).save(direct / direct_name)
+            Image.new("RGB", (4, 3), (index * 20, 40, 80)).save(server / server_name)
+            digest = hashlib.sha256(f"prediction-{index}".encode()).hexdigest()
+            direct_images.append(
+                {
+                    "annotated_image": direct_name,
+                    "consistent_runs": True,
+                    "failures": [],
+                    "passed": True,
+                    "prediction_digest": digest,
+                }
+            )
+            server_images.append(
+                {
+                    "annotated_image": server_name,
+                    "consistent_runs": True,
+                    "failures": [],
+                    "prediction_digest": digest,
+                }
+            )
+        (direct / "summary.json").write_text(
+            json.dumps(
+                {
+                    "backend": "efficientvit_sam",
+                    "failures": [],
+                    "images": direct_images,
+                    "passed": True,
+                    "peak_observed_rss_bytes": 100,
+                    "steady_state_rss_growth_bytes": 0,
+                }
+            )
+        )
+        (server / "summary.json").write_text(
+            json.dumps(
+                {
+                    "failures": [],
+                    "images": server_images,
+                    "manifest": f"efficientvit_sam_{variant}_official.json",
+                    "passed": True,
+                    "peak_observed_rss_bytes": 120,
+                }
+            )
+        )
+
+
 def test_verified_downloader_uses_bounded_curl_and_atomic_digest_gate(
     tmp_path, monkeypatch
 ):
@@ -180,6 +240,69 @@ def test_verified_downloader_uses_bounded_curl_and_atomic_digest_gate(
             output,
             expected_sha256=digest,
             max_bytes=1024,
+        )
+
+
+def test_real_matrix_verifier_proves_transport_and_platform_pixel_identity(tmp_path):
+    module = _script("verify_real_model_matrix.py")
+    _real_matrix_fixture(tmp_path)
+
+    report = module.verify_matrix(
+        tmp_path,
+        artifact_prefix="efficientvit-sam",
+        variants=("l0",),
+        platforms=("Linux", "Windows", "macOS"),
+        expected_cases=2,
+    )
+
+    assert report["passed"] is True
+    assert list(report["variants"]) == ["l0"]
+    assert len(report["variants"]["l0"]["prediction_digests"]) == 2
+
+
+def test_real_matrix_verifier_rejects_transport_and_platform_drift(tmp_path):
+    module = _script("verify_real_model_matrix.py")
+    _real_matrix_fixture(tmp_path)
+    windows_server = next(
+        tmp_path.glob(
+            "efficientvit-sam-l0-real-model-validation-Windows/"
+            "Windows/server-efficientvit-sam-l0/*/summary.json"
+        )
+    )
+    report = json.loads(windows_server.read_text())
+    report["images"][0]["prediction_digest"] = "f" * 64
+    windows_server.write_text(json.dumps(report))
+    with pytest.raises(ValueError, match="Transport prediction mismatch"):
+        module.verify_matrix(
+            tmp_path,
+            artifact_prefix="efficientvit-sam",
+            variants=("l0",),
+            platforms=("Linux", "Windows", "macOS"),
+            expected_cases=2,
+        )
+
+    _real_matrix_fixture(tmp_path / "pixel-drift")
+    mac_direct = next(
+        (tmp_path / "pixel-drift").glob(
+            "efficientvit-sam-l0-real-model-validation-macOS/"
+            "macOS/efficientvit-sam-l0/*/000-direct.png"
+        )
+    )
+    mac_server = next(
+        (tmp_path / "pixel-drift").glob(
+            "efficientvit-sam-l0-real-model-validation-macOS/"
+            "macOS/server-efficientvit-sam-l0/*/000-server.png"
+        )
+    )
+    Image.new("RGB", (4, 3), (255, 0, 0)).save(mac_direct)
+    Image.new("RGB", (4, 3), (255, 0, 0)).save(mac_server)
+    with pytest.raises(ValueError, match="Cross-platform pixel mismatch"):
+        module.verify_matrix(
+            tmp_path / "pixel-drift",
+            artifact_prefix="efficientvit-sam",
+            variants=("l0",),
+            platforms=("Linux", "Windows", "macOS"),
+            expected_cases=2,
         )
 
 
