@@ -296,10 +296,12 @@ Implementation status (2026-08-31):
       authenticated-server matrix on Linux, Windows, and macOS. All 24 jobs and
       96 retained images passed with identical inference-semantic prediction
       sequences and decoded pixels across transports and operating systems.
-- [ ] Re-export or optimize the SAM2 and SAM2.1 bundles so their ONNX metadata no
-      longer reports stale convolution output shapes or unused initializers. Prove
-      exact result parity before replacing the pinned artifacts; do not hide
-      exporter defects by suppressing inference warnings.
+- [x] SAM2 and SAM2.1 encoder bundles were deterministically normalized so their
+      ONNX metadata no longer reports stale convolution output shapes or unused
+      initializers. Exact-result parity was proven before the pinned artifacts
+      were replaced. Tiny/Small/Base+/Large then passed direct and authenticated
+      server inference on Linux, Windows, and macOS with cross-platform decoded
+      pixel identity, visual review, and bounded post-warmup lifecycle growth.
 - [x] SAM3 has a separate licensed three-graph backend with bounded text,
       point, box, and combined prompts; fixed-capacity contract validation;
       independent graph/external hashes; bounded mask-IoU NMS and editable
