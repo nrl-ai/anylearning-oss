@@ -87,6 +87,32 @@ memory headroom may set `enable_cpu_mem_arena=true` and/or
 `enable_mem_pattern=true`; real-model validation should be rerun for that exact
 deployment profile.
 
+## RF-DETR ONNX detection and instance segmentation
+
+`rfdetr_onnx` consumes the official static ONNX export contract without
+importing RF-DETR, PyTorch, or a native checkpoint at inference time. Detection
+graphs expose normalized `dets` boxes and per-class `labels` logits;
+instance-segmentation graphs additionally expose raw `masks` logits. The
+backend reproduces the official float32, half-pixel bilinear resize, ImageNet
+normalization, sigmoid multiclass top-k selection, and mask resize flow.
+
+Graph input/output names, float32 dtypes, static ranks and dimensions, opset,
+operator domains, query/class counts, mask elements, output elements, image
+pixels, detections, components, shapes, and polygon points are validated against
+independent bounds before or immediately after execution. Model and external
+tensor digests use the shared immutable ONNX loader. The authenticated server
+accepts the backend only through preconfigured startup manifests; clients
+cannot supply or alter graph paths.
+
+License-complete RF-DETR Nano detection and Segmentation Nano archives are in
+the [immutable AnyLearning model revision](https://huggingface.co/nrl-ai/anylearning-labeling-models/tree/dbe812f210253e50910eb26e465618e62b379111).
+They were exported with the official `rfdetr==1.9.4` API at source revision
+`9b009fa928d6218320439803d1da01869a85c072`, opset 17, static batch one, and
+float32 precision. Every archive pins its graph, provenance, checksum file, and
+verbatim Apache-2.0 license. The 91 exported COCO slots are sparse: use `null`
+for unused IDs, retain the official numeric IDs, and set
+`background_class_id` to `null`.
+
 ## User-supplied YOLO ONNX models
 
 The `yolo_onnx` backend implements neutral output layouts for YOLOv5, YOLOv8,

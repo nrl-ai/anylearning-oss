@@ -150,6 +150,20 @@ def test_multiclass_selection_matches_query_count_before_threshold(tmp_path):
     session.unload()
 
 
+def test_detection_respects_the_independent_shape_bound(tmp_path):
+    graph = tmp_path / "rfdetr.onnx"
+    _detection_graph(graph)
+    session = RfDetrOnnxBackend().create_session(_config(graph, max_shapes=1))
+    session.load()
+
+    with pytest.raises(ValueError, match="max_shapes"):
+        session.predict(
+            _request(session),
+            np.zeros((100, 200, 3), dtype=np.uint8),
+        )
+    session.unload()
+
+
 def test_real_onnx_segmentation_graph_returns_editable_instance_polygons(tmp_path):
     graph = tmp_path / "rfdetr-seg.onnx"
     masks = np.full((1, 1, 8, 8), -10, dtype=np.float32)

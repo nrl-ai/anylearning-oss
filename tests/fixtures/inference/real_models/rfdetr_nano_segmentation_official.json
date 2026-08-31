@@ -1,0 +1,176 @@
+{
+  "name": "official-rfdetr-segmentation-nano-dog-aspect-ratios",
+  "backend": "rfdetr_onnx",
+  "provenance": {
+    "source_url": "https://github.com/roboflow/rf-detr",
+    "artifact_url": "https://huggingface.co/nrl-ai/anylearning-labeling-models/blob/dbe812f210253e50910eb26e465618e62b379111/rfdetr_nano_segmentation_1_9_4.zip",
+    "source_revision": "9b009fa928d6218320439803d1da01869a85c072",
+    "code_license": "Apache-2.0",
+    "artifact_license": "Apache-2.0 official RF-DETR Segmentation Nano checkpoint ONNX export",
+    "license_url": "https://huggingface.co/nrl-ai/anylearning-labeling-models/blob/dbe812f210253e50910eb26e465618e62b379111/LICENSES.md"
+  },
+  "config": {
+    "name": "official-rfdetr-segmentation-nano",
+    "model_path": "rfdetr_segmentation/rfdetr_seg_nano.onnx",
+    "model_revision": "rfdetr-1.9.4-9b009fa928d6218320439803d1da01869a85c072",
+    "sha256": "6fa4baf9f7f6c938da9e05a99f61a9f267d5e30d268287c967b5bd6f74b12d6f",
+    "task": "instance_segmentation",
+    "class_names": [
+      null,
+      "person",
+      "bicycle",
+      "car",
+      "motorcycle",
+      "airplane",
+      "bus",
+      "train",
+      "truck",
+      "boat",
+      "traffic light",
+      "fire hydrant",
+      null,
+      "stop sign",
+      "parking meter",
+      "bench",
+      "bird",
+      "cat",
+      "dog",
+      "horse",
+      "sheep",
+      "cow",
+      "elephant",
+      "bear",
+      "zebra",
+      "giraffe",
+      null,
+      "backpack",
+      "umbrella",
+      null,
+      null,
+      "handbag",
+      "tie",
+      "suitcase",
+      "frisbee",
+      "skis",
+      "snowboard",
+      "sports ball",
+      "kite",
+      "baseball bat",
+      "baseball glove",
+      "skateboard",
+      "surfboard",
+      "tennis racket",
+      "bottle",
+      null,
+      "wine glass",
+      "cup",
+      "fork",
+      "knife",
+      "spoon",
+      "bowl",
+      "banana",
+      "apple",
+      "sandwich",
+      "orange",
+      "broccoli",
+      "carrot",
+      "hot dog",
+      "pizza",
+      "donut",
+      "cake",
+      "chair",
+      "couch",
+      "potted plant",
+      "bed",
+      null,
+      "dining table",
+      null,
+      null,
+      "toilet",
+      null,
+      "tv",
+      "laptop",
+      "mouse",
+      "remote",
+      "keyboard",
+      "cell phone",
+      "microwave",
+      "oven",
+      "toaster",
+      "sink",
+      "refrigerator",
+      null,
+      "book",
+      "clock",
+      "vase",
+      "scissors",
+      "teddy bear",
+      "hair drier",
+      "toothbrush"
+    ],
+    "background_class_id": null,
+    "max_detections": 10,
+    "providers": ["CPUExecutionProvider"],
+    "intra_op_threads": 1,
+    "inter_op_threads": 1
+  },
+  "runs": 3,
+  "lifecycle_cycles": 3,
+  "maximum_steady_state_rss_growth_bytes": 134217728,
+  "images": [
+    {
+      "path": "dog.jpg",
+      "request_parameters": {
+        "confidence": 0.5,
+        "mask_threshold": 0.5,
+        "max_detections": 10
+      },
+      "expected": {
+        "minimum_shapes": 3,
+        "maximum_shapes": 3,
+        "minimum_label_counts": { "bicycle": 1, "dog": 1, "car": 1 },
+        "detections": [
+          {
+            "label": "bicycle",
+            "box": [126, 114, 566, 418],
+            "minimum_iou": 0.95,
+            "minimum_score": 0.9
+          },
+          {
+            "label": "dog",
+            "box": [133, 225, 309, 537],
+            "minimum_iou": 0.95,
+            "minimum_score": 0.9
+          },
+          {
+            "label": "car",
+            "box": [470, 75, 681, 170],
+            "minimum_iou": 0.95,
+            "minimum_score": 0.75
+          }
+        ]
+      }
+    },
+    {
+      "path": "dog_portrait.png",
+      "request_parameters": {
+        "confidence": 0.5,
+        "mask_threshold": 0.5,
+        "max_detections": 10
+      },
+      "expected": {
+        "minimum_shapes": 3,
+        "maximum_shapes": 3,
+        "minimum_label_counts": { "bicycle": 2, "dog": 1 },
+        "detections": [
+          {
+            "label": "dog",
+            "box": [35, 134, 353, 308],
+            "minimum_iou": 0.95,
+            "minimum_score": 0.65
+          }
+        ]
+      }
+    }
+  ]
+}

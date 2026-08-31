@@ -654,12 +654,9 @@ class RfDetrOnnxSession(BaseInferenceSession):
                 )
             )
         for value, expected in zip(arrays, expected_shapes, strict=True):
-            if value.shape != expected or value.dtype not in {
-                np.dtype(np.float32),
-                np.dtype(np.float16),
-            }:
+            if value.shape != expected or value.dtype != np.dtype(np.float32):
                 raise ValueError(
-                    f"RF-DETR runtime output must have shape {expected} and floating "
+                    f"RF-DETR runtime output must have shape {expected} and float32 "
                     f"dtype; received {value.shape} {value.dtype}"
                 )
             if not np.isfinite(value).all():
@@ -714,6 +711,8 @@ class RfDetrOnnxSession(BaseInferenceSession):
                 continue
             score_float = float(score)
             if output_shape is ShapeType.RECTANGLE:
+                if len(shapes) >= self.config.max_shapes:
+                    raise ValueError("RF-DETR results exceed max_shapes")
                 shapes.append(
                     InferenceShape(
                         type=ShapeType.RECTANGLE,
