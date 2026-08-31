@@ -322,6 +322,20 @@ Implementation status (2026-08-31):
       gates in runs `33347664285` and `33347671140`. All 120 retained renderings
       are pixel-identical where required, and every unique landscape/portrait
       point/box result passed visual review before PR #30 merged.
+- [x] RF-DETR Nano detection and instance segmentation use a standalone
+      `rfdetr_onnx` backend with strict static graph contracts, checksum-gated
+      ONNX loading, sparse class slots, bounded top-k outputs, editable instance
+      polygons, lifecycle reclamation, and authenticated-server support. Official
+      `rfdetr==1.9.4` exports are published with license and provenance records at
+      immutable model revision `dbe812f210253e50910eb26e465618e62b379111`.
+      Exact head `36adee77d92a89b523f8803cc31209e1d43c8835` passed all six
+      detection/segmentation jobs on Linux, Windows, and macOS plus aggregate
+      transport and cross-platform checks in run `33359361230`. Prediction
+      digests are exact across transports and operating systems; the only visual
+      drift is 2-3 macOS renderer pixels at channel delta 1, inside the explicit
+      16-pixel/delta-2 ceiling. All 24 retained outputs passed visual review,
+      steady-state RSS growth stayed bounded, and PR #34 merged as
+      `2fc72ad27348977ffcb88e4b5c267a7b960b888b`.
 
 Every merge gate uses real ONNX graphs and real images, never mocked model
 outputs. It records graph and image SHA-256 values, cold/warm latency, peak RSS,
