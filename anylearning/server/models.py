@@ -23,6 +23,7 @@ _SERVER_BACKENDS = frozenset(
     {
         "efficient_sam",
         "efficientvit_sam",
+        "rfdetr_onnx",
         "sam3",
         "segment_anything",
         "yolo_onnx",

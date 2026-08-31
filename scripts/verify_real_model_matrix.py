@@ -62,6 +62,51 @@ def _pixel_digest(path: Path) -> str:
         Image.MAX_IMAGE_PIXELS = previous_limit
 
 
+def _pixel_drift(
+    reference: Path,
+    candidate: Path,
+    *,
+    max_differing_pixels: int,
+    max_channel_delta: int,
+) -> tuple[int, int]:
+    previous_limit = Image.MAX_IMAGE_PIXELS
+    Image.MAX_IMAGE_PIXELS = _MAX_IMAGE_PIXELS
+    try:
+        with (
+            Image.open(reference) as reference_image,
+            Image.open(candidate) as candidate_image,
+        ):
+            reference_image.load()
+            candidate_image.load()
+            reference_rgb = reference_image.convert("RGB")
+            candidate_rgb = candidate_image.convert("RGB")
+            if reference_rgb.size != candidate_rgb.size:
+                raise ValueError("Cross-platform annotated image dimensions changed")
+            reference_bytes = reference_rgb.tobytes()
+            candidate_bytes = candidate_rgb.tobytes()
+            differing_pixels = 0
+            maximum_channel_delta = 0
+            for offset in range(0, len(reference_bytes), 3):
+                deltas = tuple(
+                    abs(
+                        reference_bytes[offset + channel]
+                        - candidate_bytes[offset + channel]
+                    )
+                    for channel in range(3)
+                )
+                if any(deltas):
+                    differing_pixels += 1
+                    maximum_channel_delta = max(maximum_channel_delta, *deltas)
+                    if (
+                        differing_pixels > max_differing_pixels
+                        or maximum_channel_delta > max_channel_delta
+                    ):
+                        return differing_pixels, maximum_channel_delta
+            return differing_pixels, maximum_channel_delta
+    finally:
+        Image.MAX_IMAGE_PIXELS = previous_limit
+
+
 def _validated_images(
     report: dict[str, Any],
     summary_path: Path,
@@ -69,7 +114,7 @@ def _validated_images(
     *,
     expected_cases: int,
     direct: bool,
-) -> tuple[tuple[str, ...], tuple[str, ...]]:
+) -> tuple[tuple[str, ...], tuple[str, ...], tuple[Path, ...]]:
     images = report.get("images")
     if not isinstance(images, list) or len(images) != expected_cases:
         raise ValueError(
@@ -77,6 +122,7 @@ def _validated_images(
         )
     predictions: list[str] = []
     pixels: list[str] = []
+    paths: list[Path] = []
     for index, image in enumerate(images):
         if not isinstance(image, dict):
             raise ValueError(f"Image result {index} is not an object: {summary_path}")
@@ -94,10 +140,10 @@ def _validated_images(
                 f"Image result {index} has no SHA-256 digest: {summary_path}"
             )
         predictions.append(prediction)
-        pixels.append(
-            _pixel_digest(_image_path(summary_path, image.get("annotated_image"), root))
-        )
-    return tuple(predictions), tuple(pixels)
+        path = _image_path(summary_path, image.get("annotated_image"), root)
+        pixels.append(_pixel_digest(path))
+        paths.append(path)
+    return tuple(predictions), tuple(pixels), tuple(paths)
 
 
 def verify_matrix(
@@ -107,17 +153,27 @@ def verify_matrix(
     variants: tuple[str, ...],
     platforms: tuple[str, ...],
     expected_cases: int = 4,
+    max_cross_platform_differing_pixels: int = 0,
+    max_cross_platform_channel_delta: int = 0,
 ) -> dict[str, Any]:
     root = root.resolve(strict=True)
     if root.is_symlink() or not root.is_dir():
         raise ValueError("Matrix root must be a regular non-symlink directory")
     if not artifact_prefix or not variants or not platforms or expected_cases < 1:
         raise ValueError("Matrix expectations must not be empty")
+    if not 0 <= max_cross_platform_differing_pixels <= _MAX_IMAGE_PIXELS:
+        raise ValueError(
+            "Cross-platform differing-pixel limit must be between 0 and "
+            f"{_MAX_IMAGE_PIXELS}"
+        )
+    if not 0 <= max_cross_platform_channel_delta <= 255:
+        raise ValueError("Cross-platform channel-delta limit must be between 0 and 255")
 
     verified: dict[str, Any] = {}
     for variant in variants:
         baseline_predictions: tuple[str, ...] | None = None
         baseline_pixels: tuple[str, ...] | None = None
+        baseline_pixel_paths: tuple[Path, ...] | None = None
         platform_reports: dict[str, Any] = {}
         for platform in platforms:
             artifact = root / (
@@ -148,14 +204,14 @@ def verify_matrix(
                 raise ValueError(f"Direct matrix report failed: {direct_path}")
             if server.get("passed") is not True or server.get("failures") != []:
                 raise ValueError(f"Server matrix report failed: {server_path}")
-            direct_predictions, direct_pixels = _validated_images(
+            direct_predictions, direct_pixels, direct_pixel_paths = _validated_images(
                 direct,
                 direct_path,
                 artifact,
                 expected_cases=expected_cases,
                 direct=True,
             )
-            server_predictions, server_pixels = _validated_images(
+            server_predictions, server_pixels, _server_pixel_paths = _validated_images(
                 server,
                 server_path,
                 artifact,
@@ -171,16 +227,48 @@ def verify_matrix(
             if baseline_predictions is None:
                 baseline_predictions = direct_predictions
                 baseline_pixels = direct_pixels
+                baseline_pixel_paths = direct_pixel_paths
+                pixel_drift = [
+                    {"case": index, "differing_pixels": 0, "maximum_channel_delta": 0}
+                    for index in range(expected_cases)
+                ]
             else:
                 if direct_predictions != baseline_predictions:
                     raise ValueError(
                         f"Cross-platform prediction mismatch for {variant}/{platform}"
                     )
-                if direct_pixels != baseline_pixels:
-                    raise ValueError(
-                        f"Cross-platform pixel mismatch for {variant}/{platform}"
+                assert baseline_pixels is not None and baseline_pixel_paths is not None
+                pixel_drift = []
+                for index, (baseline_path, candidate_path) in enumerate(
+                    zip(baseline_pixel_paths, direct_pixel_paths, strict=True)
+                ):
+                    if direct_pixels[index] == baseline_pixels[index]:
+                        differing_pixels, maximum_channel_delta = 0, 0
+                    else:
+                        differing_pixels, maximum_channel_delta = _pixel_drift(
+                            baseline_path,
+                            candidate_path,
+                            max_differing_pixels=max_cross_platform_differing_pixels,
+                            max_channel_delta=max_cross_platform_channel_delta,
+                        )
+                    if (
+                        differing_pixels > max_cross_platform_differing_pixels
+                        or maximum_channel_delta > max_cross_platform_channel_delta
+                    ):
+                        raise ValueError(
+                            f"Cross-platform pixel mismatch for {variant}/{platform} "
+                            f"case {index}: {differing_pixels} pixels, maximum channel "
+                            f"delta {maximum_channel_delta}"
+                        )
+                    pixel_drift.append(
+                        {
+                            "case": index,
+                            "differing_pixels": differing_pixels,
+                            "maximum_channel_delta": maximum_channel_delta,
+                        }
                     )
             platform_reports[platform] = {
+                "cross_platform_pixel_drift": pixel_drift,
                 "direct_peak_rss_bytes": direct.get("peak_observed_rss_bytes"),
                 "direct_steady_state_rss_growth_bytes": direct.get(
                     "steady_state_rss_growth_bytes"
@@ -227,6 +315,8 @@ def main() -> int:
     parser.add_argument("--variant", action="append", required=True, dest="variants")
     parser.add_argument("--platform", action="append", required=True, dest="platforms")
     parser.add_argument("--expected-cases", type=int, default=4)
+    parser.add_argument("--max-cross-platform-differing-pixels", type=int, default=0)
+    parser.add_argument("--max-cross-platform-channel-delta", type=int, default=0)
     parser.add_argument("--output", type=Path)
     arguments = parser.parse_args()
     report = verify_matrix(
@@ -235,6 +325,10 @@ def main() -> int:
         variants=tuple(arguments.variants),
         platforms=tuple(arguments.platforms),
         expected_cases=arguments.expected_cases,
+        max_cross_platform_differing_pixels=(
+            arguments.max_cross_platform_differing_pixels
+        ),
+        max_cross_platform_channel_delta=arguments.max_cross_platform_channel_delta,
     )
     if arguments.output is not None:
         _write_report(arguments.output, report)

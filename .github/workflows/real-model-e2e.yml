@@ -42,6 +42,7 @@ on:
         options:
           - all
           - pull-request
+          - rfdetr-nano
           - efficientvit-sam-larger
           - sam2-larger
           - sam2-1-larger
@@ -143,6 +144,175 @@ jobs:
         with:
           name: yolox-s-real-model-validation-${{ runner.os }}
           path: validation-results/
+          if-no-files-found: error
+          retention-days: 30
+
+  rfdetr-nano:
+    name: RF-DETR Nano ${{ matrix.variant.display }} / ${{ matrix.os }}
+    if: github.event_name != 'workflow_dispatch' || inputs.suite == 'all' || inputs.suite == 'pull-request' || inputs.suite == 'rfdetr-nano'
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        variant:
+          - display: Detection
+            slug: detection
+            archive: rfdetr_nano_detection_1_9_4.zip
+            archive_sha256: 5b130a1c2eb01be3bfbda703367b5d993821690de26f4abbb14a94ee3660c5fe
+            archive_max_bytes: 104857600
+            destination: rfdetr_detection
+            model_member: rfdetr_nano.onnx
+            model_size: 107830095
+            checksums_size: 157
+            provenance_size: 994
+            readme_size: 676
+            manifest: rfdetr_nano_detection_official.json
+          - display: Segmentation
+            slug: segmentation
+            archive: rfdetr_nano_segmentation_1_9_4.zip
+            archive_sha256: 133fdb5aed76233a6959addbdb7d64f5132f3cf2b2705a1994c2cbdfc2e93f4d
+            archive_max_bytes: 134217728
+            destination: rfdetr_segmentation
+            model_member: rfdetr_seg_nano.onnx
+            model_size: 122833543
+            checksums_size: 161
+            provenance_size: 925
+            readme_size: 744
+            manifest: rfdetr_nano_segmentation_official.json
+    env:
+      ASSET_DIR: tests/fixtures/inference/real_models
+      ARCHIVE: ${{ matrix.variant.archive }}
+      ARCHIVE_SHA256: ${{ matrix.variant.archive_sha256 }}
+      ARCHIVE_MAX_BYTES: ${{ matrix.variant.archive_max_bytes }}
+      DESTINATION: ${{ matrix.variant.destination }}
+      MODEL_MEMBER: ${{ matrix.variant.model_member }}
+      MODEL_SIZE: ${{ matrix.variant.model_size }}
+      CHECKSUMS_SIZE: ${{ matrix.variant.checksums_size }}
+      PROVENANCE_SIZE: ${{ matrix.variant.provenance_size }}
+      README_SIZE: ${{ matrix.variant.readme_size }}
+      MANIFEST: ${{ matrix.variant.manifest }}
+      OPENBLAS_NUM_THREADS: "1"
+      OMP_NUM_THREADS: "1"
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v10.0.1
+        with:
+          enable-cache: true
+
+      - name: Install isolated inference test dependencies
+        run: >-
+          uv pip install --system
+          "numpy>=2,<3" "opencv-python-headless>=4.11,<6"
+          "pydantic>=2.13,<3" "onnx>=1.16,<2" "onnxruntime>=1.29,<2"
+          "psutil>=7.2,<8" "pytest>=9,<10" "Pillow>=12,<13"
+          "fastapi>=0.141,<1" "httpx>=0.28,<1" "argon2-cffi>=25.1,<26"
+
+      - name: Download immutable official test assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/download_verified_file.py \
+            "https://huggingface.co/nrl-ai/anylearning-labeling-models/resolve/dbe812f210253e50910eb26e465618e62b379111/$ARCHIVE" \
+            "$ASSET_DIR/$ARCHIVE" --sha256 "$ARCHIVE_SHA256" \
+            --max-bytes "$ARCHIVE_MAX_BYTES"
+          python scripts/download_verified_file.py \
+            "https://raw.githubusercontent.com/Megvii-BaseDetection/YOLOX/6ddff4824372906469a7fae2dc3206c7aa4bbaee/assets/dog.jpg" \
+            "$ASSET_DIR/dog.jpg" \
+            --sha256 5a9522051c3cec2bbd2f6323fccba32e8fbf3ddcc2b3e2fd46b04c720bc6f866 \
+            --max-bytes 10485760
+
+      - name: Extract the exact verified graph and create portrait case
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$ASSET_DIR/$DESTINATION"
+          python scripts/extract_verified_zip.py \
+            "$ASSET_DIR/$ARCHIVE" "$ASSET_DIR/$DESTINATION" \
+            --member "CHECKSUMS.sha256:$CHECKSUMS_SIZE" \
+            --member "LICENSE:11345" \
+            --member "PROVENANCE.md:$PROVENANCE_SIZE" \
+            --member "README.md:$README_SIZE" \
+            --member "$MODEL_MEMBER:$MODEL_SIZE" \
+            --remove-archive
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          from PIL import Image
+
+          root = Path(os.environ["ASSET_DIR"])
+          with Image.open(root / "dog.jpg") as image:
+              image.transpose(Image.Transpose.ROTATE_270).save(
+                  root / "dog_portrait.png", format="PNG", optimize=False
+              )
+          PY
+
+      - name: Run real landscape and portrait validation
+        run: >-
+          python scripts/validate_real_model.py
+          tests/fixtures/inference/real_models/${{ matrix.variant.manifest }}
+          --output-root validation-results/${{ runner.os }}/rfdetr-nano-${{ matrix.variant.slug }}
+
+      - name: Run authenticated server with the real graph
+        run: >-
+          python scripts/validate_real_server.py
+          tests/fixtures/inference/real_models/${{ matrix.variant.manifest }}
+          --output-root validation-results/${{ runner.os }}/server-rfdetr-nano-${{ matrix.variant.slug }}
+
+      - name: Retain visual and machine-readable evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: rfdetr-nano-${{ matrix.variant.slug }}-real-model-validation-${{ runner.os }}
+          path: validation-results/
+          if-no-files-found: error
+          retention-days: 30
+
+  rfdetr-nano-consistency:
+    name: RF-DETR Nano cross-platform identity
+    needs: rfdetr-nano
+    if: always() && needs.rfdetr-nano.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+
+      - name: Install image verification dependency
+        run: python -m pip install "Pillow>=12,<13"
+
+      - name: Download all operating-system reports
+        uses: actions/download-artifact@v6
+        with:
+          pattern: rfdetr-nano-*-real-model-validation-*
+          path: matrix-artifacts
+
+      - name: Verify transport and cross-platform decoded pixels
+        run: >-
+          python scripts/verify_real_model_matrix.py matrix-artifacts
+          --artifact-prefix rfdetr-nano
+          --variant detection --variant segmentation
+          --platform Linux --platform Windows --platform macOS
+          --expected-cases 2
+          --max-cross-platform-differing-pixels 16
+          --max-cross-platform-channel-delta 2
+          --output matrix-verification/rfdetr-nano.json
+
+      - name: Retain the matrix verification report
+        uses: actions/upload-artifact@v6
+        with:
+          name: rfdetr-nano-matrix-verification
+          path: matrix-verification/
           if-no-files-found: error
           retention-days: 30
 

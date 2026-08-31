@@ -40,12 +40,19 @@ def _yolo_onnx_backend() -> InferenceBackend:
     return YoloOnnxBackend()
 
 
+def _rfdetr_onnx_backend() -> InferenceBackend:
+    from .backends.rfdetr_onnx import RfDetrOnnxBackend
+
+    return RfDetrOnnxBackend()
+
+
 def create_default_registry() -> ModelRegistry:
     registry = ModelRegistry()
     registry.register("efficient_sam", _efficient_sam_backend)
     registry.register("efficientvit_sam", _efficientvit_sam_backend)
     registry.register("sam3", _sam3_backend)
     registry.register("segment_anything", _sam_backend)
+    registry.register("rfdetr_onnx", _rfdetr_onnx_backend)
     registry.register("yolo_onnx", _yolo_onnx_backend)
     return registry
 

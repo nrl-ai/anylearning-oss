@@ -375,6 +375,18 @@ def test_server_model_manifest_is_bounded_onnx_only_and_rejects_credentials(
         ).backend
         == "sam3"
     )
+    assert (
+        ServerModelDefinition(
+            backend="rfdetr_onnx",
+            config={
+                "name": "bounded-detector",
+                "model_path": "detector.onnx",
+                "task": "detection",
+                "class_names": ["object"],
+            },
+        ).backend
+        == "rfdetr_onnx"
+    )
 
     manifest.write_text(
         json.dumps(

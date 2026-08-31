@@ -110,3 +110,10 @@ sufficient.
 larger cases run only in the scheduled/manual resource-qualified workflow so
 per-PR checks do not repeatedly download hundreds of megabytes or several
 gigabytes.
+
+`rfdetr_nano_detection_official.json` and
+`rfdetr_nano_segmentation_official.json` use the immutable, license-complete
+RF-DETR 1.9.4 archives. They validate sparse COCO class IDs, float32 resizing,
+sigmoid multiclass top-k, detection boxes, editable instance polygons,
+landscape/portrait behavior, repeated lifecycle growth, authenticated-server
+transport, and decoded-pixel identity across Linux, Windows, and macOS.
