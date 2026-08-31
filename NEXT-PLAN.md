@@ -561,12 +561,18 @@ contracts.
     output modes are serialized at the session boundary; rapid picker changes
     retain only the latest queued model without cancelling a native load in an
     unsafe state.
-  - Linux real-model desktop-adapter and desktop-API evidence is retained under
+  - Real-model desktop-adapter and desktop-API evidence is retained under
     `/home/vietanhdev/Workspaces/anylearning-real-validation/desktop-autolabeling-local`.
     D-FINE, EfficientViT-SAM, RF-DETR detection, RF-DETR segmentation, clean
     network install, and project-model discovery/load/inference passed visual
-    review without mocked model outputs. Windows and macOS desktop gates remain
-    required before this milestone merges.
+    review without mocked model outputs. The same pinned D-FINE ONNX graph and
+    source image also passed on the physical Linux devbox and Apple Silicon
+    MacBook: each host passed all 71 focused desktop integration tests and
+    returned identical labels, scores, class IDs, and coordinates. The retained
+    cross-platform overlay passed visual review. The physical Windows desktop
+    gate remains required before this milestone merges; its SSH host was
+    unreachable at the 2026-09-01 retry and was not replaced with a hosted or
+    mocked result.
   - Other trained exports are not mislabeled as usable: NanoDet, semantic
     segmentation, Mask R-CNN, classification, handpose, and keypoint artifacts
     enter this picker only after their ONNX graph contracts have a first-party

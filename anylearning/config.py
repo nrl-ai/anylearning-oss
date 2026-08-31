@@ -60,7 +60,8 @@ def save_config(config):
 
 def get_default_config():
     config_file = "anylearning_config.yaml"
-    with pkg_resources.open_text(anylearning_configs, config_file) as f:
+    config_resource = pkg_resources.files(anylearning_configs).joinpath(config_file)
+    with config_resource.open("r", encoding="utf-8") as f:
         config = yaml.safe_load(f)
 
     # Save default config to ~/.anylearningrc
