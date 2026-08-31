@@ -336,6 +336,21 @@ Implementation status (2026-08-31):
       16-pixel/delta-2 ceiling. All 24 retained outputs passed visual review,
       steady-state RSS growth stayed bounded, and PR #34 merged as
       `2fc72ad27348977ffcb88e4b5c267a7b960b888b`.
+- [x] D-FINE-N COCO detection uses a standalone `dfine_onnx` backend with the
+      official direct RGB stretch, embedded top-k outputs without NMS, static
+      tensor/resource bounds, CPU-only provider enforcement, lifecycle
+      reclamation, and authenticated-server support. The license-complete
+      COCO-only artifact is pinned at immutable model revision
+      `b71a0c8d3fc1219548e028afd8a192c6be1e574a`; every Objects365-derived
+      checkpoint is excluded. Exact head
+      `aba673c07aa2222bd9e86857d3edc7b904a9f131` passed direct/server jobs on
+      Linux, Windows, and macOS plus the aggregate gate in run `33365254766`.
+      Prediction digests are exact across transports and operating systems;
+      direct/server renderings are byte-identical per platform, and the only
+      cross-platform visual drift is two macOS source-decoder pixels at channel
+      delta 1. All unique landscape/portrait outputs passed visual review,
+      repeated inference stayed within the memory bound, and PR #36 merged as
+      `af2861fcbb8216002a1f799062bf521fcbb7caa4`.
 
 Every merge gate uses real ONNX graphs and real images, never mocked model
 outputs. It records graph and image SHA-256 values, cold/warm latency, peak RSS,
