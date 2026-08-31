@@ -29,6 +29,21 @@ on:
   schedule:
     - cron: "23 3 * * 1"
   workflow_dispatch:
+    inputs:
+      suite:
+        description: Real-model suite to run
+        required: true
+        default: all
+        type: choice
+        options:
+          - all
+          - pull-request
+          - efficientvit-sam-larger
+          - sam2-larger
+          - sam2-1-larger
+          - sam-vit-b
+          - efficient-sam-s
+          - sam3-vit-h
 
 permissions:
   contents: read
@@ -40,6 +55,7 @@ concurrency:
 jobs:
   yolox-s:
     name: YOLOX-S / ${{ matrix.os }}
+    if: github.event_name != 'workflow_dispatch' || inputs.suite == 'all' || inputs.suite == 'pull-request'
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     strategy:
@@ -127,6 +143,7 @@ jobs:
 
   efficient-sam-ti:
     name: EfficientSAM-Ti / ${{ matrix.os }}
+    if: github.event_name != 'workflow_dispatch' || inputs.suite == 'all' || inputs.suite == 'pull-request'
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     strategy:
@@ -200,6 +217,7 @@ jobs:
 
   efficientvit-sam-l0:
     name: EfficientViT-SAM-L0 / ${{ matrix.os }}
+    if: github.event_name != 'workflow_dispatch' || inputs.suite == 'all' || inputs.suite == 'pull-request'
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     strategy:
@@ -295,7 +313,7 @@ jobs:
 
   efficientvit-sam-larger:
     name: EfficientViT-SAM-${{ matrix.display }} / ${{ matrix.os }}
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'all' || inputs.suite == 'efficientvit-sam-larger'))
     runs-on: ${{ matrix.os }}
     timeout-minutes: 120
     strategy:
@@ -425,6 +443,7 @@ jobs:
 
   mobile-sam:
     name: MobileSAM aspect ratios / ${{ matrix.os }}
+    if: github.event_name != 'workflow_dispatch' || inputs.suite == 'all' || inputs.suite == 'pull-request'
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     strategy:
@@ -515,6 +534,7 @@ jobs:
 
   sam2-hiera-tiny:
     name: SAM2 Hiera-Tiny aspect ratios / ${{ matrix.os }}
+    if: github.event_name != 'workflow_dispatch' || inputs.suite == 'all' || inputs.suite == 'pull-request'
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     strategy:
@@ -605,7 +625,7 @@ jobs:
 
   sam2-larger:
     name: SAM2 Hiera-${{ matrix.display }} / ${{ matrix.os }}
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'all' || inputs.suite == 'sam2-larger'))
     runs-on: ${{ matrix.os }}
     timeout-minutes: 120
     strategy:
@@ -736,6 +756,7 @@ jobs:
 
   sam2-1-hiera-tiny:
     name: SAM2.1 Hiera-Tiny aspect ratios / ${{ matrix.os }}
+    if: github.event_name != 'workflow_dispatch' || inputs.suite == 'all' || inputs.suite == 'pull-request'
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     strategy:
@@ -826,7 +847,7 @@ jobs:
 
   sam2-1-larger:
     name: SAM2.1 Hiera-${{ matrix.display }} / ${{ matrix.os }}
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'all' || inputs.suite == 'sam2-1-larger'))
     runs-on: ${{ matrix.os }}
     timeout-minutes: 120
     strategy:
@@ -959,7 +980,7 @@ jobs:
 
   sam-vit-b:
     name: SAM ViT-B aspect ratios / ${{ matrix.os }}
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'all' || inputs.suite == 'sam-vit-b'))
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
     strategy:
@@ -1051,7 +1072,7 @@ jobs:
 
   efficient-sam-s:
     name: EfficientSAM-S / ${{ matrix.os }}
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'all' || inputs.suite == 'efficient-sam-s'))
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
     strategy:
@@ -1127,7 +1148,7 @@ jobs:
 
   sam3-vit-h:
     name: SAM3 ViT-H text and geometry / ${{ matrix.os }}
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'all' || inputs.suite == 'sam3-vit-h'))
     runs-on: ${{ matrix.os }}
     timeout-minutes: 90
     strategy:
