@@ -377,6 +377,17 @@ def test_server_model_manifest_is_bounded_onnx_only_and_rejects_credentials(
     )
     assert (
         ServerModelDefinition(
+            backend="dfine_onnx",
+            config={
+                "name": "bounded-dfine-detector",
+                "model_path": "dfine.onnx",
+                "class_names": ["object"],
+            },
+        ).backend
+        == "dfine_onnx"
+    )
+    assert (
+        ServerModelDefinition(
             backend="rfdetr_onnx",
             config={
                 "name": "bounded-detector",

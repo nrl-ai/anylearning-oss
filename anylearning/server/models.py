@@ -21,6 +21,7 @@ _SENSITIVE_KEY = re.compile(r"(?:password|passwd|secret|token|api.?key)", re.I)
 # their own model-format, resource-bound, and license review.
 _SERVER_BACKENDS = frozenset(
     {
+        "dfine_onnx",
         "efficient_sam",
         "efficientvit_sam",
         "rfdetr_onnx",
