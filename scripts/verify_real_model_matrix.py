@@ -82,16 +82,17 @@ def _pixel_drift(
             candidate_rgb = candidate_image.convert("RGB")
             if reference_rgb.size != candidate_rgb.size:
                 raise ValueError("Cross-platform annotated image dimensions changed")
+            reference_bytes = reference_rgb.tobytes()
+            candidate_bytes = candidate_rgb.tobytes()
             differing_pixels = 0
             maximum_channel_delta = 0
-            for reference_pixel, candidate_pixel in zip(
-                reference_rgb.getdata(), candidate_rgb.getdata(), strict=True
-            ):
+            for offset in range(0, len(reference_bytes), 3):
                 deltas = tuple(
-                    abs(reference_channel - candidate_channel)
-                    for reference_channel, candidate_channel in zip(
-                        reference_pixel, candidate_pixel, strict=True
+                    abs(
+                        reference_bytes[offset + channel]
+                        - candidate_bytes[offset + channel]
                     )
+                    for channel in range(3)
                 )
                 if any(deltas):
                     differing_pixels += 1
