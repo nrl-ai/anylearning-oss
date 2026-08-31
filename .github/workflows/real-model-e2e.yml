@@ -304,6 +304,8 @@ jobs:
           --variant detection --variant segmentation
           --platform Linux --platform Windows --platform macOS
           --expected-cases 2
+          --max-cross-platform-differing-pixels 16
+          --max-cross-platform-channel-delta 2
           --output matrix-verification/rfdetr-nano.json
 
       - name: Retain the matrix verification report

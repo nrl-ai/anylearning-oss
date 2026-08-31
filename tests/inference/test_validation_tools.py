@@ -496,6 +496,37 @@ def test_real_matrix_verifier_rejects_transport_and_platform_drift(tmp_path):
         )
 
 
+def test_real_matrix_verifier_records_strictly_bounded_renderer_drift(tmp_path):
+    module = _script("verify_real_model_matrix.py")
+    _real_matrix_fixture(tmp_path)
+    for role in ("efficientvit-sam-l0", "server-efficientvit-sam-l0"):
+        image_path = next(
+            tmp_path.glob(
+                "efficientvit-sam-l0-real-model-validation-macOS/"
+                f"macOS/{role}/*/000-*.png"
+            )
+        )
+        image = Image.open(image_path).convert("RGB")
+        image.putpixel((0, 0), (0, 40, 81))
+        image.save(image_path)
+
+    report = module.verify_matrix(
+        tmp_path,
+        artifact_prefix="efficientvit-sam",
+        variants=("l0",),
+        platforms=("Linux", "Windows", "macOS"),
+        expected_cases=2,
+        max_cross_platform_differing_pixels=1,
+        max_cross_platform_channel_delta=1,
+    )
+
+    drift = report["variants"]["l0"]["platforms"]["macOS"]["cross_platform_pixel_drift"]
+    assert drift == [
+        {"case": 0, "differing_pixels": 1, "maximum_channel_delta": 1},
+        {"case": 1, "differing_pixels": 0, "maximum_channel_delta": 0},
+    ]
+
+
 def test_efficientvit_decoder_transform_is_deterministic_and_runnable(tmp_path):
     onnxruntime = pytest.importorskip("onnxruntime")
     module = _script("prepare_efficientvit_sam_decoder.py")
