@@ -46,8 +46,15 @@ def _rfdetr_onnx_backend() -> InferenceBackend:
     return RfDetrOnnxBackend()
 
 
+def _dfine_onnx_backend() -> InferenceBackend:
+    from .backends.dfine_onnx import DFineOnnxBackend
+
+    return DFineOnnxBackend()
+
+
 def create_default_registry() -> ModelRegistry:
     registry = ModelRegistry()
+    registry.register("dfine_onnx", _dfine_onnx_backend)
     registry.register("efficient_sam", _efficient_sam_backend)
     registry.register("efficientvit_sam", _efficientvit_sam_backend)
     registry.register("sam3", _sam3_backend)

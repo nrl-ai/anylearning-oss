@@ -153,6 +153,12 @@ class ModelProvenance(BaseModel):
     code_license: str = Field(min_length=1, max_length=128)
     artifact_license: str = Field(min_length=1, max_length=256)
     license_url: str = Field(min_length=8, max_length=2048, pattern=r"^https://")
+    weight_license_confirmation: str | None = Field(
+        default=None,
+        min_length=8,
+        max_length=2048,
+        pattern=r"^https://",
+    )
 
 
 class RealModelValidationManifest(BaseModel):

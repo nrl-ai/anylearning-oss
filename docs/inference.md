@@ -117,6 +117,32 @@ verbatim Apache-2.0 license. The 91 exported COCO slots are sparse: use `null`
 for unused IDs, retain the official numeric IDs, and set
 `background_class_id` to `null`.
 
+## D-FINE ONNX detection
+
+`dfine_onnx` consumes the official static D-FINE deployment graph without
+importing D-FINE, PyTorch, torchvision, or a native checkpoint at inference
+time. The graph accepts float32 RGB `[1,3,H,W]` values divided by 255 plus the
+original int64 `[width,height]`, and returns contiguous class IDs, original-
+image `xyxy` boxes, and scores for the embedded top-k results. It intentionally
+uses the direct bilinear stretch from D-FINE's training and native inference
+path. The separate upstream ONNX letterbox example is not used because it
+changes the input distribution and has a documented accuracy regression. The
+official postprocessor does not apply NMS, so this backend does not add one.
+
+The backend validates static names, dtypes, dimensions, opset, standard
+operator domains, query/output counts, image pixels, class slots, and result
+counts before or immediately after execution. Scores and coordinates are
+stabilized to four and three decimal places respectively after full-precision
+thresholding and ordering. Only `CPUExecutionProvider` is currently accepted;
+accelerated providers remain disabled until their results pass the same real-
+model matrix.
+
+The [immutable COCO-N bundle](https://huggingface.co/nrl-ai/anylearning-labeling-models/tree/b71a0c8d3fc1219548e028afd8a192c6be1e574a)
+contains the static opset-16 graph, restricted conversion helper, native/ONNX
+parity report, checksums, provenance, and complete Apache-2.0 license. An
+official repository collaborator confirmed Apache-2.0 for COCO-only
+checkpoints. Objects365-derived weights are excluded from AnyLearning assets.
+
 ## User-supplied YOLO ONNX models
 
 The `yolo_onnx` backend implements neutral output layouts for YOLOv5, YOLOv8,

@@ -14,7 +14,8 @@ create a JSON manifest and set `ANYLEARNING_REAL_MODEL_MANIFEST` to its path:
     "source_revision": "immutable-revision-or-release",
     "code_license": "SPDX-identifier",
     "artifact_license": "license verified for this model artifact",
-    "license_url": "https://example.org/official-model-license"
+    "license_url": "https://example.org/official-model-license",
+    "weight_license_confirmation": "https://example.org/optional-maintainer-confirmation"
   },
   "config": {
     "name": "local-yolox",
@@ -117,3 +118,10 @@ RF-DETR 1.9.4 archives. They validate sparse COCO class IDs, float32 resizing,
 sigmoid multiclass top-k, detection boxes, editable instance polygons,
 landscape/portrait behavior, repeated lifecycle growth, authenticated-server
 transport, and decoded-pixel identity across Linux, Windows, and macOS.
+
+`dfine_n_coco_official.json` uses the immutable, license-complete COCO-N
+archive. It validates the native direct-stretch preprocessing contract,
+contiguous COCO-80 labels, embedded top-k boxes/scores, landscape/portrait
+behavior, repeated lifecycle growth, authenticated-server transport, and exact
+cross-platform prediction and decoded-pixel identity. Objects365-derived
+weights are excluded from the artifact and test path.
