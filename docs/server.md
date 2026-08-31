@@ -35,7 +35,8 @@ Give it a bounded startup manifest instead:
 Relative artifact paths are resolved from the manifest. The manifest must be a
 regular non-link JSON file and cannot contain credential-like fields. Public
 serving permits the safety-checked `yolo_onnx`, `rfdetr_onnx`, `dfine_onnx`,
-`segment_anything`, `efficient_sam`, `efficientvit_sam`, and `sam3` backends.
+`segment_anything`, `efficient_sam`, `efficientvit_sam`, `sam3`, and
+`detector_sam` backends.
 Promptable pairs use
 separate encoder and decoder paths plus `encoder_sha256` and `decoder_sha256`;
 each graph may also
@@ -44,6 +45,14 @@ declare an exact external-data digest map. SAM3 instead requires
 `decoder_model_path`, independent graph hashes, and exact external-data maps
 for the two encoders. Its separately licensed weights remain deployment-owned
 and are not part of the server package.
+
+`detector_sam` accepts only a preconfigured nested detector and segmenter.
+Public manifests may select `yolo_onnx`, `rfdetr_onnx`, or `dfine_onnx` as the
+detector and `segment_anything`, `efficient_sam`, `efficientvit_sam`, or `sam3`
+as the segmenter. Recursive compositions and unreviewed nested backends are
+rejected at startup, so the composition cannot bypass the server backend
+allowlist. Clients can tune only the detector's ordinary request filters; they
+cannot change either model, graph path, digest, provider, or resource bound.
 
 ## Create credentials
 

@@ -230,13 +230,67 @@ class-agnostic, matching the official ONNX Runtime reference; requests may set
 `agnostic_nms=false` explicitly when preserving overlapping cross-class boxes is
 more important than reference parity.
 
+## Detector-to-SAM refinement
+
+`detector_sam` composes one registered detection backend with one registered
+promptable-segmentation backend. It runs the detector once, clamps and optionally
+pads each returned rectangle, then decodes one independent box prompt per
+object. The same source identity is used for every prompt, so the segmenter's
+bounded embedding cache encodes the image once and reuses that embedding for
+the remaining objects. This follows the official SAM predictor's
+[`set_image` then repeated prompt prediction](https://github.com/facebookresearch/segment-anything/blob/main/segment_anything/predictor.py)
+contract without copying external implementation code.
+
+```python
+config = {
+    "name": "detector-to-editable-masks",
+    "detector": {
+        "backend": "yolo_onnx",
+        "config": {
+            "name": "detector",
+            "model_path": "/models/detector.onnx",
+            "sha256": "<detector SHA-256>",
+            "task": "detection",
+            "format": "yolov8",
+            "class_names": ["person", "vehicle"],
+        },
+    },
+    "segmenter": {
+        "backend": "segment_anything",
+        "config": {
+            "name": "segmenter",
+            "encoder_model_path": "/models/sam-encoder.onnx",
+            "decoder_model_path": "/models/sam-decoder.onnx",
+            "encoder_sha256": "<encoder SHA-256>",
+            "decoder_sha256": "<decoder SHA-256>",
+            "family": "sam",
+        },
+    },
+    "max_refinements": 100,
+    "max_shapes": 1000,
+    "max_total_points": 100000,
+    "box_padding_pixels": 0,
+    "fallback_to_box": false,
+}
+session = get_default_registry().create_session("detector_sam", config)
+```
+
+Requests do not accept caller-supplied prompts. Confidence, IoU, and class
+filters are forwarded only to the detector; results retain the detector label,
+score, class attributes, and a stable group ID for disconnected mask polygons.
+Image pixels, detector refinements, output shapes, total polygon points, nested
+configuration depth, warnings, and child model artifacts are independently
+bounded. Cancellation and serialized lifecycle control cover both child
+sessions, and partial load failures unload both children before retry.
+
 ## Real-model validation reports
 
 `scripts/validate_real_model.py` runs a manifest-defined local model and image
 at least twice through the public inference contract. It fails expectations or
 non-repeatable shapes, and writes `summary.json`, every contract result,
 per-stage timings, model/image SHA-256 values, annotated PNGs, and a local HTML
-visual report beneath `validation-results/`. External bundles and SAM3 graph
+visual report beneath `validation-results/`. Composite pipelines log every
+child graph and its component provenance. External bundles and SAM3 graph
 triplets additionally log each graph role and every tensor file's relative
 location, bytes, and verified digest. See
 `tests/fixtures/inference/real_models/README.md` for the manifest and opt-in

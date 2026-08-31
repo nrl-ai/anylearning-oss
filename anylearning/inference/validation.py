@@ -169,6 +169,10 @@ class RealModelValidationManifest(BaseModel):
     name: str = Field(min_length=1, max_length=128)
     backend: str = Field(min_length=1, max_length=128, pattern=r"^[a-z0-9_]+$")
     provenance: ModelProvenance
+    component_provenance: tuple[ModelProvenance, ...] = Field(
+        default=(),
+        max_length=16,
+    )
     config: dict[str, Any] = Field(max_length=256)
     runs: int = Field(default=3, ge=2, le=20)
     lifecycle_cycles: int = Field(default=3, ge=2, le=10)
@@ -369,13 +373,31 @@ def _color(label: str | None) -> tuple[int, int, int]:
     return tuple(int(80 + channel % 176) for channel in digest[:3])
 
 
+def _caption_shape_indexes(shapes: tuple[Any, ...]) -> set[int]:
+    """Choose one readable caption for each disconnected instance group."""
+    indexes: set[int] = set()
+    grouped: dict[int, tuple[float, int]] = {}
+    for index, shape in enumerate(shapes):
+        if shape.group_id is None:
+            indexes.add(index)
+            continue
+        box = _shape_box(shape)
+        area = 0.0 if box is None else (box[2] - box[0]) * (box[3] - box[1])
+        previous = grouped.get(shape.group_id)
+        if previous is None or area > previous[0]:
+            grouped[shape.group_id] = (area, index)
+    indexes.update(value[1] for value in grouped.values())
+    return indexes
+
+
 def _annotate(
     rgb: np.ndarray,
     result: InferenceResult,
     prompts: tuple[ValidationPrompt, ...] = (),
 ) -> np.ndarray:
     canvas = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
-    for shape in result.shapes:
+    caption_indexes = _caption_shape_indexes(result.shapes)
+    for index, shape in enumerate(result.shapes):
         color = _color(shape.label)
         points = np.asarray(
             [[round(point.x), round(point.y)] for point in shape.points],
@@ -390,6 +412,8 @@ def _annotate(
         else:
             cv2.polylines(canvas, [points], True, color, 3, cv2.LINE_AA)
             anchor = points[0]
+        if index not in caption_indexes:
+            continue
         caption = shape.label or shape.type.value
         if shape.score is not None:
             caption += f" {shape.score:.3f}"
@@ -566,7 +590,29 @@ def _model_artifact_details(
                     )
                 )
     if not fields:
-        return {}
+        components: list[dict[str, Any]] = []
+        aggregate = hashlib.sha256()
+        total_bytes = 0
+        for role in ("detector", "segmenter"):
+            child = config.get(role)
+            if not isinstance(child, dict) or not isinstance(child.get("config"), dict):
+                continue
+            details = _model_artifact_details(child["config"], manifest_dir)
+            if not details:
+                continue
+            component = {"role": role, **details}
+            components.append(component)
+            total_bytes += int(details["bytes"])
+            aggregate.update(role.encode("ascii"))
+            aggregate.update(b"\0")
+            aggregate.update(str(details["sha256"]).encode("ascii"))
+        if not components:
+            return {}
+        return {
+            "sha256": aggregate.hexdigest(),
+            "bytes": total_bytes,
+            "components": components,
+        }
 
     graphs: list[dict[str, Any]] = []
     total_bytes = 0
@@ -811,6 +857,9 @@ def run_real_model_validation(
         "name": manifest.name,
         "backend": manifest.backend,
         "provenance": manifest.provenance.model_dump(mode="json"),
+        "component_provenance": [
+            item.model_dump(mode="json") for item in manifest.component_provenance
+        ],
         "passed": not global_failures
         and all(item["passed"] for item in image_summaries),
         "failures": global_failures,

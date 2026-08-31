@@ -52,8 +52,15 @@ def _dfine_onnx_backend() -> InferenceBackend:
     return DFineOnnxBackend()
 
 
+def _detector_sam_backend() -> InferenceBackend:
+    from .backends.detector_sam import DetectorSamBackend
+
+    return DetectorSamBackend()
+
+
 def create_default_registry() -> ModelRegistry:
     registry = ModelRegistry()
+    registry.register("detector_sam", _detector_sam_backend)
     registry.register("dfine_onnx", _dfine_onnx_backend)
     registry.register("efficient_sam", _efficient_sam_backend)
     registry.register("efficientvit_sam", _efficientvit_sam_backend)

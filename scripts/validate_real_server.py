@@ -207,6 +207,9 @@ def run_server_validation(
         "created_at": datetime.now(UTC).isoformat(),
         "manifest": manifest_path.name,
         "provenance": manifest.provenance.model_dump(mode="json"),
+        "component_provenance": [
+            item.model_dump(mode="json") for item in manifest.component_provenance
+        ],
         "model": capabilities,
         "runs_per_image": manifest.runs,
         "total_round_trip_ms": (time.perf_counter() - started) * 1000,

@@ -50,6 +50,13 @@ create a JSON manifest and set `ANYLEARNING_REAL_MODEL_MANIFEST` to its path:
 }
 ```
 
+For a composed pipeline, keep the primary artifact in `provenance` and record
+every additional model in `component_provenance`. The retained report preserves
+both records and recursively hashes every nested graph, rather than presenting
+only one child model as evidence. The committed
+`detector_sam_yolox_mobile_sam_official.json` fixture demonstrates this with
+the checksum-pinned official YOLOX-S graph and MobileSAM encoder/decoder pair.
+
 Paths are relative to the manifest. Run:
 
 ```bash
