@@ -88,12 +88,14 @@ def test_default_registry_keeps_sam_lazy():
     assert registry.backend_ids() == (
         "efficient_sam",
         "efficientvit_sam",
+        "rfdetr_onnx",
         "sam3",
         "segment_anything",
         "yolo_onnx",
     )
     assert "efficient_sam" not in registry._backends
     assert "efficientvit_sam" not in registry._backends
+    assert "rfdetr_onnx" not in registry._backends
     assert "sam3" not in registry._backends
     assert "segment_anything" not in registry._backends
     assert "yolo_onnx" not in registry._backends

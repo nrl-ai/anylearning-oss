@@ -5,7 +5,7 @@ from __future__ import annotations
 import ctypes
 import gc
 import sys
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -51,6 +51,7 @@ def create_checked_onnx_session(
     intra_op_threads: int,
     inter_op_threads: int,
     cancellation: CancellationToken,
+    graph_validator: Callable[[Any], None] | None = None,
 ) -> tuple[Any, Any, tuple[str, ...]]:
     """Validate one stable graph and construct its runtime session.
 
@@ -84,6 +85,8 @@ def create_checked_onnx_session(
             max_bytes=max_model_bytes,
             allow_external_data=True,
         )
+        if graph_validator is not None:
+            graph_validator(graph)
         cancellation.raise_if_cancelled()
         with stable_external_data_files(
             graph,
