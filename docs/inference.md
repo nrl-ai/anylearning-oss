@@ -15,9 +15,31 @@ backend is selected.
 The decoder graph selects the compatible SAM generation, or production
 manifests can pin `family` to `sam` or `sam2`. `efficient_sam` is a distinct
 backend for the official EfficientSAM-Ti/S split graph contract; it is not the
-similarly named EfficientViT-SAM architecture. Both backends accept point and
-box prompts, cache image embeddings by model revision and source identity, and
-select the highest-IoU candidate mask.
+similarly named EfficientViT-SAM architecture. `efficientvit_sam` is a third,
+separate backend for official EfficientViT-SAM L0/L1/L2/XL0/XL1 encoder and
+decoder pairs. All three accept point and box prompts, cache image embeddings
+by model revision and source identity, and select the highest-IoU candidate
+mask.
+
+EfficientViT-SAM keeps a 1024-pixel prompt/mask coordinate frame even when its
+L-series encoder input is 512 square. The backend applies the official RGB
+longest-side resize, normalization, bottom/right padding, point-only padding
+token, and resize/crop/resize mask flow. Official downloadable decoders discard
+the native three-candidate multimask result inside the graph. Run
+`scripts/prepare_efficientvit_sam_decoder.py` against an exact checksum-pinned
+official decoder to expose all four mask tokens deterministically; inference
+then chooses the highest-IoU candidate among native tokens 1–3. Static graph
+dimensions, prompt count, image pixels, intermediate mask elements, contours,
+shapes, and polygon points are bounded independently. Contour extraction uses a
+`1e-4` logit threshold for this backend so near-zero ONNX numerical noise does
+not change editable polygons across operating systems.
+
+Checksum-pinned, license-complete bundles for L0/L1/L2/XL0/XL1 are published
+in the [immutable AnyLearning model revision](https://huggingface.co/nrl-ai/anylearning-labeling-models/tree/e5848b5d032cc9b5f3a3af199325005c45e24b50).
+Each ZIP contains one encoder, the deterministically prepared decoder, the
+backend configuration, and the upstream Apache-2.0 license. The repository
+manifest records archive and member SHA-256 values; consumers must still verify
+those values before loading either graph.
 
 `sam3` is a separate three-graph backend for text-driven and geometrically
 guided segmentation. It accepts one bounded `TextPrompt`, plus point or box

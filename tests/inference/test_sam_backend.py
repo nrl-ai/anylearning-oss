@@ -87,11 +87,13 @@ def test_default_registry_keeps_sam_lazy():
 
     assert registry.backend_ids() == (
         "efficient_sam",
+        "efficientvit_sam",
         "sam3",
         "segment_anything",
         "yolo_onnx",
     )
     assert "efficient_sam" not in registry._backends
+    assert "efficientvit_sam" not in registry._backends
     assert "sam3" not in registry._backends
     assert "segment_anything" not in registry._backends
     assert "yolo_onnx" not in registry._backends
@@ -105,6 +107,7 @@ sys.modules['yaml'] = None
 sys.modules['loguru'] = None
 import anylearning.inference.backends.sam
 import anylearning.inference.backends.efficient_sam
+import anylearning.inference.backends.efficientvit_sam
 """
     completed = subprocess.run(
         [sys.executable, "-c", script],
@@ -188,6 +191,20 @@ def test_sam_mask_conversion_matches_golden_fixture():
         shapes[0].model_dump(mode="json", exclude_none=True, exclude_defaults=True)
         == fixture["expected_shape"]
     )
+
+
+def test_sam_mask_conversion_applies_a_finite_logit_threshold():
+    mask = np.full((12, 12), -1, dtype=np.float32)
+    mask[3:9, 3:9] = 1
+    mask[5:7, 9:11] = 5e-5
+
+    unfiltered = mask_shapes(mask, ShapeType.RECTANGLE)
+    filtered = mask_shapes(mask, ShapeType.RECTANGLE, mask_threshold=1e-4)
+
+    assert unfiltered[0].points[1].x == 10
+    assert filtered[0].points[1].x == 8
+    with pytest.raises(ValueError, match="threshold must be finite"):
+        mask_shapes(mask, ShapeType.POLYGON, mask_threshold=float("nan"))
 
 
 def test_sam_mask_conversion_bounds_fragmented_and_complex_results():

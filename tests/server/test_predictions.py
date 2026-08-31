@@ -354,6 +354,17 @@ def test_server_model_manifest_is_bounded_onnx_only_and_rejects_credentials(
     )
     assert (
         ServerModelDefinition(
+            backend="efficientvit_sam",
+            config={
+                "name": "efficientvit-promptable",
+                "encoder_model_path": "encoder.onnx",
+                "decoder_model_path": "decoder.onnx",
+            },
+        ).backend
+        == "efficientvit_sam"
+    )
+    assert (
+        ServerModelDefinition(
             backend="sam3",
             config={
                 "name": "text-promptable",

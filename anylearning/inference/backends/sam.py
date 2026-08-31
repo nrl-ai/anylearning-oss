@@ -289,11 +289,14 @@ def _legacy_prompts(request: InferenceRequest) -> list[dict[str, Any]]:
 def mask_contours(
     mask: np.ndarray,
     *,
+    mask_threshold: float = 0.0,
     max_mask_contours: int = _MAX_MASK_CONTOURS,
     max_shapes: int = _MAX_SHAPES,
     max_polygon_points: int = _MAX_POLYGON_POINTS,
 ) -> list[np.ndarray]:
-    binary = np.where(mask > 0, 255, 0).astype(np.uint8)
+    if not np.isfinite(mask_threshold):
+        raise ValueError("SAM mask threshold must be finite")
+    binary = np.where(mask > mask_threshold, 255, 0).astype(np.uint8)
     contours, _ = cv2.findContours(binary, cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
     if len(contours) > max_mask_contours:
         raise ValueError(
@@ -344,6 +347,7 @@ def mask_shapes(
     mask: np.ndarray,
     output_shape: ShapeType,
     *,
+    mask_threshold: float = 0.0,
     max_mask_contours: int = _MAX_MASK_CONTOURS,
     max_shapes: int = _MAX_SHAPES,
     max_polygon_points: int = _MAX_POLYGON_POINTS,
@@ -351,6 +355,7 @@ def mask_shapes(
 ) -> tuple[InferenceShape, ...]:
     contours = mask_contours(
         mask,
+        mask_threshold=mask_threshold,
         max_mask_contours=max_mask_contours,
         max_shapes=max_shapes,
         max_polygon_points=max_polygon_points,

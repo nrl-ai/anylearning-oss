@@ -92,6 +92,15 @@ The corresponding `sam2_1_hiera_*_official.json` manifests exercise every
 SAM 2.1 size from immutable, checksum-pinned archives. Tiny remains a
 cross-platform pull-request gate; Small, Base+, and Large run in the scheduled
 or manually dispatched resource-qualified matrix.
+`efficientvit_sam_l0_official.json` downloads the immutable official encoder
+and decoder, checksum-gates a deterministic ONNX-only decoder output transform,
+and validates point/box prompts in landscape and portrait orientations both
+directly and through password-authenticated HTTP. L0 is the per-pull-request
+graph-contract gate; larger EfficientViT-SAM variants are scheduled/manual
+artifact-size cases after their exact transformed digests are published. A
+downstream matrix verifier compares direct/server prediction digests and decoded
+annotated pixels across Linux, Windows, and macOS; per-run success alone is not
+sufficient.
 `sam3_vit_h_official.json` covers text, text+point, and box inference. These
 larger cases run only in the scheduled/manual resource-qualified workflow so
 per-PR checks do not repeatedly download hundreds of megabytes or several

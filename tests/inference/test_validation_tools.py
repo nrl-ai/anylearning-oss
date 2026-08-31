@@ -9,6 +9,7 @@ import numpy as np
 import onnx
 import pytest
 from onnx import TensorProto, helper, numpy_helper
+from PIL import Image
 
 from anylearning.inference import InferenceRequest, InferenceResult, TextPrompt
 from anylearning.inference.backends.yolo_onnx import YoloOnnxBackend
@@ -50,6 +51,163 @@ def _single_file_prediction_model(path):
     onnx.save_model(model, path)
 
 
+def _efficientvit_decoder_fixture(path, *, raw_mask_operation="Reshape", opset=17):
+    mask_source = numpy_helper.from_array(
+        np.zeros((1, 4, 256, 256), dtype=np.float32), name="mask_source"
+    )
+    mask_shape = numpy_helper.from_array(
+        np.asarray([1, 4, 256, 256], dtype=np.int64), name="mask_shape"
+    )
+    score_shape = numpy_helper.from_array(
+        np.asarray([-1, 2], dtype=np.int64), name="score_shape"
+    )
+    score_weights = numpy_helper.from_array(
+        np.arange(8, dtype=np.float32).reshape(2, 4), name="score_weights"
+    )
+    selected_index = numpy_helper.from_array(
+        np.asarray(0, dtype=np.int64), name="selected_index"
+    )
+    mask_axis = numpy_helper.from_array(
+        np.asarray([1], dtype=np.int64), name="mask_axis"
+    )
+    score_axis = numpy_helper.from_array(
+        np.asarray([1], dtype=np.int64), name="score_axis"
+    )
+    raw_mask_inputs = (
+        ["mask_source", "mask_shape"]
+        if raw_mask_operation == "Reshape"
+        else ["mask_source"]
+    )
+    graph = helper.make_graph(
+        [
+            helper.make_node(
+                raw_mask_operation,
+                raw_mask_inputs,
+                ["/Reshape_5_output_0"],
+            ),
+            helper.make_node(
+                "Reshape", ["point_coords", "score_shape"], ["score_inputs"]
+            ),
+            helper.make_node(
+                "Gemm",
+                ["score_inputs", "score_weights"],
+                ["/iou_prediction_head/layers.2/Gemm_output_0"],
+            ),
+            helper.make_node(
+                "Gather",
+                ["/Reshape_5_output_0", "selected_index"],
+                ["selected_mask"],
+                axis=1,
+            ),
+            helper.make_node("Unsqueeze", ["selected_mask", "mask_axis"], ["masks"]),
+            helper.make_node(
+                "Gather",
+                [
+                    "/iou_prediction_head/layers.2/Gemm_output_0",
+                    "selected_index",
+                ],
+                ["selected_score"],
+                axis=1,
+            ),
+            helper.make_node(
+                "Unsqueeze",
+                ["selected_score", "score_axis"],
+                ["iou_predictions"],
+            ),
+        ],
+        "efficientvit-decoder-fixture",
+        [
+            helper.make_tensor_value_info(
+                "image_embeddings", TensorProto.FLOAT, [1, 256, 64, 64]
+            ),
+            helper.make_tensor_value_info(
+                "point_coords", TensorProto.FLOAT, ["batch_size", 1, 2]
+            ),
+            helper.make_tensor_value_info(
+                "point_labels", TensorProto.FLOAT, ["batch_size", 1]
+            ),
+        ],
+        [
+            helper.make_tensor_value_info("masks", TensorProto.FLOAT, [1, 1, 256, 256]),
+            helper.make_tensor_value_info(
+                "iou_predictions", TensorProto.FLOAT, ["batch_size", 1]
+            ),
+        ],
+        initializer=[
+            mask_source,
+            mask_shape,
+            score_shape,
+            score_weights,
+            selected_index,
+            mask_axis,
+            score_axis,
+        ],
+    )
+    model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", opset)])
+    model.ir_version = 8
+    onnx.checker.check_model(model)
+    onnx.save_model(model, path)
+
+
+def _real_matrix_fixture(root, *, variant="l0"):
+    for platform in ("Linux", "Windows", "macOS"):
+        artifact = root / (
+            f"efficientvit-sam-{variant}-real-model-validation-{platform}"
+        )
+        direct = artifact / platform / f"efficientvit-sam-{variant}" / "direct"
+        server = artifact / platform / f"server-efficientvit-sam-{variant}" / "server"
+        direct.mkdir(parents=True)
+        server.mkdir(parents=True)
+        direct_images = []
+        server_images = []
+        for index in range(2):
+            direct_name = f"{index:03d}-direct.png"
+            server_name = f"{index:03d}-server.png"
+            Image.new("RGB", (4, 3), (index * 20, 40, 80)).save(direct / direct_name)
+            Image.new("RGB", (4, 3), (index * 20, 40, 80)).save(server / server_name)
+            digest = hashlib.sha256(f"prediction-{index}".encode()).hexdigest()
+            direct_images.append(
+                {
+                    "annotated_image": direct_name,
+                    "consistent_runs": True,
+                    "failures": [],
+                    "passed": True,
+                    "prediction_digest": digest,
+                }
+            )
+            server_images.append(
+                {
+                    "annotated_image": server_name,
+                    "consistent_runs": True,
+                    "failures": [],
+                    "prediction_digest": digest,
+                }
+            )
+        (direct / "summary.json").write_text(
+            json.dumps(
+                {
+                    "backend": "efficientvit_sam",
+                    "failures": [],
+                    "images": direct_images,
+                    "passed": True,
+                    "peak_observed_rss_bytes": 100,
+                    "steady_state_rss_growth_bytes": 0,
+                }
+            )
+        )
+        (server / "summary.json").write_text(
+            json.dumps(
+                {
+                    "failures": [],
+                    "images": server_images,
+                    "manifest": f"efficientvit_sam_{variant}_official.json",
+                    "passed": True,
+                    "peak_observed_rss_bytes": 120,
+                }
+            )
+        )
+
+
 def test_verified_downloader_uses_bounded_curl_and_atomic_digest_gate(
     tmp_path, monkeypatch
 ):
@@ -83,6 +241,198 @@ def test_verified_downloader_uses_bounded_curl_and_atomic_digest_gate(
             expected_sha256=digest,
             max_bytes=1024,
         )
+
+
+def test_real_matrix_verifier_proves_transport_and_platform_pixel_identity(tmp_path):
+    module = _script("verify_real_model_matrix.py")
+    _real_matrix_fixture(tmp_path)
+
+    report = module.verify_matrix(
+        tmp_path,
+        artifact_prefix="efficientvit-sam",
+        variants=("l0",),
+        platforms=("Linux", "Windows", "macOS"),
+        expected_cases=2,
+    )
+
+    assert report["passed"] is True
+    assert list(report["variants"]) == ["l0"]
+    assert len(report["variants"]["l0"]["prediction_digests"]) == 2
+
+
+def test_real_matrix_verifier_rejects_transport_and_platform_drift(tmp_path):
+    module = _script("verify_real_model_matrix.py")
+    _real_matrix_fixture(tmp_path)
+    windows_server = next(
+        tmp_path.glob(
+            "efficientvit-sam-l0-real-model-validation-Windows/"
+            "Windows/server-efficientvit-sam-l0/*/summary.json"
+        )
+    )
+    report = json.loads(windows_server.read_text())
+    report["images"][0]["prediction_digest"] = "f" * 64
+    windows_server.write_text(json.dumps(report))
+    with pytest.raises(ValueError, match="Transport prediction mismatch"):
+        module.verify_matrix(
+            tmp_path,
+            artifact_prefix="efficientvit-sam",
+            variants=("l0",),
+            platforms=("Linux", "Windows", "macOS"),
+            expected_cases=2,
+        )
+
+    _real_matrix_fixture(tmp_path / "pixel-drift")
+    mac_direct = next(
+        (tmp_path / "pixel-drift").glob(
+            "efficientvit-sam-l0-real-model-validation-macOS/"
+            "macOS/efficientvit-sam-l0/*/000-direct.png"
+        )
+    )
+    mac_server = next(
+        (tmp_path / "pixel-drift").glob(
+            "efficientvit-sam-l0-real-model-validation-macOS/"
+            "macOS/server-efficientvit-sam-l0/*/000-server.png"
+        )
+    )
+    Image.new("RGB", (4, 3), (255, 0, 0)).save(mac_direct)
+    Image.new("RGB", (4, 3), (255, 0, 0)).save(mac_server)
+    with pytest.raises(ValueError, match="Cross-platform pixel mismatch"):
+        module.verify_matrix(
+            tmp_path / "pixel-drift",
+            artifact_prefix="efficientvit-sam",
+            variants=("l0",),
+            platforms=("Linux", "Windows", "macOS"),
+            expected_cases=2,
+        )
+
+
+def test_efficientvit_decoder_transform_is_deterministic_and_runnable(tmp_path):
+    onnxruntime = pytest.importorskip("onnxruntime")
+    module = _script("prepare_efficientvit_sam_decoder.py")
+    source = tmp_path / "decoder.onnx"
+    _efficientvit_decoder_fixture(source)
+    source_digest = hashlib.sha256(source.read_bytes()).hexdigest()
+    first = tmp_path / "prepared-one.onnx"
+    second = tmp_path / "prepared-two.onnx"
+
+    first_report = module.prepare_decoder(
+        source, first, source_sha256=source_digest.upper()
+    )
+    second_report = module.prepare_decoder(
+        source,
+        second,
+        source_sha256=source_digest,
+        expected_output_sha256=first_report["output_sha256"],
+    )
+
+    assert first.read_bytes() == second.read_bytes()
+    assert first_report["output_sha256"] == second_report["output_sha256"]
+    assert first_report["source_sha256"] == source_digest
+    assert first.stat().st_mode & 0o777 == 0o644
+    prepared = onnx.load_model(first, load_external_data=False)
+    assert [
+        (item.name, item.type.tensor_type.elem_type) for item in prepared.graph.output
+    ] == [
+        ("masks", TensorProto.FLOAT),
+        ("iou_predictions", TensorProto.FLOAT),
+    ]
+    assert [
+        [
+            dimension.dim_value
+            if dimension.HasField("dim_value")
+            else dimension.dim_param
+            for dimension in item.type.tensor_type.shape.dim
+        ]
+        for item in prepared.graph.output
+    ] == [["batch_size", 4, 256, 256], ["batch_size", 4]]
+    assert {item.key: item.value for item in prepared.metadata_props} == {
+        "anylearning.source_sha256": source_digest,
+        "anylearning.transform": "efficientvit-sam-multimask-v1",
+    }
+
+    session = onnxruntime.InferenceSession(
+        str(first), providers=["CPUExecutionProvider"]
+    )
+    masks, scores = session.run(
+        None,
+        {
+            "image_embeddings": np.zeros((1, 256, 64, 64), dtype=np.float32),
+            "point_coords": np.asarray([[[2.0, 3.0]]], dtype=np.float32),
+            "point_labels": np.ones((1, 1), dtype=np.float32),
+        },
+    )
+    assert masks.shape == (1, 4, 256, 256)
+    assert scores.shape == (1, 4)
+    assert np.isfinite(masks).all() and np.isfinite(scores).all()
+
+
+@pytest.mark.parametrize(
+    ("source_digest", "expected_digest", "message"),
+    [
+        ("invalid", None, "64 hexadecimal"),
+        ("0" * 64, None, "mismatch"),
+        (None, "invalid", "64 hexadecimal"),
+        (None, "0" * 64, "Prepared decoder SHA-256 mismatch"),
+    ],
+)
+def test_efficientvit_decoder_transform_rejects_unverified_artifacts(
+    tmp_path, source_digest, expected_digest, message
+):
+    module = _script("prepare_efficientvit_sam_decoder.py")
+    source = tmp_path / "decoder.onnx"
+    output = tmp_path / "prepared.onnx"
+    _efficientvit_decoder_fixture(source)
+    actual_digest = hashlib.sha256(source.read_bytes()).hexdigest()
+
+    with pytest.raises(ValueError, match=message):
+        module.prepare_decoder(
+            source,
+            output,
+            source_sha256=source_digest or actual_digest,
+            expected_output_sha256=expected_digest,
+        )
+    assert not output.exists()
+
+
+def test_efficientvit_decoder_transform_rejects_changed_contract_and_overwrite(
+    tmp_path,
+):
+    module = _script("prepare_efficientvit_sam_decoder.py")
+    changed = tmp_path / "changed.onnx"
+    _efficientvit_decoder_fixture(changed, raw_mask_operation="Identity")
+    digest = hashlib.sha256(changed.read_bytes()).hexdigest()
+    output = tmp_path / "prepared.onnx"
+
+    with pytest.raises(ValueError, match="not produced by Reshape"):
+        module.prepare_decoder(changed, output, source_sha256=digest)
+
+    source = tmp_path / "decoder.onnx"
+    _efficientvit_decoder_fixture(source)
+    digest = hashlib.sha256(source.read_bytes()).hexdigest()
+    output.write_bytes(b"keep existing artifact")
+    with pytest.raises(FileExistsError, match="already exists"):
+        module.prepare_decoder(source, output, source_sha256=digest)
+    assert output.read_bytes() == b"keep existing artifact"
+
+
+def test_efficientvit_decoder_transform_rejects_symlink_paths(tmp_path):
+    module = _script("prepare_efficientvit_sam_decoder.py")
+    source = tmp_path / "decoder.onnx"
+    _efficientvit_decoder_fixture(source)
+    digest = hashlib.sha256(source.read_bytes()).hexdigest()
+    real_directory = tmp_path / "real"
+    real_directory.mkdir()
+    linked_directory = tmp_path / "linked"
+    try:
+        linked_directory.symlink_to(real_directory, target_is_directory=True)
+    except OSError as error:
+        pytest.skip(f"symlink creation is unavailable: {error}")
+
+    with pytest.raises(ValueError, match="may not traverse a symlink"):
+        module.prepare_decoder(
+            source, linked_directory / "prepared.onnx", source_sha256=digest
+        )
+    assert not (real_directory / "prepared.onnx").exists()
 
 
 def test_exact_zip_extractor_accepts_only_manifested_regular_files(tmp_path):
