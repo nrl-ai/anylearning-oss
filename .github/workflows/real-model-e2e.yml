@@ -142,7 +142,7 @@ jobs:
 
       - name: Retain visual and machine-readable evidence
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: yolox-s-real-model-validation-${{ runner.os }}
           path: validation-results/
@@ -270,7 +270,7 @@ jobs:
 
       - name: Retain visual and machine-readable evidence
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: rfdetr-nano-${{ matrix.variant.slug }}-real-model-validation-${{ runner.os }}
           path: validation-results/
@@ -311,7 +311,7 @@ jobs:
           --output matrix-verification/rfdetr-nano.json
 
       - name: Retain the matrix verification report
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: rfdetr-nano-matrix-verification
           path: matrix-verification/
@@ -408,7 +408,7 @@ jobs:
 
       - name: Retain visual and machine-readable evidence
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: dfine-n-real-model-validation-${{ runner.os }}
           path: validation-results/
@@ -449,7 +449,7 @@ jobs:
           --output matrix-verification/dfine-n.json
 
       - name: Retain the matrix verification report
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: dfine-n-matrix-verification
           path: matrix-verification/
@@ -523,7 +523,7 @@ jobs:
 
       - name: Retain visual and machine-readable evidence
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: efficient-sam-ti-real-model-validation-${{ runner.os }}
           path: validation-results/
@@ -619,7 +619,7 @@ jobs:
 
       - name: Retain visual and machine-readable evidence
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: efficientvit-sam-l0-real-model-validation-${{ runner.os }}
           path: validation-results/
@@ -657,7 +657,7 @@ jobs:
           --output matrix-verification/efficientvit-sam-l0.json
 
       - name: Retain the matrix verification report
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: efficientvit-sam-l0-matrix-verification
           path: matrix-verification/
@@ -787,7 +787,7 @@ jobs:
 
       - name: Retain visual and machine-readable evidence
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.artifact }}-real-model-validation-${{ runner.os }}
           path: validation-results/
@@ -825,7 +825,7 @@ jobs:
           --output matrix-verification/efficientvit-sam-larger.json
 
       - name: Retain the matrix verification report
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: efficientvit-sam-larger-matrix-verification
           path: matrix-verification/
@@ -916,7 +916,7 @@ jobs:
 
       - name: Retain visual and machine-readable evidence
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: mobile-sam-real-model-validation-${{ runner.os }}
           path: validation-results/
@@ -1001,7 +1001,7 @@ jobs:
 
       - name: Retain visual and machine-readable evidence
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: detector-sam-yolox-mobile-sam-real-model-validation-${{ runner.os }}
           path: validation-results/
@@ -1041,7 +1041,7 @@ jobs:
           --output matrix-verification/detector-sam-yolox-mobile-sam.json
 
       - name: Retain the matrix verification report
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: detector-sam-yolox-mobile-sam-matrix-verification
           path: matrix-verification/
@@ -1133,7 +1133,7 @@ jobs:
 
       - name: Retain visual and machine-readable evidence
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: sam2-hiera-tiny-real-model-validation-${{ runner.os }}
           path: validation-results/
@@ -1170,7 +1170,7 @@ jobs:
           --output matrix-verification/sam2-hiera-tiny.json
 
       - name: Retain the matrix verification report
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: sam2-hiera-tiny-matrix-verification
           path: matrix-verification/
@@ -1302,7 +1302,7 @@ jobs:
 
       - name: Retain visual and machine-readable evidence
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.artifact }}-real-model-validation-${{ runner.os }}
           path: validation-results/
@@ -1340,7 +1340,7 @@ jobs:
           --output matrix-verification/sam2-larger.json
 
       - name: Retain the matrix verification report
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: sam2-larger-matrix-verification
           path: matrix-verification/
@@ -1432,7 +1432,7 @@ jobs:
 
       - name: Retain visual and machine-readable evidence
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: sam2-1-hiera-tiny-real-model-validation-${{ runner.os }}
           path: validation-results/
@@ -1469,7 +1469,7 @@ jobs:
           --output matrix-verification/sam2-1-hiera-tiny.json
 
       - name: Retain the matrix verification report
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: sam2-1-hiera-tiny-matrix-verification
           path: matrix-verification/
@@ -1603,7 +1603,7 @@ jobs:
 
       - name: Retain visual and machine-readable evidence
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.artifact }}-real-model-validation-${{ runner.os }}
           path: validation-results/
@@ -1641,7 +1641,7 @@ jobs:
           --output matrix-verification/sam2-1-larger.json
 
       - name: Retain the matrix verification report
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: sam2-1-larger-matrix-verification
           path: matrix-verification/
@@ -1733,7 +1733,7 @@ jobs:
 
       - name: Retain visual and machine-readable evidence
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: sam-vit-b-real-model-validation-${{ runner.os }}
           path: validation-results/
@@ -1809,7 +1809,7 @@ jobs:
 
       - name: Retain visual and machine-readable evidence
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: efficient-sam-s-real-model-validation-${{ runner.os }}
           path: validation-results/
@@ -1895,7 +1895,7 @@ jobs:
 
       - name: Retain visual and machine-readable evidence
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: sam3-vit-h-real-model-validation-${{ runner.os }}
           path: validation-results/
