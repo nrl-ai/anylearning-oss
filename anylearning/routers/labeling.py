@@ -144,7 +144,13 @@ def _trained_auto_labeling_models(
                         "model_path": str(candidate),
                         "task": task,
                         "class_names": class_names,
-                        "background_class_id": None,
+                        # RF-DETR's fine-tuned detection and segmentation heads
+                        # export one extra, final no-object slot.  The training
+                        # config intentionally lists foreground labels only, so
+                        # tell the ONNX backend where to insert that gap rather
+                        # than making a three-label project look incompatible
+                        # with its own four-slot export.
+                        "background_class_id": -1,
                         "max_detections": 100,
                         "providers": ["CPUExecutionProvider"],
                         "intra_op_threads": 1,

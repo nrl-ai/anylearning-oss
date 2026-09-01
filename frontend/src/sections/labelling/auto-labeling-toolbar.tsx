@@ -18,6 +18,8 @@ import { cn } from "@/lib/utils"
 import ImportOnnxModelDialog from "./import-onnx-model-dialog"
 
 type LabelingMode = "labeling" | "auto_labeling"
+const isErrorStatus = (status: string) => /^(Error|Could not)/i.test(status)
+
 interface LabelingScreenProps {
     setMode: (mode: LabelingMode) => void
     aiToolSelected: string
@@ -72,6 +74,7 @@ export default function AutoLabellingToolbar({
     const selectedModel = compatibleModels.find((candidate) => candidate.name === model)
     const isPromptable = selectedModel?.interaction_mode !== "automatic"
     const modelReady = loadedModel === model && !isLoadingModel
+    const hasStatusError = isErrorStatus(status)
     const modelPlaceholder = isLoading
         ? "Loading models…"
         : compatibleModels.length
@@ -228,7 +231,7 @@ export default function AutoLabellingToolbar({
                     role="status"
                     className={cn(
                         "flex items-center gap-2 truncate border-t px-3 py-1 text-xs",
-                        loadError ? "text-fail" : "text-muted-foreground"
+                        loadError || hasStatusError ? "text-fail" : "text-muted-foreground"
                     )}
                 >
                     {isLoadingModel && <Loader2 className="size-3.5 shrink-0 animate-spin" />}

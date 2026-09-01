@@ -178,6 +178,7 @@ def test_trained_rfdetr_onnx_is_discovered_for_the_project(labeling_api):
 
     from anylearning import config
     from anylearning.database import Model, db_manager
+    from anylearning.routers import labeling
 
     exported = (
         Path(config.PROJECTS_ROOT)
@@ -213,6 +214,13 @@ def test_trained_rfdetr_onnx_is_discovered_for_the_project(labeling_api):
     assert trained["tasks"] == ["detection"]
     assert trained["interaction_mode"] == "automatic"
     assert trained["is_project_model"] is True
+    internal = next(
+        model
+        for model in labeling.model_manager.get_model_configs()
+        if model["name"] == "project-1-trained-7"
+    )
+    assert internal["inference_config"]["class_names"] == ["dog", "car"]
+    assert internal["inference_config"]["background_class_id"] == -1
 
 
 @pytest.mark.parametrize("config_file", ["data: [not-a-mapping]", "data: ["])

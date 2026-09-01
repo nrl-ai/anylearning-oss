@@ -866,8 +866,10 @@ function ImageDatasetManager({ projectId, project }: DatasetProps & { project: R
                                                                             backgroundColor:
                                                                                 item.class_id === -1
                                                                                     ? "var(--muted-foreground)"
-                                                                                    : project?.labels?.[item.class_id]
-                                                                                          ?.color ||
+                                                                                    : project?.labels?.find(
+                                                                                          (label) =>
+                                                                                              label.id === item.class_id
+                                                                                      )?.color ||
                                                                                       "var(--muted-foreground)",
                                                                         }}
                                                                     />
@@ -878,10 +880,10 @@ function ImageDatasetManager({ projectId, project }: DatasetProps & { project: R
                                                                 <SelectItem value="" className="my-0.5 truncate">
                                                                     unlabeled
                                                                 </SelectItem>
-                                                                {project?.labels?.map((label, index) => (
+                                                                {project?.labels?.map((label) => (
                                                                     <SelectItem
-                                                                        key={index}
-                                                                        value={index.toString()}
+                                                                        key={label.id}
+                                                                        value={label.id.toString()}
                                                                         style={{
                                                                             backgroundColor: label.color || "#666",
                                                                             color: "#fff",

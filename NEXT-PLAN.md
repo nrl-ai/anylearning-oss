@@ -551,6 +551,13 @@ contracts.
   are discovered beside bundled models. Picker discovery only stats the
   graph; SHA-256 verification is deferred to model load, cached by exact file
   identity, and rechecked by the inference backend before ONNX Runtime starts.
+- A fresh one-epoch RF-DETR Nano detection run now completes the real
+  train-to-label loop: GPU training, ONNX export, project-catalog discovery,
+  checksum verification, CPU ONNX Runtime load, and 25 editable predictions.
+  The exported graph's explicit no-object slot is mapped as background instead
+  of being mistaken for a missing class name. Inputs, outputs, visualization,
+  raw result, and graph SHA-256 are retained under
+  `/home/vietanhdev/Workspaces/anylearning-real-validation/all-project-types/288e496/trained-rfdetr-to-labeling`.
 - Automatic predictions are intersected with the project's label vocabulary
   in the backend, retain protocol/model/revision/score/timing metadata in the
   API result, and support multiple editable boxes or polygons in one run.
@@ -608,6 +615,12 @@ contracts.
   segmentation, Mask R-CNN, classification, handpose, and keypoint artifacts
   enter this picker only after their ONNX graph contracts have a first-party
   `anylearning.inference` adapter and real exporter-parity evidence.
+- RF-DETR native checkpoint previews now retry once on CPU when an advertised
+  accelerator fails during execution (for example, a driver-visible CUDA device
+  with missing NVRTC runtime components). The retry rebuilds the checkpoint on
+  CPU, releases failed accelerator state best-effort, and does not hide invalid
+  checkpoints or CPU failures. Real keypoint preview evidence is retained in
+  `keypoint-gpu-fallback.json` beside the all-project validation artifacts.
 
 I9. Benchmark the ONNX-only YOLOX adapter, close the audited SAMExporter matrix,
 then add EfficientViT-SAM, RF-DETR, and D-FINE backends in that order, enabling
@@ -635,6 +648,27 @@ W5. Add YOLO-box-to-SAM refinement.
 W6. Replace the growing training-log text field with appendable bounded storage
 and paged/tailing reads.
 W7. Complete import/export round trips for AnyLabeling, YOLO, COCO, and LabelMe.
+W8. Keep the real all-project native desktop matrix as a regression gate. The
+2026-09-01 baseline covers all eight supported project types, six image-labeling
+workspaces, every training/model screen, and real post-training inference for
+all six image types. It actively changes and restores image-classification and
+handpose classes, verifies the handpose landmark target remains synchronized,
+and records 37 full-resolution screenshots with no page errors or horizontal
+overflow. Results and reviewed contact sheets are retained under
+`/home/vietanhdev/Workspaces/anylearning-real-validation/all-project-types/288e496/ui-workflow-20260901-163516`.
+W9. Replace library-owned first-run backbone downloads with the managed artifact
+fetcher: immutable revision and SHA-256, bounded connect/read deadlines,
+retry/backoff, resumable staging where supported, atomic visibility, progress,
+cancellation, and an actionable offline error. A real semantic-segmentation
+first run stalled indefinitely at 93%, so an unbounded third-party downloader is
+not an acceptable fallback even when the final file checksum is correct.
+W10. Resolve the Python 3.13 RF-DETR/Lightning test-process teardown crash. All
+25 RF-DETR trainer assertions complete, and real application inference exits
+normally, but the local mixed native environment can segfault during
+`sentencepiece` interpreter finalization. Reproduce in a clean pinned
+environment, identify the incompatible native package pair, and make a clean
+process exit part of the supported-version gate rather than accepting a green
+pytest summary followed by exit 139.
 
 ### P1: Authenticated shared inference
 
@@ -684,6 +718,12 @@ come from `docs/TODO.md` and are promoted into this plan:
 - Training logs use one growing database field and become superlinear.
 - detectron2 CUDA extensions do not build against the current PyTorch version.
 - UI sizing, semantic colors, and spacing need a consistent system.
+- Classification and handpose labeling now bypass the drawable-shape loader and
+  auto-saver, handpose exposes the same image-level class controls as image
+  classification, relabeling atomically updates its landmark target, and dataset
+  dropdowns use stable label IDs rather than array positions. Keep this
+  classification-versus-canvas storage boundary covered as new project types are
+  added.
 - The default branch currently reports 60 open dependency alerts (including 23
   high severity, with duplicates between manifests and lockfiles). Website
   Next.js/PostCSS and frontend Effect alerts need immediate reachability review

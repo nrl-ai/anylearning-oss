@@ -6,6 +6,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { EmptyState } from "@/components/ui/empty-state"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Switch } from "@/components/ui/switch"
+import { isClassificationProject } from "@/lib/project-types"
 import { DataItem, Project } from "@/types"
 
 type LabelListProps = {
@@ -26,7 +27,7 @@ export default function LabelList({ projectId, project, currentImage, handleClas
         setShowKeypointVisibility,
         setDimOccludedKeypoints,
     } = useSettingStore()
-    const isClassification = project?.type === "Image Classification"
+    const isClassification = isClassificationProject(project?.type)
     const isKeypoint = project?.type === "Keypoint Detection"
     const keypointDisplayOptions: [string, boolean, (value: boolean) => void][] = [
         ["Landmark names", isShowLabels, setShowLabels],

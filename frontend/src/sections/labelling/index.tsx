@@ -11,6 +11,7 @@ import {
     createAutoLabelingPreview,
     persistableAnnotationShapes,
 } from "@/lib/auto-labeling-shape"
+import { usesCanvasAnnotations } from "@/lib/project-types"
 import { generateUniqueId } from "@/lib/random"
 import { getAnnotation, putAnnotation } from "@/lib/use-annotation"
 import { putClassId } from "@/lib/use-annotation"
@@ -90,6 +91,7 @@ const LabelingScreen: React.FC<LabelingScreenProps> = ({ projectId, subset, onEx
 
     const currentImage = dataItems[currentImageIndex]
     const totalPages = Math.ceil(totalCount / imagesPerPage)
+    const hasCanvasAnnotations = usesCanvasAnnotations(project?.type)
 
     const { setHandles, annotator } = useImageAnnotator()
     const [showNoLabelsAlert, setShowNoLabelsAlert] = useState<boolean>(false)
@@ -100,12 +102,19 @@ const LabelingScreen: React.FC<LabelingScreenProps> = ({ projectId, subset, onEx
     }, [annotator])
 
     const hasUnsavedChanges = useCallback(() => {
+        if (!hasCanvasAnnotations) return false
         const currentShapesHash = getCurrentShapesHash()
         return currentShapesHash !== lastSavedShapesRef.current
-    }, [getCurrentShapesHash])
+    }, [getCurrentShapesHash, hasCanvasAnnotations])
 
     const saveAnnotation = useCallback(async () => {
-        if (!annotator || !dataItems[currentImageIndex] || isSavingAnnotation || !hasUnsavedChanges()) {
+        if (
+            !hasCanvasAnnotations ||
+            !annotator ||
+            !dataItems[currentImageIndex] ||
+            isSavingAnnotation ||
+            !hasUnsavedChanges()
+        ) {
             return false
         }
 
@@ -135,11 +144,25 @@ const LabelingScreen: React.FC<LabelingScreenProps> = ({ projectId, subset, onEx
             setSavingAnnotation(false)
         }
         return false
-    }, [annotator, currentImageIndex, dataItems, hasUnsavedChanges, isSavingAnnotation, projectId, setDataItems])
+    }, [
+        annotator,
+        currentImageIndex,
+        dataItems,
+        hasCanvasAnnotations,
+        hasUnsavedChanges,
+        isSavingAnnotation,
+        projectId,
+        setDataItems,
+    ])
 
     // Auto-save every 5 seconds if there are changes
     useEffect(() => {
-        if (!useAutoSaveSettingStore.getState().isEnabled || !isReady || isNavigatingRef.current) {
+        if (
+            !hasCanvasAnnotations ||
+            !useAutoSaveSettingStore.getState().isEnabled ||
+            !isReady ||
+            isNavigatingRef.current
+        ) {
             if (autoSaveTimeoutRef.current) {
                 clearTimeout(autoSaveTimeoutRef.current)
             }
@@ -166,7 +189,7 @@ const LabelingScreen: React.FC<LabelingScreenProps> = ({ projectId, subset, onEx
                 clearTimeout(autoSaveTimeoutRef.current)
             }
         }
-    }, [isReady, saveAnnotation, hasUnsavedChanges])
+    }, [hasCanvasAnnotations, isReady, saveAnnotation, hasUnsavedChanges])
 
     useEffect(() => {
         if (project && (!project.labels || project.labels.length === 0)) {
@@ -191,57 +214,72 @@ const LabelingScreen: React.FC<LabelingScreenProps> = ({ projectId, subset, onEx
     useEffect(() => {
         // this effect helps get shapes when user chooses a new image
         let shouldSetShapes = true
+        let retryTimeout: ReturnType<typeof setTimeout> | undefined
         const annotator = annotatorRef.current
 
-        const loadAnnotationWithRetry = async () => {
-            if (!currentImage?.id || !annotator || !isReady) return
+        if (!currentImage?.id || !annotator || !isReady) return
 
+        // Never send classification metadata through the shape loader/saver.
+        // Handpose annotations are landmark dictionaries, not shape arrays.
+        if (!hasCanvasAnnotations) {
+            annotator.setShapes([])
+            lastLoadedAnnotationRef.current = {
+                imageId: currentImage.id,
+                shapes: [],
+            }
+            lastSavedShapesRef.current = "[]"
+            loadAnnotationRetryCount.current = 0
+            setIsLoadingAnnotation(false)
+            return
+        }
+
+        // Do not leave the previous image's shapes visible while the next
+        // request is pending. More importantly, a failed request must never
+        // auto-save those stale shapes onto the new image.
+        annotator.setShapes([])
+        lastLoadedAnnotationRef.current = undefined
+        lastSavedShapesRef.current = "[]"
+
+        const loadAnnotationWithRetry = async () => {
             try {
                 setIsLoadingAnnotation(true)
                 const shapes = await getAnnotation(projectId, currentImage.id)
 
                 if (!shouldSetShapes) return
 
-                if (!shapes || shapes.length === 0) {
-                    if (loadAnnotationRetryCount.current < MAX_RETRY_COUNT) {
-                        loadAnnotationRetryCount.current++
-                        setTimeout(loadAnnotationWithRetry, 1000) // Retry after 1 second
-                        return
-                    }
-                }
+                if (!Array.isArray(shapes)) throw new TypeError("Annotation response must be a shape array")
 
                 // Store the loaded annotation
                 lastLoadedAnnotationRef.current = {
                     imageId: currentImage.id,
-                    shapes: shapes || [],
+                    shapes,
                 }
 
                 if (annotator) {
                     // Update shape colors based on categories
-                    const shapesWithColors =
-                        shapes?.map((shape: Shape) => {
-                            const category = shape.categories?.[0]
-                            if (category) {
-                                const label = project?.labels.find((l) => l.name === category)
-                                if (label?.color) {
-                                    return {
-                                        ...shape,
-                                        color: label.color,
-                                    }
+                    const shapesWithColors = shapes.map((shape: Shape) => {
+                        const category = shape.categories?.[0]
+                        if (category) {
+                            const label = project?.labels.find((l) => l.name === category)
+                            if (label?.color) {
+                                return {
+                                    ...shape,
+                                    color: label.color,
                                 }
                             }
-                            return shape
-                        }) || []
+                        }
+                        return shape
+                    })
 
-                    annotator.setShapes(shapesWithColors)
-                    lastSavedShapesRef.current = JSON.stringify(shapesWithColors || [])
+                    annotator.setShapes(shapesWithColors as Shape[])
+                    lastSavedShapesRef.current = JSON.stringify(shapesWithColors)
                 }
                 loadAnnotationRetryCount.current = 0
             } catch (error) {
                 console.error("Failed to load annotation:", error)
                 if (loadAnnotationRetryCount.current < MAX_RETRY_COUNT) {
                     loadAnnotationRetryCount.current++
-                    setTimeout(loadAnnotationWithRetry, 1000)
+                    retryTimeout = setTimeout(loadAnnotationWithRetry, 1000)
                 }
             } finally {
                 setIsLoadingAnnotation(false)
@@ -252,8 +290,9 @@ const LabelingScreen: React.FC<LabelingScreenProps> = ({ projectId, subset, onEx
 
         return () => {
             shouldSetShapes = false
+            if (retryTimeout) clearTimeout(retryTimeout)
         }
-    }, [currentImage?.id, isReady, projectId, project?.labels])
+    }, [currentImage?.id, hasCanvasAnnotations, isReady, projectId, project?.labels])
 
     // Add effect to ensure annotations are loaded into annotator
     useEffect(() => {
@@ -411,7 +450,7 @@ const LabelingScreen: React.FC<LabelingScreenProps> = ({ projectId, subset, onEx
                     const updatedDataItems = [...items]
                     updatedDataItems[currentImageIndex] = {
                         ...updatedDataItems[currentImageIndex],
-                        labeled: true,
+                        labeled: classId !== -1,
                         class_id: classId,
                     }
                     return updatedDataItems
