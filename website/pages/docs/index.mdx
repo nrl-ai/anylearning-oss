@@ -24,14 +24,16 @@ footage under NDA, anything a data-protection officer has an opinion about.
 
 ## What "offline" means here, precisely
 
-Python, PyTorch and the pretrained weights are inside the installer. Nothing is
-fetched after installation, and a machine with no network can label, train,
-evaluate and export.
+Python, PyTorch, the training backbones, MobileSAM, and the default SAM 2 Tiny
+and Small models are inside the installer. A machine with no network can label,
+train, evaluate and export with those bundled components.
 
-The one exception, stated plainly: on startup the app requests a static JSON
-file from our website to see whether a newer version exists. It sends nothing
-about you or your data, and it fails silently with no network. That is the only
-connection the application opens.
+Larger optional auto-labeling models are intentionally not duplicated inside
+the installer. Selecting one shows its size, downloads a checksum-pinned ONNX
+bundle once, and stores it locally. It runs without a network after that. The
+app also requests a static JSON file from our website on startup to see whether
+a newer version exists; that check sends no project or machine data and fails
+silently when offline.
 
 Your images, annotations and trained weights are read from and written to local
 disk. There is no bucket, no ingest, no telemetry and no analytics.
@@ -44,8 +46,10 @@ to it.
 
 ## What it does
 
-- **Label** with boxes, polygons, keypoints and whole-image classes, with
-  Segment Anything (SAM and SAM2) running locally to pre-label.
+- **Label** with boxes, polygons, keypoints and whole-image classes. Use local
+  SAM-family prompts, run automatic D-FINE or RF-DETR predictions, reuse ONNX
+  exports from project-trained RF-DETR models, or import a compatible
+  YOLO-family ONNX model in the desktop app.
 - **Train** eight project types: object detection, instance segmentation, image
   segmentation, image classification, handpose classification, keypoint
   detection, Tabular AI and Text AI. Runs on your GPU if you have one, on the
@@ -71,6 +75,9 @@ Worth knowing before you install:
 
 - Single user, one machine. There are no collaboration features, no shared
   project server and no cloud sync.
+- Optional auto-labeling models require a one-time download and range from
+  small detectors to models approaching a gigabyte. The picker shows the size
+  before downloading; bundled models remain available fully offline.
 - Dataset size is bounded by your own disk and memory. It is comfortable at
   hundreds or thousands of images, not millions.
 - On macOS, training runs on the CPU. Apple's GPU backend is not wired up yet.
