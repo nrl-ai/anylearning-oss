@@ -86,7 +86,12 @@ class InferenceModel(Model):
         return ModelTask.PROMPTABLE_SEGMENTATION in self.session.capabilities.tasks
 
     def set_auto_labeling_marks(self, marks: list[dict[str, Any]]) -> None:
-        self.marks = list(marks)
+        # Prompt marks can remain on the canvas while the user switches from a
+        # prompted segmenter to a one-click detector. They belong to the old
+        # interaction mode and must not make an automatic model fail. The
+        # router also omits them for automatic catalog entries; keeping this
+        # guard at the session adapter makes custom clients safe as well.
+        self.marks = list(marks) if self.promptable else []
 
     @staticmethod
     def _prompts(

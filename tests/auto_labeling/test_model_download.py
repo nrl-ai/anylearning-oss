@@ -220,11 +220,15 @@ def test_model_selection_queues_only_the_latest_request_while_loading():
 
 def test_persisted_config_cannot_override_pinned_download_metadata(tmp_path):
     manifest = {
+        "name": "catalog-name",
+        "display_name": "Catalog display name",
         "download_url": "https://models.example/release/model.zip",
         "sha256": "a" * 64,
         "archive_size_bytes": 123,
     }
     stored = {
+        "name": "archive-internal-name",
+        "display_name": "Archive display name",
         "download_url": "https://attacker.example/model.zip",
         "sha256": "b" * 64,
         "archive_size_bytes": 456,
@@ -236,7 +240,13 @@ def test_persisted_config_cannot_override_pinned_download_metadata(tmp_path):
         str(tmp_path / "config.yaml"),
     )
 
-    for field in ("download_url", "sha256", "archive_size_bytes"):
+    for field in (
+        "name",
+        "display_name",
+        "download_url",
+        "sha256",
+        "archive_size_bytes",
+    ):
         assert config[field] == manifest[field]
 
 
@@ -298,6 +308,53 @@ def test_download_writes_verified_content_and_reports_progress(tmp_path):
 
     assert destination.read_bytes() == content
     assert progress[-1] == (len(content), len(content))
+
+
+def test_legacy_bundle_cannot_replace_catalog_identity_after_download(tmp_path):
+    archive_path = make_archive(
+        tmp_path / "legacy.zip",
+        [
+            (
+                "release/config.yaml",
+                b"name: archive-internal-name\n"
+                b"display_name: Archive display name\n"
+                b"type: segment_anything\n"
+                b"encoder_model_path: release.encoder.onnx\n"
+                b"decoder_model_path: release.decoder.onnx\n",
+            ),
+            ("release/release.encoder.onnx", b"encoder"),
+            ("release/release.decoder.onnx", b"decoder"),
+        ],
+    )
+    model_dir = tmp_path / "model"
+    model_dir.mkdir()
+    config_file = model_dir / "config.yaml"
+    config_file.write_text("name: catalog-name\nhas_downloaded: false\n")
+    manifest = {
+        "name": "catalog-name",
+        "display_name": "Catalog display name",
+        "type": "segment_anything",
+        "config_file": str(config_file),
+        "has_downloaded": False,
+        "download_url": "https://models.example/release/model.zip",
+        "sha256": hashlib.sha256(archive_path.read_bytes()).hexdigest(),
+        "archive_size_bytes": archive_path.stat().st_size,
+    }
+
+    def install_fixture(_url, destination, **_kwargs):
+        destination.write_bytes(archive_path.read_bytes())
+
+    with patch(
+        "anylearning.auto_labeling.model_manager._download_model_archive",
+        side_effect=install_fixture,
+    ):
+        with patch.object(ModelManager, "load_model_configs"):
+            downloaded = ModelManager()._download_and_extract_model(manifest)
+
+    assert downloaded["name"] == "catalog-name"
+    assert downloaded["display_name"] == "Catalog display name"
+    assert downloaded["encoder_model_path"] == "release.encoder.onnx"
+    assert yaml.safe_load(config_file.read_text())["name"] == "catalog-name"
 
 
 @pytest.mark.parametrize(

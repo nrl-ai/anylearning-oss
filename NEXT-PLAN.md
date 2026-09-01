@@ -574,6 +574,13 @@ contracts.
   gate remains required before this milestone merges; its SSH host was
   unreachable at the 2026-09-01 retry and was not replaced with a hosted or
   mocked result.
+- The complete 13-model desktop catalog passed two consecutive real ONNX runs
+  per model with identical decoded-result digests and visually reviewed
+  overlays. That sweep also closed two model-switch/download defects:
+  automatic models discard stale prompt geometry at every boundary, and
+  legacy bundle metadata cannot replace the catalog identity used by readiness
+  checks. Full-resolution evidence is retained in the same validation root
+  under `20260901-all-catalog-models`.
 - Other trained exports are not mislabeled as usable: NanoDet, semantic
   segmentation, Mask R-CNN, classification, handpose, and keypoint artifacts
   enter this picker only after their ONNX graph contracts have a first-party

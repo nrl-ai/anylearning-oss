@@ -54,6 +54,14 @@ export function desktopPlatform(): DesktopPlatform | null {
     return platform ? (PLATFORMS[platform] ?? null) : null
 }
 
+/** Whether a DOM press can be handed to a native Linux window-manager drag. */
+export function usesNativeDomWindowDrag(): boolean {
+    if (typeof window === "undefined") return false
+    // The GTK adapter implements begin_move_drag. Qt has no AnyLearning native
+    // adapter, so its event must keep bubbling to pywebview's JS drag region.
+    return window.pywebview?.platform === "gtkwebkit2"
+}
+
 function api() {
     return typeof window !== "undefined" ? window.pywebview?.api : undefined
 }

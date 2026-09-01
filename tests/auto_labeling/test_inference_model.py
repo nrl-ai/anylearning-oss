@@ -107,7 +107,7 @@ def test_generic_detector_uses_shared_session_and_project_class_filter(tmp_path)
     assert session.unloaded
 
 
-def test_detector_rejects_prompts_and_projects_without_matching_classes(tmp_path):
+def test_detector_ignores_stale_prompts_and_rejects_unmatched_projects(tmp_path):
     session = FakeSession()
     registry = Mock()
     registry.create_session.return_value = session
@@ -121,8 +121,10 @@ def test_detector_rejects_prompts_and_projects_without_matching_classes(tmp_path
         model.predict_shapes(Image.new("RGB", (64, 48)), allowed_labels=("helmet",))
 
     model.set_auto_labeling_marks([{"type": "point", "data": [10, 20], "label": 1}])
-    with pytest.raises(ValueError, match="does not accept prompts"):
-        model.predict_shapes(Image.new("RGB", (64, 48)), allowed_labels=("dog",))
+    result = model.predict_shapes(Image.new("RGB", (64, 48)), allowed_labels=("dog",))
+
+    assert len(result.shapes) == 1
+    assert session.request.prompts == ()
 
 
 @pytest.mark.parametrize("label", [-1, 2, "1", None])

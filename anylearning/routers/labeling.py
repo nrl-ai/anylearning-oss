@@ -356,7 +356,14 @@ def auto_labeling_inference(
                 preload_paths=[str(path) for path in preload_data_items_paths],
                 allowed_labels=project_labels,
                 parameters=request.parameters,
-                marks=request.marks,
+                # A prompt belongs to a prompted model, not to the image. Old
+                # marks can still be present when the picker changes to an
+                # automatic detector, so do not forward them across modes.
+                marks=(
+                    request.marks
+                    if selected_config.get("interaction_mode") == "prompted"
+                    else []
+                ),
                 output_mode=request.output_shape,
             )
             if request.warm_up:

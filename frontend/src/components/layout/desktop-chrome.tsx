@@ -13,6 +13,7 @@ import {
     onDesktopReady,
     reportDragRegions,
     toggleWindowMaximized,
+    usesNativeDomWindowDrag,
     windowState,
 } from "@/lib/desktop"
 
@@ -79,7 +80,7 @@ export function DesktopChrome() {
                 return
             }
 
-            if (platform !== "linux") return
+            if (platform !== "linux" || !usesNativeDomWindowDrag()) return
             // GTK moves the window properly -- snapping and tiling included --
             // so stop the event here before pywebview's own handler on <body>
             // starts walking it across the screen a bridged mousemove at a

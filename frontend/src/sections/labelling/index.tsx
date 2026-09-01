@@ -585,7 +585,10 @@ const LabelingScreen: React.FC<LabelingScreenProps> = ({ projectId, subset, onEx
             const response = await api.post(`/api/projects/${projectId}/auto_labeling/inference`, {
                 model_name: selectedModel,
                 data_item_id: dataItems[currentImageIndex].id,
-                marks,
+                // Prompt geometry belongs to the promptable model that made
+                // it. Never carry it into a one-click detector after a picker
+                // change, even if React has not painted the cleared canvas yet.
+                marks: selectedModelMode === "prompted" ? marks : [],
                 preload_data_item_ids: nextImageIds,
                 output_shape: project?.type === "Object Detection" ? "rectangle" : aiShape,
             })

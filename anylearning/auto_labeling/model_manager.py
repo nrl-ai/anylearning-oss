@@ -37,6 +37,8 @@ MAX_MODEL_COMPRESSION_RATIO = 100
 MODEL_DOWNLOAD_CHUNK_BYTES = 1024 * 1024
 MODEL_DOWNLOAD_TIMEOUT_SECONDS = 60
 PINNED_MODEL_FIELDS = (
+    "name",
+    "display_name",
     "download_url",
     "sha256",
     "archive_size_bytes",
@@ -829,7 +831,16 @@ class ModelManager:
                 return None
 
         with open(config_file, encoding="utf-8") as f:
-            model_config = yaml.safe_load(f)
+            stored_config = yaml.safe_load(f) or {}
+        # Legacy SAM bundles include their own config. Its internal release
+        # name can differ from the public catalog name selected by the picker;
+        # allowing that identity to replace the manifest makes a successful
+        # load look like the wrong model and every immediate inference returns
+        # 409. Preserve graph filenames from the bundle while pinning the
+        # catalog identity and behavior just as load_model_configs does.
+        model_config = _complete_bundled_config(
+            manifest_config, stored_config, config_file
+        )
         model_config["has_downloaded"] = True
         model_config["config_file"] = config_file
         with open(config_file, "w", encoding="utf-8") as f:
