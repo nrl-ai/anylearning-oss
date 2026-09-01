@@ -55,7 +55,9 @@ def _make_bridge(handle, native):
 
             application = QtWidgets.QApplication.instance()
             if application is None:
-                logger.warning("Qt application is unavailable; native hit testing is off")
+                logger.warning(
+                    "Qt application is unavailable; native hit testing is off"
+                )
                 return
             application.installEventFilter(self)
 
@@ -177,9 +179,13 @@ def install(window) -> NativeChrome:
         bridge = _make_bridge(handle, native)
         chrome = QtChrome(window, bridge)
         if _install_event_filter(bridge):
-            logger.info("Installed native Qt window hit testing, move and resize gestures")
+            logger.info(
+                "Installed native Qt window hit testing, move and resize gestures"
+            )
         else:
-            logger.warning("Qt application is unavailable; using bridged window gestures")
+            logger.warning(
+                "Qt application is unavailable; using bridged window gestures"
+            )
         return chrome
     except Exception:
         logger.exception("Could not install native Qt window gestures")

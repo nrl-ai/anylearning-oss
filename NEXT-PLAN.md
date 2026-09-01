@@ -568,12 +568,13 @@ contracts.
   network install, and project-model discovery/load/inference passed visual
   review without mocked model outputs. The same pinned D-FINE ONNX graph and
   source image also passed on the physical Linux devbox and Apple Silicon
-  MacBook: each host passed all 71 focused desktop integration tests and
+  MacBook: each host passed all 77 focused desktop integration tests and
   returned identical labels, scores, class IDs, and coordinates. The retained
   cross-platform overlay passed visual review. The physical Windows desktop
   gate remains required before this milestone merges; its SSH host was
-  unreachable at the 2026-09-01 retry and was not replaced with a hosted or
-  mocked result.
+  reachable at the 2026-09-01 retry but rejected the configured public key and
+  non-interactive authentication, so hosted Windows results were not treated
+  as a replacement for that physical gate.
 - The complete 13-model desktop catalog passed two consecutive real ONNX runs
   per model with identical decoded-result digests and visually reviewed
   overlays. That sweep also closed two model-switch/download defects:
@@ -597,6 +598,12 @@ contracts.
   without duplicate controls or frameless hit regions. Full-resolution UI
   screenshots and machine-readable results are retained under
   `20260901-140748-ui-workflow` in the validation root above.
+- The same official YOLOX-S graph and source image passed on the physical
+  Apple Silicon MacBook and Linux devbox at revision `4eb370f`. Both decoded
+  bicycle, dog, and truck with visually aligned boxes; cross-platform
+  coordinate differences stayed below 0.5 px. Full overlays, HTML reports,
+  summaries, and raw decoded results are retained under
+  `/home/vietanhdev/Workspaces/anylearning-real-validation/cross-platform/4eb370f`.
 - Other trained exports are not mislabeled as usable: NanoDet, semantic
   segmentation, Mask R-CNN, classification, handpose, and keypoint artifacts
   enter this picker only after their ONNX graph contracts have a first-party
