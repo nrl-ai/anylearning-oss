@@ -85,7 +85,7 @@ def get_install_requires():
         # second disk copy or reading the full tensor payload into Python RAM.
         "onnxruntime>=1.29,<2",
         "torch==2.11.0",
-        "torchvision==0.26.0",
+        "torchvision==0.28.0",
         # Required by torch.onnx.export: from torch 2.6 the default exporter is
         # the dynamo one, which imports onnxscript at module load. Without it
         # every trainer's ONNX export fails, and export is the last step of
