@@ -43,8 +43,8 @@ importers:
         version: 2.16.1(react@18.3.1)
     devDependencies:
       '@types/node':
-        specifier: ^18.11.18
-        version: 18.19.130
+        specifier: ^26.4.0
+        version: 26.4.0
       '@types/react':
         specifier: ^18.0.26
         version: 18.3.31
@@ -59,7 +59,7 @@ importers:
         version: 8.5.26
       sharp:
         specifier: ^0.35.3
-        version: 0.35.3(@types/node@18.19.130)
+        version: 0.35.3(@types/node@26.4.0)
       tailwindcss:
         specifier: ^3.2.4
         version: 3.4.19
@@ -563,8 +563,8 @@ packages:
   '@types/ms@2.1.0':
     resolution: {integrity: sha512-GsCCIZDE/p3i96vtEqx+7dBUGXrc7zeSK3wwPHIaRThS+9OhWIXRqzs4d6k1SVU8g91DrNRWxWUGhp5KXQb2VA==}
 
-  '@types/node@18.19.130':
-    resolution: {integrity: sha512-GRaXQx6jGfL8sKfaIDD6OupbIHBr9jv7Jnaml9tB7l4v068PAOXqfcujMMo5PhbIs6ggR1XODELqahT2R8v0fg==}
+  '@types/node@26.4.0':
+    resolution: {integrity: sha512-faiGnoIrLH/V8cibOMEAZ8pMw6oXqSukl29ra4mN8GdaB2ZewzeaLj+INpV5N+Z1eKWzY+IzaIZH2EIR6YZRNQ==}
 
   '@types/prop-types@15.7.15':
     resolution: {integrity: sha512-F6bEyamV9jKGAFBEmlQnesRPGOQqS2+Uwi0Em15xenOxHaf2hv6L8YCVn3rPdPJOiJfPiCnLIRyvwVaqMY3MIw==}
@@ -2258,8 +2258,8 @@ packages:
     engines: {node: '>=4.2.0'}
     hasBin: true
 
-  undici-types@5.26.5:
-    resolution: {integrity: sha512-JlCMO+ehdEIKqlFxk6IfVoAUVmgz7cU7zD/h9XZ0qzeosSHmUJVOzSQvvYSYWXkFXC+IfLKSIffhv0sVZup6pA==}
+  undici-types@8.3.0:
+    resolution: {integrity: sha512-j375ScV60dom+YkPFIfTLcOiPxkN/buHz5GobjLhixFuANaNs3C9l4GmrWqejgXWJ7BbJcFYpTEUkS1Ge8bpZQ==}
 
   unicode-trie@2.0.0:
     resolution: {integrity: sha512-x7bc76x0bm4prf1VLg79uhAzKw8DVboClSN5VxJuQ+LKDOVEW9CdH+VY7SP+vX7xCYQqzzgQpFqz15zeLvAtZQ==}
@@ -2802,9 +2802,9 @@ snapshots:
 
   '@types/ms@2.1.0': {}
 
-  '@types/node@18.19.130':
+  '@types/node@26.4.0':
     dependencies:
-      undici-types: 5.26.5
+      undici-types: 8.3.0
 
   '@types/prop-types@15.7.15': {}
 
@@ -4716,7 +4716,7 @@ snapshots:
 
   semver@7.8.5: {}
 
-  sharp@0.35.3(@types/node@18.19.130):
+  sharp@0.35.3(@types/node@26.4.0):
     dependencies:
       '@img/colour': 1.1.0
       detect-libc: 2.1.2
@@ -4747,7 +4747,7 @@ snapshots:
       '@img/sharp-win32-arm64': 0.35.3
       '@img/sharp-win32-ia32': 0.35.3
       '@img/sharp-win32-x64': 0.35.3
-      '@types/node': 18.19.130
+      '@types/node': 26.4.0
 
   shebang-command@1.2.0:
     dependencies:
@@ -4912,7 +4912,7 @@ snapshots:
 
   typescript@4.9.5: {}
 
-  undici-types@5.26.5: {}
+  undici-types@8.3.0: {}
 
   unicode-trie@2.0.0:
     dependencies:
