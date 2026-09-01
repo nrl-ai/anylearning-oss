@@ -294,7 +294,7 @@ jobs:
         run: python -m pip install "Pillow>=12,<13"
 
       - name: Download all operating-system reports
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v8
         with:
           pattern: rfdetr-nano-*-real-model-validation-*
           path: matrix-artifacts
@@ -432,7 +432,7 @@ jobs:
         run: python -m pip install "Pillow>=12,<13"
 
       - name: Download all operating-system reports
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v8
         with:
           pattern: dfine-n-real-model-validation-*
           path: matrix-artifacts
@@ -643,7 +643,7 @@ jobs:
         run: python -m pip install "Pillow>=12,<13"
 
       - name: Download all L0 operating-system reports
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v8
         with:
           pattern: efficientvit-sam-l0-real-model-validation-*
           path: matrix-artifacts
@@ -811,7 +811,7 @@ jobs:
         run: python -m pip install "Pillow>=12,<13"
 
       - name: Download all larger-variant operating-system reports
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v8
         with:
           pattern: efficientvit-sam-*-real-model-validation-*
           path: matrix-artifacts
@@ -1025,7 +1025,7 @@ jobs:
         run: python -m pip install "Pillow>=12,<13"
 
       - name: Download all operating-system reports
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v8
         with:
           pattern: detector-sam-yolox-mobile-sam-real-model-validation-*
           path: matrix-artifacts
@@ -1157,7 +1157,7 @@ jobs:
         run: python -m pip install "Pillow>=12,<13"
 
       - name: Download all operating-system reports
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v8
         with:
           pattern: sam2-hiera-tiny-real-model-validation-*
           path: matrix-artifacts
@@ -1326,7 +1326,7 @@ jobs:
         run: python -m pip install "Pillow>=12,<13"
 
       - name: Download all larger-variant operating-system reports
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v8
         with:
           pattern: sam2-hiera-*-real-model-validation-*
           path: matrix-artifacts
@@ -1456,7 +1456,7 @@ jobs:
         run: python -m pip install "Pillow>=12,<13"
 
       - name: Download all operating-system reports
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v8
         with:
           pattern: sam2-1-hiera-tiny-real-model-validation-*
           path: matrix-artifacts
@@ -1627,7 +1627,7 @@ jobs:
         run: python -m pip install "Pillow>=12,<13"
 
       - name: Download all larger-variant operating-system reports
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v8
         with:
           pattern: sam2-1-hiera-*-real-model-validation-*
           path: matrix-artifacts
