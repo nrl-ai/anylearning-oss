@@ -58,18 +58,15 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             </head>
             <body className="overflow-hidden">
                 <NextTopLoader color="var(--mark)" height={2} showSpinner={false} shadow={false} />
-                {/* The window's ground, and on Linux the thing that gives it
-                    round corners: the frameless GTK window is transparent, so
-                    the background lives here rather than on <body> and this is
-                    what gets clipped. See globals.css. */}
+                {/* The window's ground. Frameless fallback renderers also use
+                    it for transparent rounded corners; see globals.css. */}
                 <div className="window-shell">
                     <AppProvider>{children}</AppProvider>
                 </div>
-                {/* The window's own frame, drawn by the app: the desktop
-                    window is frameless. Outside the provider tree and last in
-                    the body because it belongs to the window rather than to
-                    any route — including the ones that have no bar of their
-                    own to hang the controls in. */}
+                {/* Custom window controls where the platform frame is replaced.
+                    Outside the provider tree and last in the body because they
+                    belong to the window rather than to any route. Linux's
+                    compositor-owned frame makes this render nothing. */}
                 <DesktopChrome />
             </body>
         </html>

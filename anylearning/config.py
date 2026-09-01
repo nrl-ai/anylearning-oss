@@ -1,6 +1,7 @@
 import os
 import os.path as osp
 import pathlib
+import tempfile
 from typing import List
 
 import yaml
@@ -49,18 +50,30 @@ def update_dict(target_dict, new_dict, validate_item=None):
 
 
 def save_config(config):
-    # Local config file
-    user_config_file = osp.join(osp.expanduser("~"), ".anylearningrc")
+    """Atomically persist the local config beside a private temporary file."""
+    user_config_file = pathlib.Path(osp.expanduser("~")) / ".anylearningrc"
+    temporary_file: pathlib.Path | None = None
     try:
-        with open(user_config_file, "w") as f:
-            yaml.safe_dump(config, f)
+        descriptor, temporary_name = tempfile.mkstemp(
+            prefix=".anylearningrc.", suffix=".tmp", dir=user_config_file.parent
+        )
+        temporary_file = pathlib.Path(temporary_name)
+        with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
+            yaml.safe_dump(config, stream)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary_file, user_config_file)
     except Exception:  # noqa
         logger.warning("Failed to save config: %s", user_config_file)
+    finally:
+        if temporary_file is not None:
+            temporary_file.unlink(missing_ok=True)
 
 
 def get_default_config():
     config_file = "anylearning_config.yaml"
-    with pkg_resources.open_text(anylearning_configs, config_file) as f:
+    config_resource = pkg_resources.files(anylearning_configs).joinpath(config_file)
+    with config_resource.open("r", encoding="utf-8") as f:
         config = yaml.safe_load(f)
 
     # Save default config to ~/.anylearningrc
@@ -83,14 +96,20 @@ def get_config(config_file_or_yaml=None, config_from_args=None):
     # 1. default config
     config = get_default_config()
 
-    # 2. specified as file or yaml
+    # 2. user config, or an explicitly specified file/YAML document. The
+    # default path used to be written by save_config() but never read back,
+    # which made every persisted setting disappear on the very next
+    # get_config() call. Custom inference models exposed that immediately:
+    # registration saved the catalog, reloaded it, and found an empty list.
     if config_file_or_yaml is None:
-        config_file_or_yaml = current_config_file
+        config_file_or_yaml = current_config_file or osp.join(
+            osp.expanduser("~"), ".anylearningrc"
+        )
     if config_file_or_yaml is not None:
         config_from_yaml = yaml.safe_load(config_file_or_yaml)
         if not isinstance(config_from_yaml, dict):
             with open(config_from_yaml) as f:
-                logger.info("Loading config file from: %s", config_from_yaml)
+                logger.info("Loading config file from: {}", config_from_yaml)
                 config_from_yaml = yaml.safe_load(f)
         update_dict(config, config_from_yaml, validate_item=validate_config_item)
 

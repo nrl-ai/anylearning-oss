@@ -6,8 +6,8 @@
     "artifact_url": "https://github.com/Megvii-BaseDetection/YOLOX/releases/download/0.1.1rc0/yolox_s.onnx",
     "source_revision": "0.1.1rc0",
     "code_license": "Apache-2.0",
-    "artifact_license": "Apache-2.0 official repository release asset",
-    "license_url": "https://github.com/Megvii-BaseDetection/YOLOX/blob/6ddff4824372906469a7fae2dc3206c7aa4bbaee/LICENSE"
+    "artifact_license": "Upstream weight distribution license unconfirmed; external validation only; do not redistribute",
+    "license_url": "https://github.com/Megvii-BaseDetection/YOLOX/issues/1865"
   },
   "config": {
     "name": "official-yolox-s",

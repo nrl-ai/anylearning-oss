@@ -275,6 +275,9 @@ def generate_self_signed_cert(keyfile, certfile):
 
 def run_desktop_app(host, port, development=False):
     print("Running desktop app...")
+    # A compositor-owned frame is the only path that moves, resizes, snaps and
+    # exposes the system menu consistently across both X11 and Wayland.
+    native_frame = sys.platform.startswith("linux")
     ssl_keyfile = None
     ssl_certfile = None
 
@@ -346,6 +349,39 @@ def run_desktop_app(host, port, development=False):
             logger.error(f"Error downloading file: {str(e)}")
             return False
 
+    def import_onnx_auto_labeling_model(options):
+        """Install a model chosen through the native dialog without exposing paths."""
+        try:
+            result = window.create_file_dialog(
+                webview.FileDialog.OPEN,
+                allow_multiple=False,
+                file_types=("ONNX model (*.onnx)",),
+            )
+            if not result:
+                return {"ok": False, "cancelled": True}
+            source = result if isinstance(result, str) else result[0]
+            from anylearning.auto_labeling.custom_onnx import (
+                install_custom_yolo_onnx,
+            )
+            from anylearning.routers.labeling import model_manager
+
+            installed = install_custom_yolo_onnx(source, options)
+            registered = model_manager.register_custom_model(installed)
+            return {
+                "ok": True,
+                "model_name": registered["name"],
+                "display_name": registered["display_name"],
+            }
+        except (OSError, ValueError) as error:
+            logger.warning("Could not import ONNX auto-labeling model: {}", error)
+            return {"ok": False, "error": str(error)}
+        except Exception:
+            logger.exception("Could not import ONNX auto-labeling model")
+            return {
+                "ok": False,
+                "error": "The selected ONNX model could not be imported.",
+            }
+
     # Update in place rather than replacing the dict. pywebview ships defaults
     # for every setting and reads them unconditionally -- replacing the whole
     # dict dropped the other keys, and pywebview 6 then died creating the window
@@ -361,6 +397,11 @@ def run_desktop_app(host, port, development=False):
             # up from whatever was clicked, and every control *inside* the bar
             # drags the window too.
             "DRAG_REGION_DIRECT_TARGET_ONLY": True,
+            "DRAG_REGION_SELECTOR": (
+                ".pywebview-native-titlebar"
+                if native_frame
+                else ".pywebview-drag-region"
+            ),
         }
     )
     window = webview.create_window(
@@ -369,24 +410,25 @@ def run_desktop_app(host, port, development=False):
         width=1200,
         height=800,
         resizable=True,
-        # The title bar is the workbench bar, drawn by the frontend. What each
-        # platform loses along with its own frame -- and how it is given back
-        # -- is in anylearning/window_chrome/.
-        frameless=True,
+        # Windows and macOS integrate the workbench bar with a custom frame;
+        # Linux keeps the compositor-owned frame for reliable move, resize,
+        # snap and system-menu behavior on both X11 and Wayland.
+        frameless=not native_frame,
         # Drag surfaces are declared in the DOM; easy_drag would make the whole
         # window one, canvas included.
         easy_drag=False,
         # An alpha channel, only where the corners have to be rounded by the
         # page rather than by the system.
-        transparent=window_chrome.needs_transparency(),
+        transparent=window_chrome.needs_transparency() and not native_frame,
     )
 
-    # Expose download_file API
-    window.expose(download_file)
-    window_chrome.attach(window)
+    # Native, user-mediated file operations. The browser/server build never
+    # receives these methods or a local path.
+    window.expose(download_file, import_onnx_auto_labeling_model)
+    window_chrome.attach(window, native_frame=native_frame)
 
     # Start the webview event loop
-    webview.start(debug=development)
+    webview.start(debug=development, gui="qt" if native_frame else None)
 
 
 def is_port_in_use(port):

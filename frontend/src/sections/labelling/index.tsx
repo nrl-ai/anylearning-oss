@@ -5,7 +5,13 @@ import React, { useCallback, useEffect, useReducer, useRef, useState } from "rea
 import { Dot, ImageAnnotator, Shape, useImageAnnotator } from "@/components/react-image-label"
 import { ShapeColor } from "@/components/react-image-label/base/types"
 import { api } from "@/lib/api"
-import { createAutoLabelingPreview, persistableAnnotationShapes } from "@/lib/auto-labeling-shape"
+import {
+    AutoLabelingPrediction,
+    createAutoLabelingPrediction,
+    createAutoLabelingPreview,
+    persistableAnnotationShapes,
+} from "@/lib/auto-labeling-shape"
+import { usesCanvasAnnotations } from "@/lib/project-types"
 import { generateUniqueId } from "@/lib/random"
 import { getAnnotation, putAnnotation } from "@/lib/use-annotation"
 import { putClassId } from "@/lib/use-annotation"
@@ -69,9 +75,10 @@ const LabelingScreen: React.FC<LabelingScreenProps> = ({ projectId, subset, onEx
     const { dataItems, setDataItems, totalCount, fetchDataItems, isLoading, isError } = useDataItems(projectId, subset)
     const [isInferencing, setIsInferencing] = useState<boolean>(false)
     const [selectedModel, setSelectedModel] = useState<string>("")
+    const [selectedModelMode, setSelectedModelMode] = useState<"prompted" | "automatic">("prompted")
     const [aiShape, setAiShape] = useState<string>("polygon")
     const [isReady, setReady] = useState(false)
-    const hasPreloadFirstImageRef = useRef(false)
+    const autoPredictionIdsRef = useRef<Map<number, Set<string>>>(new Map())
     const [isLoadingImage, setIsLoadingImage] = useState<boolean>(false)
     const [isLoadingAnnotation, setIsLoadingAnnotation] = useState<boolean>(false)
     const [isSavingAnnotation, setSavingAnnotation] = useState<boolean>(false)
@@ -84,6 +91,7 @@ const LabelingScreen: React.FC<LabelingScreenProps> = ({ projectId, subset, onEx
 
     const currentImage = dataItems[currentImageIndex]
     const totalPages = Math.ceil(totalCount / imagesPerPage)
+    const hasCanvasAnnotations = usesCanvasAnnotations(project?.type)
 
     const { setHandles, annotator } = useImageAnnotator()
     const [showNoLabelsAlert, setShowNoLabelsAlert] = useState<boolean>(false)
@@ -94,12 +102,19 @@ const LabelingScreen: React.FC<LabelingScreenProps> = ({ projectId, subset, onEx
     }, [annotator])
 
     const hasUnsavedChanges = useCallback(() => {
+        if (!hasCanvasAnnotations) return false
         const currentShapesHash = getCurrentShapesHash()
         return currentShapesHash !== lastSavedShapesRef.current
-    }, [getCurrentShapesHash])
+    }, [getCurrentShapesHash, hasCanvasAnnotations])
 
     const saveAnnotation = useCallback(async () => {
-        if (!annotator || !dataItems[currentImageIndex] || isSavingAnnotation || !hasUnsavedChanges()) {
+        if (
+            !hasCanvasAnnotations ||
+            !annotator ||
+            !dataItems[currentImageIndex] ||
+            isSavingAnnotation ||
+            !hasUnsavedChanges()
+        ) {
             return false
         }
 
@@ -129,11 +144,25 @@ const LabelingScreen: React.FC<LabelingScreenProps> = ({ projectId, subset, onEx
             setSavingAnnotation(false)
         }
         return false
-    }, [annotator, currentImageIndex, dataItems, hasUnsavedChanges, isSavingAnnotation, projectId, setDataItems])
+    }, [
+        annotator,
+        currentImageIndex,
+        dataItems,
+        hasCanvasAnnotations,
+        hasUnsavedChanges,
+        isSavingAnnotation,
+        projectId,
+        setDataItems,
+    ])
 
     // Auto-save every 5 seconds if there are changes
     useEffect(() => {
-        if (!useAutoSaveSettingStore.getState().isEnabled || !isReady || isNavigatingRef.current) {
+        if (
+            !hasCanvasAnnotations ||
+            !useAutoSaveSettingStore.getState().isEnabled ||
+            !isReady ||
+            isNavigatingRef.current
+        ) {
             if (autoSaveTimeoutRef.current) {
                 clearTimeout(autoSaveTimeoutRef.current)
             }
@@ -160,7 +189,7 @@ const LabelingScreen: React.FC<LabelingScreenProps> = ({ projectId, subset, onEx
                 clearTimeout(autoSaveTimeoutRef.current)
             }
         }
-    }, [isReady, saveAnnotation, hasUnsavedChanges])
+    }, [hasCanvasAnnotations, isReady, saveAnnotation, hasUnsavedChanges])
 
     useEffect(() => {
         if (project && (!project.labels || project.labels.length === 0)) {
@@ -180,87 +209,77 @@ const LabelingScreen: React.FC<LabelingScreenProps> = ({ projectId, subset, onEx
         fetchDataItems(offset, imagesPerPage)
     }, [currentPage, fetchDataItems])
 
-    useEffect(() => {
-        if (
-            project?.type !== "Keypoint Detection" &&
-            !hasPreloadFirstImageRef.current &&
-            typeof dataItems?.[0]?.id !== "undefined"
-        ) {
-            // Warms the model and the first image; failures here are not
-            // worth surfacing, the real call reports its own errors.
-            api.post(`/api/projects/${projectId}/auto_labeling/inference`, {
-                // Keep the background preload aligned with the first bundled
-                // model selected by AutoLabellingToolbar. SAM 2 Small is the
-                // accuracy-oriented default; it is already in the offline
-                // bundle, so this does not add a first-run download.
-                model_name: "sam2_hiera_small_20240803",
-                data_item_id: 1,
-                marks: [{ type: "point", data: [12, 12], label: 1 }],
-                preload_data_item_ids: [dataItems[0].id],
-                // So the toolbar does not announce a finished inference on a
-                // screen the user has only just opened.
-                warm_up: true,
-            }).catch(() => {})
-            hasPreloadFirstImageRef.current = true
-        }
-    }, [dataItems, project?.type, projectId])
-
     const annotatorRef = useRef(annotator)
     annotatorRef.current = annotator
     useEffect(() => {
         // this effect helps get shapes when user chooses a new image
         let shouldSetShapes = true
+        let retryTimeout: ReturnType<typeof setTimeout> | undefined
         const annotator = annotatorRef.current
 
-        const loadAnnotationWithRetry = async () => {
-            if (!currentImage?.id || !annotator || !isReady) return
+        if (!currentImage?.id || !annotator || !isReady) return
 
+        // Never send classification metadata through the shape loader/saver.
+        // Handpose annotations are landmark dictionaries, not shape arrays.
+        if (!hasCanvasAnnotations) {
+            annotator.setShapes([])
+            lastLoadedAnnotationRef.current = {
+                imageId: currentImage.id,
+                shapes: [],
+            }
+            lastSavedShapesRef.current = "[]"
+            loadAnnotationRetryCount.current = 0
+            setIsLoadingAnnotation(false)
+            return
+        }
+
+        // Do not leave the previous image's shapes visible while the next
+        // request is pending. More importantly, a failed request must never
+        // auto-save those stale shapes onto the new image.
+        annotator.setShapes([])
+        lastLoadedAnnotationRef.current = undefined
+        lastSavedShapesRef.current = "[]"
+
+        const loadAnnotationWithRetry = async () => {
             try {
                 setIsLoadingAnnotation(true)
                 const shapes = await getAnnotation(projectId, currentImage.id)
 
                 if (!shouldSetShapes) return
 
-                if (!shapes || shapes.length === 0) {
-                    if (loadAnnotationRetryCount.current < MAX_RETRY_COUNT) {
-                        loadAnnotationRetryCount.current++
-                        setTimeout(loadAnnotationWithRetry, 1000) // Retry after 1 second
-                        return
-                    }
-                }
+                if (!Array.isArray(shapes)) throw new TypeError("Annotation response must be a shape array")
 
                 // Store the loaded annotation
                 lastLoadedAnnotationRef.current = {
                     imageId: currentImage.id,
-                    shapes: shapes || [],
+                    shapes,
                 }
 
                 if (annotator) {
                     // Update shape colors based on categories
-                    const shapesWithColors =
-                        shapes?.map((shape: Shape) => {
-                            const category = shape.categories?.[0]
-                            if (category) {
-                                const label = project?.labels.find((l) => l.name === category)
-                                if (label?.color) {
-                                    return {
-                                        ...shape,
-                                        color: label.color,
-                                    }
+                    const shapesWithColors = shapes.map((shape: Shape) => {
+                        const category = shape.categories?.[0]
+                        if (category) {
+                            const label = project?.labels.find((l) => l.name === category)
+                            if (label?.color) {
+                                return {
+                                    ...shape,
+                                    color: label.color,
                                 }
                             }
-                            return shape
-                        }) || []
+                        }
+                        return shape
+                    })
 
-                    annotator.setShapes(shapesWithColors)
-                    lastSavedShapesRef.current = JSON.stringify(shapesWithColors || [])
+                    annotator.setShapes(shapesWithColors as Shape[])
+                    lastSavedShapesRef.current = JSON.stringify(shapesWithColors)
                 }
                 loadAnnotationRetryCount.current = 0
             } catch (error) {
                 console.error("Failed to load annotation:", error)
                 if (loadAnnotationRetryCount.current < MAX_RETRY_COUNT) {
                     loadAnnotationRetryCount.current++
-                    setTimeout(loadAnnotationWithRetry, 1000)
+                    retryTimeout = setTimeout(loadAnnotationWithRetry, 1000)
                 }
             } finally {
                 setIsLoadingAnnotation(false)
@@ -271,8 +290,9 @@ const LabelingScreen: React.FC<LabelingScreenProps> = ({ projectId, subset, onEx
 
         return () => {
             shouldSetShapes = false
+            if (retryTimeout) clearTimeout(retryTimeout)
         }
-    }, [currentImage?.id, isReady, projectId, project?.labels])
+    }, [currentImage?.id, hasCanvasAnnotations, isReady, projectId, project?.labels])
 
     // Add effect to ensure annotations are loaded into annotator
     useEffect(() => {
@@ -371,6 +391,35 @@ const LabelingScreen: React.FC<LabelingScreenProps> = ({ projectId, subset, onEx
         [annotator]
     )
 
+    const clearAutomaticPredictions = useCallback(() => {
+        const imageId = currentImage?.id
+        if (!imageId) return
+        const predictionIds = autoPredictionIdsRef.current.get(imageId) ?? new Set<string>()
+        const shapes = annotator?.getShapes() || []
+        const retained = shapes.filter(
+            (shape) => !predictionIds.has(shape.id) && shape.auto_labeling_model !== selectedModel
+        )
+        if (retained.length !== shapes.length) {
+            annotator?.setShapes(retained)
+        }
+        autoPredictionIdsRef.current.delete(imageId)
+    }, [annotator, currentImage?.id, selectedModel])
+
+    const selectAutoLabelingModel = useCallback(
+        (name: string, interactionMode: "prompted" | "automatic") => {
+            clearAutoLabelingShapes(false)
+            setSelectedModel(name)
+            setSelectedModelMode(interactionMode)
+            setMode("auto_labeling")
+            if (interactionMode === "automatic") {
+                setAiToolSelected("")
+                annotator?.stop()
+                annotator?.setEditable(true)
+            }
+        },
+        [annotator, clearAutoLabelingShapes]
+    )
+
     const clearNoCategoryShapes = useCallback(() => {
         const shapes = annotator?.getShapes() || []
         const newShapes = shapes.filter((shape) => shape.categories && shape.categories.length > 0)
@@ -401,7 +450,7 @@ const LabelingScreen: React.FC<LabelingScreenProps> = ({ projectId, subset, onEx
                     const updatedDataItems = [...items]
                     updatedDataItems[currentImageIndex] = {
                         ...updatedDataItems[currentImageIndex],
-                        labeled: true,
+                        labeled: classId !== -1,
                         class_id: classId,
                     }
                     return updatedDataItems
@@ -531,6 +580,7 @@ const LabelingScreen: React.FC<LabelingScreenProps> = ({ projectId, subset, onEx
     }, [annotator, isLoadingImage, isLoadingAnnotation])
 
     const inferenceShape = async (newShapes: Shape[]) => {
+        if (!currentImage || !selectedModel) return
         setIsInferencing(true)
         // Remove any existing AUTOLABEL_TMP_SHAPE before adding new one
         newShapes = newShapes.filter((shape) => !shape.categories?.includes("AUTOLABEL_TMP_SHAPE"))
@@ -574,17 +624,57 @@ const LabelingScreen: React.FC<LabelingScreenProps> = ({ projectId, subset, onEx
             const response = await api.post(`/api/projects/${projectId}/auto_labeling/inference`, {
                 model_name: selectedModel,
                 data_item_id: dataItems[currentImageIndex].id,
-                marks,
+                // Prompt geometry belongs to the promptable model that made
+                // it. Never carry it into a one-click detector after a picker
+                // change, even if React has not painted the cleared canvas yet.
+                marks: selectedModelMode === "prompted" ? marks : [],
                 preload_data_item_ids: nextImageIds,
+                output_shape: project?.type === "Object Detection" ? "rectangle" : aiShape,
             })
 
-            // Model loading happens in a worker. A prompt can land in the
-            // short interval before that worker publishes a result, so a 2xx
-            // response may legitimately contain no preview yet.
-            const predictedShape = response.data?.result?.shapes?.[0]
-            if (!predictedShape?.points?.length) return
-            const points = predictedShape.points.map((p: any) => [p.x, p.y])
+            const predictions = (response.data?.result?.shapes || []) as AutoLabelingPrediction[]
+            if (selectedModelMode === "automatic") {
+                const previousIds = autoPredictionIdsRef.current.get(currentImage.id) ?? new Set<string>()
+                const existingShapes = newShapes.filter(
+                    (shape) =>
+                        !previousIds.has(shape.id) &&
+                        shape.auto_labeling_model !== selectedModel &&
+                        !shape.categories?.some((category) => category.startsWith("AUTOLABEL_"))
+                )
+                const projectLabels = new Set(project?.labels.map((label) => label.name) || [])
+                const ids = new Set<string>()
+                const predictedShapes = predictions
+                    .filter(
+                        (prediction) =>
+                            prediction.points?.length > 0 &&
+                            typeof prediction.label === "string" &&
+                            projectLabels.has(prediction.label)
+                    )
+                    .map((prediction) => {
+                        const id = generateUniqueId()
+                        ids.add(id)
+                        return createAutoLabelingPrediction(
+                            prediction,
+                            project?.type,
+                            aiShape,
+                            id,
+                            selectedModel
+                        ) as any as Shape
+                    })
+                autoPredictionIdsRef.current.set(currentImage.id, ids)
+                setShapesHandle([...existingShapes, ...predictedShapes])
+                setSavingStatus(
+                    predictedShapes.length === 0
+                        ? "No predictions matched this project's labels"
+                        : `Added ${predictedShapes.length} model prediction${predictedShapes.length === 1 ? "" : "s"}`
+                )
+                setTimeout(() => setSavingStatus(""), 5000)
+                return
+            }
 
+            const predictedShape = predictions[0]
+            if (!predictedShape?.points?.length) return
+            const points = predictedShape.points.map((point) => [point.x, point.y])
             const tmpShape = createAutoLabelingPreview(
                 points,
                 project?.type,
@@ -595,8 +685,10 @@ const LabelingScreen: React.FC<LabelingScreenProps> = ({ projectId, subset, onEx
             newShapes = [...newShapes, tmpShape]
             annotator?.updateCategories(tmpShape.id, tmpShape.categories)
             setShapesHandle(newShapes)
-        } catch (error) {
+        } catch (error: any) {
             console.error("Auto labeling inference failed:", error)
+            setSavingStatus(error?.response?.data?.detail || "Auto-labeling inference failed")
+            setTimeout(() => setSavingStatus(""), 5000)
         } finally {
             setIsInferencing(false)
         }
@@ -723,13 +815,17 @@ const LabelingScreen: React.FC<LabelingScreenProps> = ({ projectId, subset, onEx
                     aiToolSelected={aiToolSelected}
                     projectId={projectId}
                     projectType={project?.type || ""}
+                    projectLabels={(project?.labels || []).map((label) => label.name)}
                     handleToolSelect={handleToolSelect}
                     model={selectedModel}
-                    selectModel={setSelectedModel}
+                    selectModel={selectAutoLabelingModel}
                     clear={() => {
                         clearAutoLabelingShapes(false)
+                        clearAutomaticPredictions()
                     }}
                     finish={handleFinishAutoLabel}
+                    run={() => inferenceShape(annotator?.getShapes() || [])}
+                    isInferencing={isInferencing}
                 />
             )}
             <div className="flex min-h-0 flex-1 overflow-hidden">

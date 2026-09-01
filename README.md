@@ -16,16 +16,19 @@ and generated notices retain their respective licenses; see
 
 **What it does:**
 
-- Label images with boxes, polygons, keypoints and whole-image classes. Segment
-  Anything (SAM and SAM2) runs locally to pre-label, so you correct rather than
-  start from scratch.
+- Label images with boxes, polygons, keypoints and whole-image classes.
+  Promptable SAM-family models and automatic D-FINE/RF-DETR models run locally
+  through the shared ONNX inference core, and the desktop app can import
+  compatible YOLO-family ONNX models.
 - Train eight project types on your own hardware: object detection, instance
   segmentation, image segmentation, image classification, handpose
   classification, keypoint detection, Tabular AI and Text AI.
 - Export datasets to YOLO, COCO, LabelMe and AnyLabeling, and trained models to
   ONNX.
-- Run with no network. Python, PyTorch and the pretrained weights ship inside
-  the installer, so there is no account, no activation key and no upload step.
+- Run without uploading data. Python, PyTorch, the training backbones, MobileSAM
+  and the default SAM 2 models ship inside the installer. Larger optional
+  auto-labeling models download only when you select them, are checksum-verified,
+  and run locally thereafter. There is no account or activation key.
 
 ## Product tour
 
@@ -78,6 +81,10 @@ metrics and an application-level held-out inference result.
 
 The shared inference contracts, lifecycle, SAM adapters, and user-supplied YOLO
 ONNX backend are documented in [`docs/inference.md`](docs/inference.md).
+The desktop workflow and API are documented in
+[`docs/auto_labeling.md`](docs/auto_labeling.md), and the pinned sources and
+license decisions for supported ONNX models are recorded in
+[`docs/onnx_model_sources.md`](docs/onnx_model_sources.md).
 The separate password-authenticated public service boundary is documented in
 [`docs/server.md`](docs/server.md).
 

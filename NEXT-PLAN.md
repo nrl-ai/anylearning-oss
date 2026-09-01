@@ -1,7 +1,7 @@
 # AnyLearning Platform Roadmap
 
 Status: active implementation plan
-Last updated: 2026-08-31
+Last updated: 2026-09-01
 Primary repository: `nrl-ai/anylearning-oss`
 Integration branch: `develop`
 
@@ -537,6 +537,91 @@ end-to-end ONNX output profiles.
 I7. Add confidence, IoU, class filters, dynamic shapes, and provider diagnostics.
 I8. Connect AnyLearning-trained artifacts to auto-labeling through the same
 contracts.
+
+- The desktop integration now consumes `anylearning.inference` through one
+  generic adapter instead of adding another per-model inference stack. The
+  picker is task-aware: promptable models expose point/box tools while
+  detection and instance-segmentation models expose a bounded one-click run
+  and return every matching editable result.
+- The bundled desktop catalog now uses immutable Hugging Face revisions and
+  exposes SAM 2/2.1, MobileSAM, EfficientViT-SAM L0, D-FINE N, and RF-DETR
+  Nano detection/instance segmentation. New bundles pin every installed
+  member; undeclared archive files are not extracted or executed.
+- Project-trained RF-DETR detection and instance-segmentation ONNX artifacts
+  are discovered beside bundled models. Picker discovery only stats the
+  graph; SHA-256 verification is deferred to model load, cached by exact file
+  identity, and rechecked by the inference backend before ONNX Runtime starts.
+- A fresh one-epoch RF-DETR Nano detection run now completes the real
+  train-to-label loop: GPU training, ONNX export, project-catalog discovery,
+  checksum verification, CPU ONNX Runtime load, and 25 editable predictions.
+  The exported graph's explicit no-object slot is mapped as background instead
+  of being mistaken for a missing class name. Inputs, outputs, visualization,
+  raw result, and graph SHA-256 are retained under
+  `/home/vietanhdev/Workspaces/anylearning-real-validation/all-project-types/288e496/trained-rfdetr-to-labeling`.
+- Automatic predictions are intersected with the project's label vocabulary
+  in the backend, retain protocol/model/revision/score/timing metadata in the
+  API result, and support multiple editable boxes or polygons in one run.
+  Shape scores, instance IDs, attributes, and model provenance survive the
+  canvas save/reload round trip so reruns and clearing do not duplicate or
+  discard inference identity.
+- The long-lived desktop process isolates project-trained model catalogs and
+  unloads removed/cross-project sessions. Inference, model swaps, prompts, and
+  output modes are serialized at the session boundary; rapid picker changes
+  retain only the latest queued model without cancelling a native load in an
+  unsafe state.
+- Real-model desktop-adapter and desktop-API evidence is retained under
+  `/home/vietanhdev/Workspaces/anylearning-real-validation/desktop-autolabeling-local`.
+  D-FINE, EfficientViT-SAM, RF-DETR detection, RF-DETR segmentation, clean
+  network install, and project-model discovery/load/inference passed visual
+  review without mocked model outputs. The same pinned D-FINE ONNX graph and
+  source image also passed on the physical Linux devbox and Apple Silicon
+  MacBook: each host passed all 77 focused desktop integration tests and
+  returned identical labels, scores, class IDs, and coordinates. The retained
+  cross-platform overlay passed visual review. The physical Windows desktop
+  gate remains required before this milestone merges; its SSH host was
+  reachable at the 2026-09-01 retry but rejected the configured public key and
+  non-interactive authentication, so hosted Windows results were not treated
+  as a replacement for that physical gate.
+- The complete 13-model desktop catalog passed two consecutive real ONNX runs
+  per model with identical decoded-result digests and visually reviewed
+  overlays. That sweep also closed two model-switch/download defects:
+  automatic models discard stale prompt geometry at every boundary, and
+  legacy bundle metadata cannot replace the catalog identity used by readiness
+  checks. Full-resolution evidence is retained in the same validation root
+  under `20260901-all-catalog-models`.
+- The desktop now imports user-selected single-file YOLOv5/v8/v9/v10/v11/v12/
+  26 and YOLOX ONNX graphs directly into the same `yolo_onnx` backend. Import
+  is an explicit native-file workflow: it bounds copies at 20 GiB, parses the
+  graph without execution, pins its SHA-256, requires an exact class order,
+  and does not load the model until the user confirms the import. Multi-file
+  external-data bundle import remains gated on copying and hashing every
+  referenced shard under I12; the runtime itself already supports those
+  verified bundles.
+- The complete native desktop workflow passed with the official 35 MB YOLOX-S
+  ONNX graph (`c5c2d13e...be998063`): native selection, bounded copy, graph
+  validation, persistent catalog registration, ONNX Runtime load, inference,
+  and three visually correct editable COCO boxes. The run also verifies that
+  no model loads implicitly and that Linux uses the compositor-owned frame
+  without duplicate controls or frameless hit regions. Full-resolution UI
+  screenshots and machine-readable results are retained under
+  `20260901-140748-ui-workflow` in the validation root above.
+- The same official YOLOX-S graph and source image passed on the physical
+  Apple Silicon MacBook and Linux devbox at revision `4eb370f`. Both decoded
+  bicycle, dog, and truck with visually aligned boxes; cross-platform
+  coordinate differences stayed below 0.5 px. Full overlays, HTML reports,
+  summaries, and raw decoded results are retained under
+  `/home/vietanhdev/Workspaces/anylearning-real-validation/cross-platform/4eb370f`.
+- Other trained exports are not mislabeled as usable: NanoDet, semantic
+  segmentation, Mask R-CNN, classification, handpose, and keypoint artifacts
+  enter this picker only after their ONNX graph contracts have a first-party
+  `anylearning.inference` adapter and real exporter-parity evidence.
+- RF-DETR native checkpoint previews now retry once on CPU when an advertised
+  accelerator fails during execution (for example, a driver-visible CUDA device
+  with missing NVRTC runtime components). The retry rebuilds the checkpoint on
+  CPU, releases failed accelerator state best-effort, and does not hide invalid
+  checkpoints or CPU failures. Real keypoint preview evidence is retained in
+  `keypoint-gpu-fallback.json` beside the all-project validation artifacts.
+
 I9. Benchmark the ONNX-only YOLOX adapter, close the audited SAMExporter matrix,
 then add EfficientViT-SAM, RF-DETR, and D-FINE backends in that order, enabling
 only those that satisfy the model and source gates in
@@ -563,6 +648,27 @@ W5. Add YOLO-box-to-SAM refinement.
 W6. Replace the growing training-log text field with appendable bounded storage
 and paged/tailing reads.
 W7. Complete import/export round trips for AnyLabeling, YOLO, COCO, and LabelMe.
+W8. Keep the real all-project native desktop matrix as a regression gate. The
+2026-09-01 baseline covers all eight supported project types, six image-labeling
+workspaces, every training/model screen, and real post-training inference for
+all six image types. It actively changes and restores image-classification and
+handpose classes, verifies the handpose landmark target remains synchronized,
+and records 37 full-resolution screenshots with no page errors or horizontal
+overflow. Results and reviewed contact sheets are retained under
+`/home/vietanhdev/Workspaces/anylearning-real-validation/all-project-types/288e496/ui-workflow-20260901-163516`.
+W9. Replace library-owned first-run backbone downloads with the managed artifact
+fetcher: immutable revision and SHA-256, bounded connect/read deadlines,
+retry/backoff, resumable staging where supported, atomic visibility, progress,
+cancellation, and an actionable offline error. A real semantic-segmentation
+first run stalled indefinitely at 93%, so an unbounded third-party downloader is
+not an acceptable fallback even when the final file checksum is correct.
+W10. Resolve the Python 3.13 RF-DETR/Lightning test-process teardown crash. All
+25 RF-DETR trainer assertions complete, and real application inference exits
+normally, but the local mixed native environment can segfault during
+`sentencepiece` interpreter finalization. Reproduce in a clean pinned
+environment, identify the incompatible native package pair, and make a clean
+process exit part of the supported-version gate rather than accepting a green
+pytest summary followed by exit 139.
 
 ### P1: Authenticated shared inference
 
@@ -597,7 +703,7 @@ gates.
 
 ## Existing backlog incorporated
 
-GitHub had no open issues at the 2026-08-30 audit. The following active items
+GitHub had no open issues at the 2026-09-01 re-audit. The following active items
 come from `docs/TODO.md` and are promoted into this plan:
 
 - Cross-platform packaged builds are not yet green on Windows and macOS.
@@ -612,6 +718,12 @@ come from `docs/TODO.md` and are promoted into this plan:
 - Training logs use one growing database field and become superlinear.
 - detectron2 CUDA extensions do not build against the current PyTorch version.
 - UI sizing, semantic colors, and spacing need a consistent system.
+- Classification and handpose labeling now bypass the drawable-shape loader and
+  auto-saver, handpose exposes the same image-level class controls as image
+  classification, relabeling atomically updates its landmark target, and dataset
+  dropdowns use stable label IDs rather than array positions. Keep this
+  classification-versus-canvas storage boundary covered as new project types are
+  added.
 - The default branch currently reports 60 open dependency alerts (including 23
   high severity, with duplicates between manifests and lockfiles). Website
   Next.js/PostCSS and frontend Effect alerts need immediate reachability review

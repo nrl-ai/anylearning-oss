@@ -1,14 +1,43 @@
 import cv2
-import torch
-
 import detectron2.data.transforms as T
-from anylearning.training.device_utils import get_model_device, load_torch_model
+import torch
 from detectron2.config import get_cfg
 from detectron2.data import MetadataCatalog
 from detectron2.data.catalog import Metadata
 from detectron2.utils.visualizer import ColorMode, Visualizer
 
+from anylearning.training.device_utils import get_model_device, load_torch_model
+
 from .train import set_model_config_and_weights
+
+INTERACTIVE_SCORE_THRESHOLD = 0.5
+INTERACTIVE_MAX_DETECTIONS = 100
+
+
+def apply_interactive_prediction_limits(model):
+    """Keep a model preview useful even when its training config is permissive.
+
+    Mask R-CNN is trained and evaluated with a 0.2 score floor and as many as
+    1,000 detections.  Those settings are useful for computing recall, but the
+    same values in the interactive ``Try Model`` preview can cover the image in
+    hundreds of low-confidence masks.  Detectron2 stores these values on the
+    serialized predictor, so changing only the reloaded config has no effect;
+    cap the predictor itself immediately after loading it.
+
+    Never make a deliberately stricter trained model more permissive.
+    """
+    box_predictor = model.roi_heads.box_predictor
+    predictors = (
+        box_predictor if isinstance(box_predictor, (list, tuple)) else [box_predictor]
+    )
+    for predictor in predictors:
+        predictor.test_score_thresh = max(
+            float(predictor.test_score_thresh), INTERACTIVE_SCORE_THRESHOLD
+        )
+        predictor.test_topk_per_image = min(
+            int(predictor.test_topk_per_image), INTERACTIVE_MAX_DETECTIONS
+        )
+    return model
 
 
 def rebuild_inference_config(config: dict):
@@ -113,6 +142,7 @@ class Predictor:
 
 def inference_fn(detectron2_cfg, model_path, class_names, image):
     model = load_torch_model(model_path, device=resolve_config_device(detectron2_cfg))
+    apply_interactive_prediction_limits(model)
 
     # create a metadata to map the class id to the class name
     id_map = {i + 1: i for i in range(len(class_names))}
@@ -144,7 +174,9 @@ def inference_fn(detectron2_cfg, model_path, class_names, image):
     # convert masks to polygons
     for mask in instances.pred_masks.cpu().numpy().astype("uint8"):
         contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        formatted_predictions["masks"].append([contour.flatten().tolist() for contour in contours])
+        formatted_predictions["masks"].append(
+            [contour.flatten().tolist() for contour in contours]
+        )
     visualization_image = out_pred.get_image()
 
     return formatted_predictions, visualization_image

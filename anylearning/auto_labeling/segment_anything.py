@@ -52,6 +52,9 @@ class Shape:
     label: str = "AUTOLABEL_OBJECT"
     selected: bool = False
     flags: dict[str, Any] = field(default_factory=dict)
+    score: float | None = None
+    group_id: str | int | None = None
+    attributes: dict[str, Any] = field(default_factory=dict)
 
     def add_point(self, point: Point) -> None:
         self.points.append(point)
@@ -119,6 +122,9 @@ class SegmentAnything(Model):
                 points=[Point(int(point.x), int(point.y)) for point in shape.points],
                 shape_type=shape.type.value,
                 label=shape.label or "AUTOLABEL_OBJECT",
+                score=shape.score,
+                group_id=shape.group_id,
+                attributes=dict(shape.attributes),
             )
             for shape in shapes
         ]
@@ -130,10 +136,13 @@ class SegmentAnything(Model):
             kind = mark.get("type")
             data = mark.get("data")
             if kind == "point" and isinstance(data, (list, tuple)) and len(data) == 2:
+                label = mark.get("label", 1)
+                if not isinstance(label, (bool, int)) or label not in (0, 1):
+                    raise ValueError("Point prompt label must be 0 or 1")
                 prompts.append(
                     PointPrompt(
                         point=InferencePoint(x=data[0], y=data[1]),
-                        foreground=bool(mark.get("label", 1)),
+                        foreground=bool(label),
                     )
                 )
             elif (
@@ -164,21 +173,27 @@ class SegmentAnything(Model):
         if image is None or not self.marks or self.stop_inference:
             return AutoLabelingResult([], replace=False)
 
-        try:
-            capabilities = self.session.capabilities
-            request = InferenceRequest(
-                request_id=str(uuid.uuid4()),
-                source_id=image_source_id(image, filename),
-                model_id=capabilities.model_id,
-                model_revision=capabilities.model_revision,
-                prompts=self._prompts(self.marks),
-                output_shape=ShapeType(self.output_mode),
-            )
-            result = self.session.predict(request, image)
-            return AutoLabelingResult(self._legacy_shapes(result.shapes), replace=False)
-        except Exception:
-            logger.exception("Segment Anything inference failed")
-            return AutoLabelingResult([], replace=False)
+        capabilities = self.session.capabilities
+        request = InferenceRequest(
+            request_id=str(uuid.uuid4()),
+            source_id=image_source_id(image, filename),
+            model_id=capabilities.model_id,
+            model_revision=capabilities.model_revision,
+            prompts=self._prompts(self.marks),
+            output_shape=ShapeType(self.output_mode),
+        )
+        result = self.session.predict(request, image)
+        return AutoLabelingResult(
+            self._legacy_shapes(result.shapes),
+            replace=False,
+            protocol_version=result.protocol_version,
+            request_id=result.request_id,
+            source_id=result.source_id,
+            model_id=result.model_id,
+            model_revision=result.model_revision,
+            warnings=result.warnings,
+            timings_ms=dict(result.timings_ms),
+        )
 
     def unload(self) -> None:
         self.stop_inference = True

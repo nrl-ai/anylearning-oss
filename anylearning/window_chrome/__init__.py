@@ -1,18 +1,18 @@
-"""Native support for the title bar the app draws itself.
+"""Native support for desktop window chrome.
 
-The desktop window is created with `frameless=True` (`anylearning/app.py`), so
-the title bar is React -- `frontend/src/components/layout/window-controls.tsx`
-and the workbench bar around it -- rather than the platform's. Every backend
-charges a different price for that, and this package is where each one is
-paid:
+Windows and macOS keep the app-drawn title bar; Linux keeps a platform frame.
+Every backend charges a different price for that choice, and this package is
+where each one is paid:
 
 * Windows loses the entire system frame. `win32.py` puts back what a window
   has no business losing: resize borders, Aero Snap, double-click-to-maximise
   and a native title-bar drag.
 * macOS keeps its resize borders but hides the traffic lights. `cocoa.py`
   shows them again, and the shell reserves the corner they sit in.
-* GTK drops the decorations and, with most window managers, edge resizing.
-  `gtk.py` hands the move and resize gestures back to the window manager.
+* Linux uses the compositor-owned frame in the normal desktop app. That is the
+  only route that moves, resizes, snaps and exposes the system menu uniformly
+  on both X11 and Wayland. `gtk.py` and `qt.py` remain the native fallback for
+  callers that deliberately create a frameless Linux window.
 
 Everything here is best-effort. A window with no native help is still a usable
 window -- pywebview's own JS drag region keeps working -- so a failure to
@@ -48,6 +48,8 @@ def _backend() -> str | None:
         return "cocoa"
     if renderer == "gtkwebkit2":
         return "gtk"
+    if renderer in ("qtwebengine", "qtwebkit"):
+        return "qt"
     return None
 
 
@@ -58,8 +60,9 @@ class WindowChrome:
     renders from, and the platform object that does the native work.
     """
 
-    def __init__(self, window: webview.Window) -> None:
+    def __init__(self, window: webview.Window, *, native_frame: bool = False) -> None:
         self.window = window
+        self.native_frame = native_frame
         self.native = NativeChrome(window)
         self.maximized = False
 
@@ -84,6 +87,13 @@ class WindowChrome:
     # -- platform installation ------------------------------------------
 
     def _install_native(self) -> None:
+        # A compositor-owned frame already provides every operation this
+        # package restores for a frameless window. Installing a second hit
+        # tester would only compete with it.
+        if self.native_frame:
+            logger.info("Using the platform window frame")
+            return
+
         backend = _backend()
         try:
             if backend == "win32":
@@ -98,6 +108,10 @@ class WindowChrome:
                 from anylearning.window_chrome import gtk
 
                 self.native = gtk.install(self.window)
+            elif backend == "qt":
+                from anylearning.window_chrome import qt
+
+                self.native = qt.install(self.window)
             else:
                 logger.info(
                     "No native window chrome for renderer {}; using the pywebview API",
@@ -146,7 +160,10 @@ class WindowChrome:
         differently from `webview.renderer` -- 'cocoa' against 'wkwebview'.
         One vocabulary in the frontend is worth more than one round trip saved.
         """
-        return {"maximized": self.maximized}
+        return {
+            "maximized": self.maximized,
+            "native_frame": self.native_frame,
+        }
 
     def window_minimize(self) -> None:
         self.native.minimize()
@@ -190,10 +207,10 @@ def needs_transparency() -> bool:
     return sys.platform.startswith("linux")
 
 
-def attach(window: webview.Window) -> WindowChrome:
+def attach(window: webview.Window, *, native_frame: bool = False) -> WindowChrome:
     """Wire the chrome to the app's window. Called once, at window creation."""
     global _chrome
-    _chrome = WindowChrome(window).attach()
+    _chrome = WindowChrome(window, native_frame=native_frame).attach()
     return _chrome
 
 

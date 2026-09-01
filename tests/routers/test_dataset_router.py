@@ -458,6 +458,105 @@ def test_set_class_id_on_missing_item_is_404(api, project_id):
     assert response.status_code in (404, 422)
 
 
+def test_relabel_handpose_updates_landmark_target_without_losing_metadata(api):
+    created = api.post(
+        "/api/projects",
+        json={"name": "Hands", "type": "Handpose Classification", "description": ""},
+    )
+    project_id = created.json()["id"]
+    api.patch(
+        f"/api/projects/{project_id}",
+        json={
+            "labels": json.dumps(
+                [
+                    {"name": "open", "color": "#fff", "id": 0},
+                    {"name": "fist", "color": "#000", "id": 3},
+                ]
+            )
+        },
+    )
+
+    from sqlalchemy.orm import Session
+
+    from anylearning.database import DataItem, Dataset, db_manager
+
+    landmarks = {
+        str(index): {"x": index / 21, "y": 0.5, "z": 0.0} for index in range(21)
+    }
+    with Session(db_manager.get_project_engine(project_id)) as session:
+        dataset = Dataset()
+        session.add(dataset)
+        session.flush()
+        item = DataItem(
+            dataset_id=dataset.id,
+            subset=0,
+            path="hand.png",
+            labeled=True,
+            original_name="hand.png",
+            class_id=0,
+            annotation={"data": {"landmarks": landmarks, "label": 0}},
+        )
+        session.add(item)
+        session.commit()
+        item_id = item.id
+
+    response = api.post(
+        f"/api/projects/{project_id}/data_items/{item_id}/class_id",
+        json={"class_id": 3},
+    )
+    assert response.status_code == 200, response.text
+
+    with Session(db_manager.get_project_engine(project_id)) as session:
+        item = session.query(DataItem).filter(DataItem.id == item_id).one()
+        assert item.class_id == 3
+        assert item.annotation == {"data": {"landmarks": landmarks, "label": 3}}
+
+
+def test_marking_classification_item_unlabelled_clears_labeled_flag(api, project_id):
+    uploaded = api.post(
+        f"/api/projects/{project_id}/upload_data",
+        files={"file": ("worker.png", png_bytes(), "image/png")},
+    )
+    assert uploaded.status_code == 200, uploaded.text
+    item = api.get(f"/api/projects/{project_id}/data_items").json()["data_items"][0]
+
+    response = api.post(
+        f"/api/projects/{project_id}/data_items/{item['id']}/class_id",
+        json={"class_id": -1},
+    )
+    assert response.status_code == 200, response.text
+
+    updated = api.get(f"/api/projects/{project_id}/data_items").json()["data_items"][0]
+    assert updated["class_id"] == -1
+    assert updated["labeled"] is False
+
+
+@pytest.mark.parametrize("class_id", [True, "0", -2, 999])
+def test_class_update_rejects_invalid_or_unknown_ids(api, project_id, class_id):
+    api.patch(
+        f"/api/projects/{project_id}",
+        json={"labels": json.dumps([{"name": "known", "color": "#fff", "id": 0}])},
+    )
+    uploaded = api.post(
+        f"/api/projects/{project_id}/upload_data",
+        files={"file": ("worker.png", png_bytes(), "image/png")},
+    )
+    assert uploaded.status_code == 200, uploaded.text
+    item = api.get(f"/api/projects/{project_id}/data_items").json()["data_items"][0]
+
+    response = api.post(
+        f"/api/projects/{project_id}/data_items/{item['id']}/class_id",
+        json={"class_id": class_id},
+    )
+
+    assert response.status_code == 422
+    unchanged = api.get(f"/api/projects/{project_id}/data_items").json()["data_items"][
+        0
+    ]
+    assert unchanged["class_id"] == -1
+    assert unchanged["labeled"] is False
+
+
 def test_download_missing_item_is_404(api, project_id):
     response = api.get(f"/api/projects/{project_id}/data_items/999/download")
     assert response.status_code == 404

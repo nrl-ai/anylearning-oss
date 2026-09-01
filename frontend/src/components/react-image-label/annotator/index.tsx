@@ -17,6 +17,14 @@ const normalizeVisibility = (value: unknown): number => {
     return 2
 }
 
+const retainInferenceMetadata = <T extends Shape>(target: T, source: any): T => {
+    target.score = source.score
+    target.group_id = source.group_id
+    target.attributes = source.attributes ? { ...source.attributes } : undefined
+    target.auto_labeling_model = source.auto_labeling_model
+    return target
+}
+
 const ImageAnnotator: FC<ImageAnnotatorProps> = (props) => {
     const { setHandles, svgContainer } = useSvgContainer()
     const propsRef = useRef(props)
@@ -27,10 +35,14 @@ const ImageAnnotator: FC<ImageAnnotatorProps> = (props) => {
         if (!shapes || !director) return
         const rectangles = shapes
             .filter((s) => s instanceof Rectangle || s.type === "rectangle")
-            .map((s) => new Rectangle(normalizeShapeId(s.id), [...s.points], s.categories, s.color))
+            .map((s) =>
+                retainInferenceMetadata(new Rectangle(normalizeShapeId(s.id), [...s.points], s.categories, s.color), s)
+            )
         const polygons = shapes
             .filter((s) => s instanceof Polygon || s.type === "polygon")
-            .map((s) => new Polygon(normalizeShapeId(s.id), [...s.points], s.categories, s.color))
+            .map((s) =>
+                retainInferenceMetadata(new Polygon(normalizeShapeId(s.id), [...s.points], s.categories, s.color), s)
+            )
         const circles = shapes
             .filter((s) => s instanceof Circle || s.type === "circle")
             .map((s) => new Circle(normalizeShapeId(s.id), s.centre, s.radius, s.categories, s.color))
