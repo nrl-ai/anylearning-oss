@@ -1,0 +1,96 @@
+{
+  "name": "official-sam2-hiera-small-dog-aspect-ratios",
+  "backend": "segment_anything",
+  "provenance": {
+    "source_url": "https://github.com/facebookresearch/sam2",
+    "artifact_url": "https://huggingface.co/nrl-ai/anylearning-labeling-models/blob/90e36cbeec58d3f5273a101875e603c20d2cfed3/sam2_hiera_small.zip",
+    "source_revision": "071f58077599431edd0e5d2ac52ecca4c78f1cab",
+    "code_license": "Apache-2.0",
+    "artifact_license": "Apache-2.0 SAM 2 ONNX bundle",
+    "license_url": "https://huggingface.co/nrl-ai/anylearning-labeling-models/blob/90e36cbeec58d3f5273a101875e603c20d2cfed3/LICENSES.md"
+  },
+  "config": {
+    "name": "official-sam2-hiera-small",
+    "encoder_model_path": "sam2_hiera_small.encoder.onnx",
+    "decoder_model_path": "sam2_hiera_small.decoder.onnx",
+    "encoder_sha256": "39b70b6adefa2d56f44a2c39c7f603e02fdef63383c174bfd983a3d85484b9cb",
+    "decoder_sha256": "e07f799d2afe8640ef21f47096ad154d9289bb53041191499ebbea8933ef047b",
+    "family": "sam2",
+    "providers": ["CPUExecutionProvider"],
+    "intra_op_threads": 1,
+    "inter_op_threads": 1
+  },
+  "runs": 3,
+  "lifecycle_cycles": 3,
+  "maximum_steady_state_rss_growth_bytes": 268435456,
+  "images": [
+    {
+      "path": "dog.jpg",
+      "prompts": [{ "type": "point", "point": [240, 330], "foreground": true }],
+      "output_shape": "polygon",
+      "expected": {
+        "minimum_shapes": 1,
+        "maximum_shapes": 1,
+        "minimum_label_counts": { "AUTOLABEL_OBJECT": 1 },
+        "detections": [
+          {
+            "label": "AUTOLABEL_OBJECT",
+            "box": [133, 223, 308, 537],
+            "minimum_iou": 0.97
+          }
+        ]
+      }
+    },
+    {
+      "path": "dog.jpg",
+      "prompts": [{ "type": "box", "box": [125, 215, 315, 550] }],
+      "output_shape": "polygon",
+      "expected": {
+        "minimum_shapes": 1,
+        "maximum_shapes": 1,
+        "minimum_label_counts": { "AUTOLABEL_OBJECT": 1 },
+        "detections": [
+          {
+            "label": "AUTOLABEL_OBJECT",
+            "box": [133, 223, 308, 538],
+            "minimum_iou": 0.97
+          }
+        ]
+      }
+    },
+    {
+      "path": "dog_portrait.png",
+      "prompts": [{ "type": "point", "point": [245, 240], "foreground": true }],
+      "output_shape": "polygon",
+      "expected": {
+        "minimum_shapes": 1,
+        "maximum_shapes": 1,
+        "minimum_label_counts": { "AUTOLABEL_OBJECT": 1 },
+        "detections": [
+          {
+            "label": "AUTOLABEL_OBJECT",
+            "box": [35, 133, 353, 307],
+            "minimum_iou": 0.97
+          }
+        ]
+      }
+    },
+    {
+      "path": "dog_portrait.png",
+      "prompts": [{ "type": "box", "box": [25, 125, 360, 315] }],
+      "output_shape": "polygon",
+      "expected": {
+        "minimum_shapes": 1,
+        "maximum_shapes": 1,
+        "minimum_label_counts": { "AUTOLABEL_OBJECT": 1 },
+        "detections": [
+          {
+            "label": "AUTOLABEL_OBJECT",
+            "box": [35, 133, 353, 308],
+            "minimum_iou": 0.97
+          }
+        ]
+      }
+    }
+  ]
+}

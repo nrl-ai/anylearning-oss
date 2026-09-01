@@ -19,7 +19,7 @@ import yaml
 from fastapi import APIRouter, BackgroundTasks, File, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, StreamingResponse  # Added FileResponse
 from PIL import Image
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field, StrictInt
 from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -57,6 +57,10 @@ class DataItemListResponse(BaseModel):
     limit: int
     total_count: int
     data_items: List[DataItemResponse]
+
+
+class ClassIdUpdate(BaseModel):
+    class_id: StrictInt = Field(ge=-1)
 
 
 class UploadStatus(str, Enum):
@@ -1196,17 +1200,45 @@ async def save_annotation(project_id: int, item_id: int, request: Request):
 
 
 @router.post("/projects/{project_id}/data_items/{item_id}/class_id")
-async def update_class_id(project_id: int, item_id: int, request: Request):
+async def update_class_id(project_id: int, item_id: int, update: ClassIdUpdate):
+    class_id = update.class_id
+    with Session(db_manager.main_engine) as main_session:
+        project = get_project(main_session, project_id)
+        valid_ids = {
+            label.get("id")
+            for label in project.labels
+            if isinstance(label, dict)
+            and isinstance(label.get("id"), int)
+            and not isinstance(label.get("id"), bool)
+        }
+        if class_id != -1 and class_id not in valid_ids:
+            raise HTTPException(
+                status_code=422,
+                detail="Class ID must identify one of the project's labels",
+            )
+
     with Session(db_manager.get_project_engine(project_id)) as session:
         data_item = session.query(DataItem).filter(DataItem.id == item_id).first()
-        class_id = (await request.json())["class_id"]
 
         if not data_item:
             raise HTTPException(status_code=404, detail="Data item not found")
 
         try:
             data_item.class_id = class_id
-            data_item.labeled = True
+            data_item.labeled = class_id != -1
+
+            # Handpose training reads the target from the landmark sidecar,
+            # while the UI and dataset summary use DataItem.class_id. Keep the
+            # two representations atomic when a user relabels an image. Assign
+            # a fresh JSON value so SQLAlchemy reliably detects the mutation.
+            annotation = data_item.annotation
+            annotation_data = (
+                annotation.get("data") if isinstance(annotation, dict) else None
+            )
+            if isinstance(annotation_data, dict) and "landmarks" in annotation_data:
+                annotation_data = {**annotation_data, "label": class_id}
+                data_item.annotation = {**annotation, "data": annotation_data}
+
             session.commit()
             return {"message": "Class ID updated successfully"}
         except Exception as e:

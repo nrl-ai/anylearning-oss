@@ -1,0 +1,95 @@
+{
+  "name": "sam3-vit-h-dog-text-and-geometry",
+  "backend": "sam3",
+  "provenance": {
+    "source_url": "https://github.com/vietanhdev/samexporter/tree/35133ce8670e0d190ac10cc08efba9b9a443fb51",
+    "artifact_url": "https://huggingface.co/nrl-ai/anylearning-sam3-onnx/resolve/3aba7c91eb70d55891efccf0023cecfb3d68531e/sam3_vit_h.zip",
+    "source_revision": "35133ce8670e0d190ac10cc08efba9b9a443fb51",
+    "code_license": "MIT exporter and OpenAI CLIP tokenizer",
+    "artifact_license": "Meta SAM License converted SAM3 weights",
+    "license_url": "https://github.com/facebookresearch/sam3/blob/660a5e9e1b8b4c02c0ad97229b88a09a6e4ff5b7/LICENSE"
+  },
+  "config": {
+    "name": "sam3-vit-h-pinned",
+    "archive_sha256": "1617436f9db7eb9dd69029c2c465d54b316c36c21143f0fde0d1be513f15b7d5",
+    "image_encoder_model_path": "sam3_image_encoder.onnx",
+    "language_encoder_model_path": "sam3_language_encoder.onnx",
+    "decoder_model_path": "sam3_decoder.onnx",
+    "image_encoder_sha256": "3dd676271e9c459463f7026d8ab2c6318672cd89511f89c30b34cdf0a2e67a3f",
+    "language_encoder_sha256": "af80dffcd8fc369281b0422295244ba22f64e8424e9eefa111ac8966e9ea9ba6",
+    "decoder_sha256": "aca3109a1bf87d1589bf2a4a61c641fd97624152b21c6e9a5aa85735db398884",
+    "image_encoder_external_data_sha256": {
+      "sam3_image_encoder.onnx.data": "03bd50b0703e2b04e2193ca831b7f9d5ecf40bc5287cc59b1970f56ab800c995"
+    },
+    "language_encoder_external_data_sha256": {
+      "sam3_language_encoder.onnx.data": "1b03dabc657c1f2887d1b8ce2a3537467d4c033ea1f8c8be141fbca55e4b95f7"
+    },
+    "providers": ["CPUExecutionProvider"],
+    "intra_op_threads": 4,
+    "inter_op_threads": 1,
+    "max_instances": 16,
+    "max_nms_candidates": 64
+  },
+  "runs": 2,
+  "lifecycle_cycles": 2,
+  "maximum_steady_state_rss_growth_bytes": 536870912,
+  "images": [
+    {
+      "path": "dog.jpg",
+      "prompts": [{ "type": "text", "text": "dog" }],
+      "output_shape": "polygon",
+      "expected": {
+        "minimum_shapes": 1,
+        "maximum_shapes": 4,
+        "minimum_label_counts": { "dog": 1 },
+        "detections": [
+          {
+            "label": "dog",
+            "box": [133, 222, 309, 539],
+            "minimum_iou": 0.95,
+            "minimum_score": 0.95
+          }
+        ]
+      }
+    },
+    {
+      "path": "dog.jpg",
+      "prompts": [
+        { "type": "text", "text": "dog" },
+        { "type": "point", "point": [240, 330], "foreground": true }
+      ],
+      "output_shape": "polygon",
+      "expected": {
+        "minimum_shapes": 1,
+        "maximum_shapes": 4,
+        "minimum_label_counts": { "dog": 1 },
+        "detections": [
+          {
+            "label": "dog",
+            "box": [133, 222, 308, 540],
+            "minimum_iou": 0.95,
+            "minimum_score": 0.9
+          }
+        ]
+      }
+    },
+    {
+      "path": "dog.jpg",
+      "prompts": [{ "type": "box", "box": [125, 215, 315, 550] }],
+      "output_shape": "polygon",
+      "expected": {
+        "minimum_shapes": 1,
+        "maximum_shapes": 4,
+        "minimum_label_counts": { "AUTOLABEL_OBJECT": 1 },
+        "detections": [
+          {
+            "label": "AUTOLABEL_OBJECT",
+            "box": [133, 222, 308, 539],
+            "minimum_iou": 0.97,
+            "minimum_score": 0.95
+          }
+        ]
+      }
+    }
+  ]
+}

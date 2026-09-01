@@ -1,0 +1,96 @@
+{
+  "name": "official-mobile-sam-dog-aspect-ratios",
+  "backend": "segment_anything",
+  "provenance": {
+    "source_url": "https://github.com/ChaoningZhang/MobileSAM",
+    "artifact_url": "https://huggingface.co/nrl-ai/anylearning-labeling-models/blob/b8abc71ec07279a978cc1682fd91cd50a7d7b207/mobile_sam_20230629.zip",
+    "source_revision": "9effc01a9e135621d710d49159f1ffb0b6f724dc",
+    "code_license": "Apache-2.0",
+    "artifact_license": "Apache-2.0 MobileSAM-derived ONNX bundle",
+    "license_url": "https://github.com/ChaoningZhang/MobileSAM/blob/f706ad9c4eb7f219c00d9050e46328518ffb65d2/LICENSE"
+  },
+  "config": {
+    "name": "official-mobile-sam",
+    "encoder_model_path": "mobile_sam.encoder.onnx",
+    "decoder_model_path": "sam_vit_h_4b8939.decoder.onnx",
+    "encoder_sha256": "20deef402855b31222b528f52b04807e41ebe47216ac0e39a0729f43491a0209",
+    "decoder_sha256": "22cf85e35d14182f4b4712364264c06b22edbef63f065189586f080ef4e2f325",
+    "family": "sam",
+    "providers": ["CPUExecutionProvider"],
+    "intra_op_threads": 1,
+    "inter_op_threads": 1
+  },
+  "runs": 3,
+  "lifecycle_cycles": 3,
+  "maximum_steady_state_rss_growth_bytes": 134217728,
+  "images": [
+    {
+      "path": "dog.jpg",
+      "prompts": [{ "type": "point", "point": [240, 330], "foreground": true }],
+      "output_shape": "polygon",
+      "expected": {
+        "minimum_shapes": 1,
+        "maximum_shapes": 1,
+        "minimum_label_counts": { "AUTOLABEL_OBJECT": 1 },
+        "detections": [
+          {
+            "label": "AUTOLABEL_OBJECT",
+            "box": [134, 224, 307, 539],
+            "minimum_iou": 0.97
+          }
+        ]
+      }
+    },
+    {
+      "path": "dog.jpg",
+      "prompts": [{ "type": "box", "box": [125, 215, 315, 550] }],
+      "output_shape": "polygon",
+      "expected": {
+        "minimum_shapes": 1,
+        "maximum_shapes": 1,
+        "minimum_label_counts": { "AUTOLABEL_OBJECT": 1 },
+        "detections": [
+          {
+            "label": "AUTOLABEL_OBJECT",
+            "box": [134, 224, 307, 539],
+            "minimum_iou": 0.97
+          }
+        ]
+      }
+    },
+    {
+      "path": "dog_portrait.png",
+      "prompts": [{ "type": "point", "point": [245, 240], "foreground": true }],
+      "output_shape": "polygon",
+      "expected": {
+        "minimum_shapes": 1,
+        "maximum_shapes": 1,
+        "minimum_label_counts": { "AUTOLABEL_OBJECT": 1 },
+        "detections": [
+          {
+            "label": "AUTOLABEL_OBJECT",
+            "box": [36, 134, 352, 305],
+            "minimum_iou": 0.97
+          }
+        ]
+      }
+    },
+    {
+      "path": "dog_portrait.png",
+      "prompts": [{ "type": "box", "box": [25, 125, 360, 315] }],
+      "output_shape": "polygon",
+      "expected": {
+        "minimum_shapes": 1,
+        "maximum_shapes": 1,
+        "minimum_label_counts": { "AUTOLABEL_OBJECT": 1 },
+        "detections": [
+          {
+            "label": "AUTOLABEL_OBJECT",
+            "box": [36, 134, 352, 306],
+            "minimum_iou": 0.97
+          }
+        ]
+      }
+    }
+  ]
+}

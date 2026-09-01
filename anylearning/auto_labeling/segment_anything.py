@@ -4,18 +4,32 @@ from __future__ import annotations
 
 import logging
 import threading
+import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-import cv2
 import numpy as np
 import onnx
 
-from .lru_cache import LRUCache
+from anylearning.inference import (
+    BoxPrompt,
+    InferenceRequest,
+    PointPrompt,
+    ShapeType,
+    get_default_registry,
+)
+from anylearning.inference import (
+    Point as InferencePoint,
+)
+from anylearning.inference.backends.sam import (
+    SegmentAnythingSession,
+    image_source_id,
+    mask_contours,
+    mask_shapes,
+)
+
 from .model import Model
-from .sam2_onnx import SegmentAnything2ONNX
-from .sam_onnx import SegmentAnythingONNX
 from .types import AutoLabelingResult
 
 logger = logging.getLogger(__name__)
@@ -38,6 +52,9 @@ class Shape:
     label: str = "AUTOLABEL_OBJECT"
     selected: bool = False
     flags: dict[str, Any] = field(default_factory=dict)
+    score: float | None = None
+    group_id: str | int | None = None
+    attributes: dict[str, Any] = field(default_factory=dict)
 
     def add_point(self, point: Point) -> None:
         self.points.append(point)
@@ -68,27 +85,19 @@ class SegmentAnything(Model):
 
     def __init__(self, config_path: Any, on_message: Any) -> None:
         super().__init__(config_path, on_message)
-        encoder_path = Path(self.get_model_abs_path(self.config, "encoder_model_path"))
-        decoder_path = Path(self.get_model_abs_path(self.config, "decoder_model_path"))
-        for role, path in (("encoder", encoder_path), ("decoder", decoder_path)):
-            if not path.is_file():
-                raise FileNotFoundError(f"Segment Anything {role} not found: {path}")
-
-        adapter = (
-            SegmentAnything2ONNX
-            if self.detect_model_variant(decoder_path) == "sam2"
-            else SegmentAnythingONNX
-        )
-        self.model = adapter(str(encoder_path), str(decoder_path))
+        session = get_default_registry().create_session("segment_anything", self.config)
+        if not isinstance(session, SegmentAnythingSession):
+            raise TypeError("Segment Anything backend returned an incompatible session")
+        session.load()
+        self.session = session
         self.marks: list[dict[str, Any]] = []
-        self.image_embedding_cache: LRUCache[Any, dict[str, Any]] = LRUCache(10)
         self.preloaded_size = 7
         self.pre_inference_thread: threading.Thread | None = None
         self.stop_inference = False
 
     @staticmethod
     def detect_model_variant(decoder_path: str | Path) -> str:
-        graph = onnx.load(str(decoder_path)).graph
+        graph = onnx.load_model(str(decoder_path), load_external_data=False).graph
         return (
             "sam2"
             if any(item.name == "high_res_feats_0" for item in graph.input)
@@ -100,64 +109,57 @@ class SegmentAnything(Model):
 
     @staticmethod
     def _contours(mask: np.ndarray) -> list[np.ndarray]:
-        binary = np.where(mask > 0, 255, 0).astype(np.uint8)
-        # RETR_EXTERNAL hides every object inside a full-image foreground
-        # contour, so the background-removal pass below never sees anything to
-        # keep. RETR_LIST exposes both outer and nested contours; the area
-        # filter then drops the canvas-sized background when real objects exist.
-        contours, _ = cv2.findContours(binary, cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
-        approximated = [
-            cv2.approxPolyDP(contour, 0.001 * cv2.arcLength(contour, True), True)
-            for contour in contours
-        ]
-        approximated = [contour for contour in approximated if len(contour) >= 3]
-        if len(approximated) <= 1:
-            return approximated
-
-        image_area = binary.shape[0] * binary.shape[1]
-        without_background = [
-            contour
-            for contour in approximated
-            if cv2.contourArea(contour) < image_area * 0.9
-        ]
-        if without_background:
-            approximated = without_background
-
-        areas = np.asarray([cv2.contourArea(item) for item in approximated])
-        threshold = float(areas.mean()) * 0.2
-        return [
-            contour for contour, area in zip(approximated, areas) if area > threshold
-        ]
+        return mask_contours(mask)
 
     def post_process(self, mask: np.ndarray) -> list[Shape]:
-        contours = self._contours(mask)
-        if self.output_mode == "polygon":
-            shapes: list[Shape] = []
-            for contour in contours:
-                coordinates = contour.reshape(-1, 2).astype(int).tolist()
-                coordinates.append(coordinates[0])
-                shapes.append(
-                    Shape(
-                        points=[Point(x, y) for x, y in coordinates],
-                        shape_type="polygon",
+        output_shape = ShapeType(self.output_mode)
+        return self._legacy_shapes(mask_shapes(mask, output_shape))
+
+    @staticmethod
+    def _legacy_shapes(shapes: Any) -> list[Shape]:
+        return [
+            Shape(
+                points=[Point(int(point.x), int(point.y)) for point in shape.points],
+                shape_type=shape.type.value,
+                label=shape.label or "AUTOLABEL_OBJECT",
+                score=shape.score,
+                group_id=shape.group_id,
+                attributes=dict(shape.attributes),
+            )
+            for shape in shapes
+        ]
+
+    @staticmethod
+    def _prompts(marks: list[dict[str, Any]]) -> tuple[PointPrompt | BoxPrompt, ...]:
+        prompts: list[PointPrompt | BoxPrompt] = []
+        for mark in marks:
+            kind = mark.get("type")
+            data = mark.get("data")
+            if kind == "point" and isinstance(data, (list, tuple)) and len(data) == 2:
+                label = mark.get("label", 1)
+                if not isinstance(label, (bool, int)) or label not in (0, 1):
+                    raise ValueError("Point prompt label must be 0 or 1")
+                prompts.append(
+                    PointPrompt(
+                        point=InferencePoint(x=data[0], y=data[1]),
+                        foreground=bool(label),
                     )
                 )
-            return shapes
-
-        if self.output_mode == "rectangle" and contours:
-            points = np.concatenate([item.reshape(-1, 2) for item in contours])
-            x_min, y_min = points.min(axis=0)
-            x_max, y_max = points.max(axis=0)
-            return [
-                Shape(
-                    points=[
-                        Point(int(x_min), int(y_min)),
-                        Point(int(x_max), int(y_max)),
-                    ],
-                    shape_type="rectangle",
+            elif (
+                kind == "rectangle"
+                and isinstance(data, (list, tuple))
+                and len(data) == 4
+            ):
+                x1, y1, x2, y2 = (float(value) for value in data)
+                prompts.append(
+                    BoxPrompt(
+                        top_left=InferencePoint(x=min(x1, x2), y=min(y1, y2)),
+                        bottom_right=InferencePoint(x=max(x1, x2), y=max(y1, y2)),
+                    )
                 )
-            ]
-        return []
+            else:
+                raise ValueError(f"Unsupported prompt type: {kind!r}")
+        return tuple(prompts)
 
     def predict_shapes(
         self,
@@ -171,38 +173,44 @@ class SegmentAnything(Model):
         if image is None or not self.marks or self.stop_inference:
             return AutoLabelingResult([], replace=False)
 
-        cache_key = filename if filename is not None else id(image)
-        try:
-            embedding = self.image_embedding_cache.get(cache_key)
-            if embedding is None:
-                embedding = self.model.encode(np.asarray(image))
-                self.image_embedding_cache.put(cache_key, embedding)
-            if self.stop_inference:
-                return AutoLabelingResult([], replace=False)
-            masks = np.asarray(self.model.predict_masks(embedding, self.marks))
-            mask = masks[0, 0] if masks.ndim == 4 else masks[0]
-            return AutoLabelingResult(self.post_process(mask), replace=False)
-        except Exception:
-            logger.exception("Segment Anything inference failed")
-            return AutoLabelingResult([], replace=False)
+        capabilities = self.session.capabilities
+        request = InferenceRequest(
+            request_id=str(uuid.uuid4()),
+            source_id=image_source_id(image, filename),
+            model_id=capabilities.model_id,
+            model_revision=capabilities.model_revision,
+            prompts=self._prompts(self.marks),
+            output_shape=ShapeType(self.output_mode),
+        )
+        result = self.session.predict(request, image)
+        return AutoLabelingResult(
+            self._legacy_shapes(result.shapes),
+            replace=False,
+            protocol_version=result.protocol_version,
+            request_id=result.request_id,
+            source_id=result.source_id,
+            model_id=result.model_id,
+            model_revision=result.model_revision,
+            warnings=result.warnings,
+            timings_ms=dict(result.timings_ms),
+        )
 
     def unload(self) -> None:
         self.stop_inference = True
         if self.pre_inference_thread and self.pre_inference_thread.is_alive():
             self.pre_inference_thread.join(timeout=5)
-        self.image_embedding_cache.clear()
+        self.session.unload()
 
     def preload_worker(self, files: list[str]) -> None:
         for filename in files[: self.preloaded_size]:
             if self.stop_inference:
                 return
-            if filename in self.image_embedding_cache:
-                continue
             image = self.load_image_from_filename(filename)
             if image is not None:
                 try:
-                    self.image_embedding_cache.put(
-                        filename, self.model.encode(np.asarray(image))
+                    self.session.preload(
+                        image,
+                        image_source_id(image, filename),
                     )
                 except Exception:
                     logger.exception("Could not preload %s", filename)

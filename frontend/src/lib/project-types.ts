@@ -14,6 +14,27 @@ export function isStructuredProject(type: string | null | undefined): boolean {
     return type === "Tabular AI" || isTextAiProject(type)
 }
 
+/** Projects whose label is stored as one class id for the whole image.
+ *
+ * Handpose also stores detected landmarks in `annotation`, but those are
+ * training metadata rather than editable canvas shapes. Treating that object
+ * as a shape array can both crash annotation loading and overwrite the
+ * landmarks during auto-save.
+ */
+export function isClassificationProject(type: string | null | undefined): boolean {
+    return type === "Image Classification" || type === "Handpose Classification"
+}
+
+/** Whether the labeling workspace should load and save drawable shapes. */
+export function usesCanvasAnnotations(type: string | null | undefined): boolean {
+    return (
+        type === "Object Detection" ||
+        type === "Image Segmentation" ||
+        type === "Instance Segmentation" ||
+        type === "Keypoint Detection"
+    )
+}
+
 export function projectTypeLabel(type: string): string {
     return isTextAiProject(type) ? TEXT_AI_PROJECT_TYPE : type
 }

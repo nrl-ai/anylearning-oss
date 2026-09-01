@@ -1,0 +1,61 @@
+{
+  "name": "official-efficient-sam-ti-dog",
+  "backend": "efficient_sam",
+  "provenance": {
+    "source_url": "https://github.com/yformer/EfficientSAM",
+    "artifact_url": "https://huggingface.co/yunyangx/EfficientSAM/tree/d53228e3f6dee607309453f54a22c40c2a10204c",
+    "source_revision": "d53228e3f6dee607309453f54a22c40c2a10204c",
+    "code_license": "Apache-2.0",
+    "artifact_license": "Apache-2.0 official EfficientSAM ONNX model pair",
+    "license_url": "https://github.com/yformer/EfficientSAM/blob/d525f622e6f640acf5a0fc37c7ca1f243da5bde0/LICENSE"
+  },
+  "config": {
+    "name": "official-efficient-sam-ti",
+    "encoder_model_path": "efficientsam_ti_encoder.onnx",
+    "decoder_model_path": "efficientsam_ti_decoder.onnx",
+    "encoder_sha256": "84ed466ffcc5c1f8d08409bc34a23bb364ab2c15e402cb12d4335a42be0e0951",
+    "decoder_sha256": "a62f8fa5ea080447c0689418d69e58f1e83e0b7adf9c142e2bd9bcc8045c0b11",
+    "providers": ["CPUExecutionProvider"],
+    "intra_op_threads": 1,
+    "inter_op_threads": 1
+  },
+  "runs": 3,
+  "lifecycle_cycles": 3,
+  "maximum_steady_state_rss_growth_bytes": 134217728,
+  "images": [
+    {
+      "path": "dog.jpg",
+      "prompts": [{ "type": "point", "point": [240, 330], "foreground": true }],
+      "output_shape": "polygon",
+      "expected": {
+        "minimum_shapes": 1,
+        "maximum_shapes": 1,
+        "minimum_label_counts": { "AUTOLABEL_OBJECT": 1 },
+        "detections": [
+          {
+            "label": "AUTOLABEL_OBJECT",
+            "box": [134, 223, 307, 537],
+            "minimum_iou": 0.97
+          }
+        ]
+      }
+    },
+    {
+      "path": "dog.jpg",
+      "prompts": [{ "type": "box", "box": [125, 215, 315, 550] }],
+      "output_shape": "polygon",
+      "expected": {
+        "minimum_shapes": 1,
+        "maximum_shapes": 1,
+        "minimum_label_counts": { "AUTOLABEL_OBJECT": 1 },
+        "detections": [
+          {
+            "label": "AUTOLABEL_OBJECT",
+            "box": [134, 223, 308, 538],
+            "minimum_iou": 0.97
+          }
+        ]
+      }
+    }
+  ]
+}

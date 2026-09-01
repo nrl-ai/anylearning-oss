@@ -100,6 +100,10 @@ filterwarnings = [
     "ignore:You are using the legacy TorchScript-based ONNX export:DeprecationWarning",
     # detectron2's model_zoo imports pkg_resources; detectron2 is commit-pinned.
     "ignore:pkg_resources is deprecated as an API:UserWarning",
+    # pkg_resources activates the sphinxcontrib namespace while detectron2 is
+    # imported. The namespace package is third-party and the warning originates
+    # entirely inside setuptools' compatibility layer.
+    "ignore:Deprecated call to `pkg_resources.declare_namespace\\('sphinxcontrib'\\)`:DeprecationWarning",
     # torchvision's adjust_hue (reached from ColorJitter in the segmentation
     # augmentations) calls PIL's Image.fromarray with the positional `mode`
     # argument that Pillow 11.3 deprecates. Raised entirely inside torchvision;

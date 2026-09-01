@@ -87,6 +87,15 @@ def test_the_window_manager_gets_the_last_word(chrome):
     assert chrome.window_chrome_state()["maximized"] is True
 
 
+def test_state_tells_the_page_when_the_platform_owns_the_frame():
+    chrome = WindowChrome(FakeWindow(), native_frame=True).attach()
+
+    assert chrome.window_chrome_state() == {
+        "maximized": False,
+        "native_frame": True,
+    }
+
+
 def test_un_minimising_a_maximised_window_leaves_it_maximised(chrome):
     """`restored` fires for un-minimising too, so the event alone is not evidence."""
     chrome.native.is_maximized = lambda: True

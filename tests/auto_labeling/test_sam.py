@@ -1,4 +1,5 @@
 from importlib import resources
+from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 import numpy as np
@@ -8,13 +9,18 @@ import yaml
 from anylearning.auto_labeling.model_manager import _complete_bundled_config
 from anylearning.auto_labeling.sam2_onnx import SAM2ImageEncoder
 from anylearning.auto_labeling.sam_onnx import SegmentAnythingONNX
+from anylearning.auto_labeling.segment_anything import SegmentAnything
 from anylearning.configs import auto_labeling as auto_labeling_configs
 
 
 @pytest.fixture
 def mock_encoder_session():
     mock = Mock()
-    mock.get_inputs.return_value = [Mock(name="input")]
+    mock.get_inputs.return_value = [
+        SimpleNamespace(
+            name="image", shape=("height", "width", 3), type="tensor(float)"
+        )
+    ]
     mock.run.return_value = [np.zeros((1, 256, 64, 64))]
     return mock
 
@@ -22,7 +28,24 @@ def mock_encoder_session():
 @pytest.fixture
 def mock_decoder_session():
     mock = Mock()
-    mock.run.return_value = [np.zeros((1, 1, 256, 256)), None, None]
+    mock.get_inputs.return_value = [
+        SimpleNamespace(name=name)
+        for name in (
+            "image_embeddings",
+            "point_coords",
+            "point_labels",
+            "mask_input",
+            "has_mask_input",
+            "orig_im_size",
+        )
+    ]
+    mock.get_outputs.return_value = [
+        SimpleNamespace(name="masks"),
+        SimpleNamespace(name="iou_predictions"),
+        SimpleNamespace(name="low_res_masks"),
+    ]
+    mask = np.zeros((1, 1, 256, 256), dtype=np.float32)
+    mock.run.return_value = [mask, np.ones((1, 1), dtype=np.float32), mask]
     return mock
 
 
@@ -36,7 +59,7 @@ def sam_model(mock_encoder_session, mock_decoder_session):
 
 def test_init(sam_model):
     assert sam_model.target_size == 1024
-    assert sam_model.input_size == (684, 1024)
+    assert sam_model.encoder_input_rank == 3
     assert sam_model.encoder_session is not None
     assert sam_model.decoder_session is not None
 
@@ -63,6 +86,13 @@ def test_get_input_points_rejects_invalid_prompts(sam_model):
         sam_model.get_input_points([])
 
 
+def test_desktop_sam_rejects_non_binary_point_labels():
+    with pytest.raises(ValueError, match="must be 0 or 1"):
+        SegmentAnything._prompts(
+            [{"type": "point", "data": [10, 20], "label": "foreground"}]
+        )
+
+
 def test_get_preprocess_shape():
     result = SegmentAnythingONNX.get_preprocess_shape(100, 200, 400)
     assert result == (200, 400)
@@ -81,32 +111,32 @@ def test_apply_coords(sam_model):
     assert result.shape == coords.shape
 
 
-def test_transform_masks(sam_model):
+def test_postprocess_masks(sam_model):
     masks = np.zeros((1, 2, 256, 256))
     original_size = (100, 200)
-    transform_matrix = np.eye(3)
+    resized_size = (512, 1024)
 
-    result = sam_model.transform_masks(masks, original_size, transform_matrix)
+    result = sam_model.postprocess_masks(masks, original_size, resized_size)
 
     assert result.shape == (1, 2, 100, 200)
 
 
 def test_encode(sam_model):
-    image = np.zeros((100, 200, 3))
+    image = np.zeros((100, 200, 3), dtype=np.uint8)
     result = sam_model.encode(image)
 
     assert "image_embedding" in result
     assert "original_size" in result
-    assert "transform_matrix" in result
+    assert "resized_size" in result
     assert result["original_size"] == (100, 200)
-    assert result["transform_matrix"].shape == (3, 3)
+    assert result["resized_size"] == (512, 1024)
 
 
 def test_predict_masks(sam_model):
     embedding = {
         "image_embedding": np.zeros((1, 256, 64, 64)),
         "original_size": (100, 200),
-        "transform_matrix": np.eye(3),
+        "resized_size": (512, 1024),
     }
     prompt = [{"type": "point", "data": [10, 20], "label": 1}]
 
@@ -135,7 +165,10 @@ def test_sam2_small_is_the_default_bundled_auto_labeling_model():
     models = yaml.safe_load(model_file.read_text())
 
     assert models[0]["name"] == "sam2_hiera_small_20240803"
-    assert all(model["type"] == "segment_anything" for model in models)
+    assert models[0]["type"] == "segment_anything"
+    assert all(
+        model["interaction_mode"] in {"prompted", "automatic"} for model in models
+    )
 
 
 def test_bundled_config_recovers_metadata_from_legacy_stub(tmp_path):

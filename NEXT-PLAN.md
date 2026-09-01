@@ -1,7 +1,7 @@
 # AnyLearning Platform Roadmap
 
 Status: active implementation plan
-Last updated: 2026-08-30
+Last updated: 2026-09-01
 Primary repository: `nrl-ai/anylearning-oss`
 Integration branch: `develop`
 
@@ -183,17 +183,199 @@ Add model families by reusable task contracts and decoders, not by copying a
 large model zoo. Every adapter must pass correctness, performance, lifecycle,
 security, packaging, and separate code/weight license gates.
 
-| Order | Model capability                                           | Distribution policy                                          | Reason                                                            |
-| ----- | ---------------------------------------------------------- | ------------------------------------------------------------ | ----------------------------------------------------------------- |
-| 1     | Models trained/exported by AnyLearning                     | Built in                                                     | Close the train-to-prelabel loop with artifacts we already create |
-| 2     | User-supplied YOLOv5/v8/11 detection and segmentation ONNX | Generic decoder only; no Ultralytics code or weights bundled | Highest custom-model interoperability value                       |
-| 3     | YOLOX ONNX detection                                       | Permissive bundled option after benchmark                    | Apache-2.0, CPU-friendly detector                                 |
-| 4     | EfficientViT-SAM                                           | Permissive optional/bundled weights after review             | Faster promptable segmentation on CPU                             |
-| 5     | RF-DETR and D-FINE detection/instance segmentation         | Reuse licensed training artifacts; server for large variants | Accurate permissive families and existing AnyLearning investment  |
-| 6     | YOLO-to-SAM refinement                                     | Workflow over existing adapters                              | Converts detector boxes into editable high-quality masks          |
-| 7     | Grounding DINO and OWLv2                                   | Optional/server-first                                        | Permissive zero-shot prelabeling with heavier runtime             |
-| 8     | OBB through a permissive RTMDet/MMRotate-class backend     | Only after OBB editing and export are complete               | Geometry must be correct before inference                         |
-| 9     | RapidOCR PP-OCR ONNX                                       | Optional/server-first until workflow demand is validated     | Permissive OCR without a new training framework                   |
+### Mandatory ONNX inference boundary
+
+Every new model integration must execute an ONNX artifact through
+`anylearning.inference`. Framework-native checkpoints may exist in
+`anylearning.training` for training and export, but they are not accepted by the
+desktop or server inference path. Conversion is an explicit, isolated workflow;
+inference never loads pickle checkpoints, imports a model's training framework,
+or executes repository-supplied Python.
+
+Each adapter must define a versioned ONNX input/output profile, supported opset,
+static production shapes, preprocessing, postprocessing, and an exporter parity
+test. Prefer an official ONNX exporter or official pre-exported artifact. A
+third-party exporter is only a research lead: it must be independently
+reimplemented or pinned, license-reviewed, and proven against the native model
+before it becomes a supported source. See
+[`docs/onnx_model_sources.md`](docs/onnx_model_sources.md) for the researched
+source matrix and current gates.
+
+ONNX artifacts larger than the single-protobuf limit may use external tensor
+data only inside an integrity-addressed bundle manifest. The manifest enumerates
+every relative file path, byte size, and SHA-256; downloads land in a private
+staging directory and become visible atomically only after all files verify.
+Absolute paths, parent traversal, links, undeclared files, and arbitrary external
+references remain rejected. The shared zero-copy bundle loader and generic YOLO
+wiring are implemented; their Linux, Windows, and macOS real-model gates remain
+mandatory for every runtime/provider change.
+
+### SAMExporter compatibility audit
+
+The complete SAMExporter model matrix at commit
+[`35133ce`](https://github.com/vietanhdev/samexporter/commit/35133ce8670e0d190ac10cc08efba9b9a443fb51)
+was audited on 2026-08-30. AnyLearning should consume the documented ONNX graph
+contracts through first-party `anylearning.inference` adapters; it must not add
+SAMExporter as an inference dependency.
+
+| SAMExporter family                   | AnyLearning decision                                          | Required inference work                                                                                                                                                                                                                                              |
+| ------------------------------------ | ------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| SAM ViT-B/L/H and quantized variants | Update the existing `segment_anything` backend                | Accept both embedded-preprocessing HWC encoders and normalized/padded NCHW encoders; use the official longest-side resize; select `low_res_masks` when exported and apply the aspect-ratio-aware resize/crop/resize path. Remove the fixed MobileSAM input geometry. |
+| MobileSAM                            | Reuse the corrected SAM backend                               | Prove parity with its encoder/decoder pair; do not maintain a second preprocessing path.                                                                                                                                                                             |
+| EfficientSAM-Ti/S                    | Add an `efficient_sam` backend                                | Implement its distinct dynamic NCHW RGB `/255` encoder and batched point/box decoder contract; validate names/ranks/dtypes and choose the highest-IoU mask candidate per query. This is not the same architecture or graph contract as EfficientViT-SAM.             |
+| SAM2 Tiny/Small/Base+/Large          | Keep the existing SAM2 backend                                | Preserve AnyLearning's RGB input correction, add explicit provider selection and safe graph inspection/loading, and validate all four encoder/decoder sizes with real artifacts.                                                                                     |
+| SAM2.1 Tiny/Small/Base+/Large        | Reuse the SAM2 backend                                        | Treat the revision and artifact pair as model identity; no separate preprocessing implementation is needed.                                                                                                                                                          |
+| SAM3 ViT-H                           | Add a separate `sam3` backend after the smaller families pass | Add a bounded `TextPrompt` wire contract and a three-graph image/language/decoder session; validate its fixed geometric-prompt capacity, raw query outputs, confidence filtering, mask-IoU NMS, instance limits, scores, and multi-instance editable shapes.         |
+
+Before any SAM family can be exposed by `anylearning.server`, every graph in its
+pair or triplet must use the shared integrity-addressed external-data loader.
+Model revision identity covers every graph and external tensor file. Session
+creation must set an explicit provider order and enforce graph input/output
+names, ranks, dtypes, static bounds, maximum prompts, maximum masks, and maximum
+result points before expensive inference or postprocessing.
+
+Prompt validation is shared across the family: point labels are exactly 0 or 1,
+box prompts have positive area, coordinates are finite, and empty geometric
+prompts are accepted only by a backend such as SAM3 that explicitly supports a
+text-only request. SAM3 text is length-bounded before tokenization and its
+configured ONNX token capacity is enforced.
+
+The SAMExporter runtime code is MIT, while graph weights retain their upstream
+license independently. SAM, MobileSAM, EfficientSAM, and SAM2/2.1 artifacts may
+only be published after their Apache-2.0 provenance and checksums are recorded.
+SAM3 weights retain the separate Meta SAM license, are optional/server-first,
+and are never bundled into the default Apache-2.0 package. The license must ship
+beside any published artifact bundle and be shown before download.
+
+Implementation and real-model gates proceed in this order:
+
+1. Extend safe multi-graph loading and model-revision hashing to SAM pairs and
+   triplets without copying multi-gigabyte external tensors into Python memory.
+2. Correct SAM/MobileSAM preprocessing and postprocessing, with point and box
+   parity on landscape, portrait, and extreme-aspect images.
+3. Add EfficientSAM-Ti, then EfficientSAM-S, with native/export parity and
+   retained visual reports.
+4. Validate the existing SAM2 backend against all SAM2 and SAM2.1 sizes, using
+   Tiny as the cross-platform merge gate and the larger variants as scheduled
+   resource-qualified jobs.
+5. Add SAM3 text, point, box, and combined-prompt inference as a separately
+   reviewed change because its contract, license, memory use, and multi-instance
+   postprocessing differ materially.
+
+Implementation status (2026-08-31):
+
+- [x] Paired graphs use the bounded stable ONNX loader, independent graph and
+      external-data manifests, explicit providers/thread limits, and pair-bound
+      model revisions. Per-session CPU arenas default off after real lifecycle
+      tests showed materially lower peak and retained RSS without changing
+      deterministic outputs or warm prompt latency; throughput deployments may
+      opt in after profiling.
+- [x] SAM/MobileSAM now support HWC embedded preprocessing and raw NCHW
+      preprocessing, official longest-side resize, low-resolution aspect-aware mask
+      postprocessing, and highest-IoU candidate selection.
+- [x] EfficientSAM-Ti/S has a distinct `efficient_sam` backend with dynamic
+      native RGB input, allocation limits, named graph contracts, embedding cache,
+      and authenticated-server support. The real merge gate uses Ti; S remains a
+      scheduled artifact-size variant of the same graph contract.
+- [x] Real EfficientSAM-Ti, MobileSAM, SAM 2 Tiny, and SAM 2.1 Tiny point/box
+      runs pass in landscape and portrait orientations, both in-process and through
+      authenticated HTTP. Reports, timings, RSS measurements, digests, and reviewed
+      images are retained under `validation-results/` locally.
+- [x] The hosted workflow defines Linux, Windows, and macOS real-model gates for
+      all four smallest redistributable pairs, with immutable downloads and retained
+      artifacts. The complete smallest-model matrix has passed on all three hosted
+      operating systems.
+- [x] Scheduled resource-qualified SAM ViT-B and EfficientSAM-S runs pass on
+      Linux, Windows, and macOS with stable repeated lifecycle output, retained
+      visual evidence, and bounded memory growth.
+- [x] SAM2 Small/Base+/Large passed the exact-head hosted in-process and
+      authenticated-server matrix on Linux, Windows, and macOS. All 36 annotated
+      image pairs were pixel-identical between transports, and normalized model
+      output matched across operating systems.
+- [x] SAM2.1 Tiny/Small/Base+/Large passed the exact-head hosted in-process and
+      authenticated-server matrix on Linux, Windows, and macOS. All 24 jobs and
+      96 retained images passed with identical inference-semantic prediction
+      sequences and decoded pixels across transports and operating systems.
+- [x] SAM2 and SAM2.1 encoder bundles were deterministically normalized so their
+      ONNX metadata no longer reports stale convolution output shapes or unused
+      initializers. Exact-result parity was proven before the pinned artifacts
+      were replaced. Tiny/Small/Base+/Large then passed direct and authenticated
+      server inference on Linux, Windows, and macOS with cross-platform decoded
+      pixel identity, visual review, and bounded post-warmup lifecycle growth.
+- [x] SAM3 has a separate licensed three-graph backend with bounded text,
+      point, box, and combined prompts; fixed-capacity contract validation;
+      independent graph/external hashes; bounded mask-IoU NMS and editable
+      multi-instance shapes; authenticated-server support; and explicit
+      multi-gigabyte unload reclamation. Real local in-process and authenticated
+      HTTP validation passes with retained visual reports. Its Linux, Windows,
+      and macOS job is scheduled/manual rather than a per-PR download.
+- [x] EfficientViT-SAM has a distinct `efficientvit_sam` ONNX backend with
+      checksum-gated deterministic decoder preparation, native multimask policy,
+      512/1024 encoder profiles, 1024-frame prompt scaling, point-only padding,
+      resource bounds, embedding cache, and authenticated-server support. L0
+      native-checkpoint parity and all five variants' local direct/server
+      landscape/portrait visual validation pass. License-complete, checksum-
+      enumerated bundles are published at immutable model revision
+      `e5848b5d032cc9b5f3a3af199325005c45e24b50`. Exact head
+      `489010c0ff58d557ceb660f9df33d25162c520f9` passed all 15 hosted variant/OS
+      jobs plus aggregate transport and cross-platform decoded-pixel identity
+      gates in runs `33347664285` and `33347671140`. All 120 retained renderings
+      are pixel-identical where required, and every unique landscape/portrait
+      point/box result passed visual review before PR #30 merged.
+- [x] RF-DETR Nano detection and instance segmentation use a standalone
+      `rfdetr_onnx` backend with strict static graph contracts, checksum-gated
+      ONNX loading, sparse class slots, bounded top-k outputs, editable instance
+      polygons, lifecycle reclamation, and authenticated-server support. Official
+      `rfdetr==1.9.4` exports are published with license and provenance records at
+      immutable model revision `dbe812f210253e50910eb26e465618e62b379111`.
+      Exact head `36adee77d92a89b523f8803cc31209e1d43c8835` passed all six
+      detection/segmentation jobs on Linux, Windows, and macOS plus aggregate
+      transport and cross-platform checks in run `33359361230`. Prediction
+      digests are exact across transports and operating systems; the only visual
+      drift is 2-3 macOS renderer pixels at channel delta 1, inside the explicit
+      16-pixel/delta-2 ceiling. All 24 retained outputs passed visual review,
+      steady-state RSS growth stayed bounded, and PR #34 merged as
+      `2fc72ad27348977ffcb88e4b5c267a7b960b888b`.
+- [x] D-FINE-N COCO detection uses a standalone `dfine_onnx` backend with the
+      official direct RGB stretch, embedded top-k outputs without NMS, static
+      tensor/resource bounds, CPU-only provider enforcement, lifecycle
+      reclamation, and authenticated-server support. The license-complete
+      COCO-only artifact is pinned at immutable model revision
+      `b71a0c8d3fc1219548e028afd8a192c6be1e574a`; every Objects365-derived
+      checkpoint is excluded. Exact head
+      `aba673c07aa2222bd9e86857d3edc7b904a9f131` passed direct/server jobs on
+      Linux, Windows, and macOS plus the aggregate gate in run `33365254766`.
+      Prediction digests are exact across transports and operating systems;
+      direct/server renderings are byte-identical per platform, and the only
+      cross-platform visual drift is two macOS source-decoder pixels at channel
+      delta 1. All unique landscape/portrait outputs passed visual review,
+      repeated inference stayed within the memory bound, and PR #36 merged as
+      `af2861fcbb8216002a1f799062bf521fcbb7caa4`.
+
+Every merge gate uses real ONNX graphs and real images, never mocked model
+outputs. It records graph and image SHA-256 values, cold/warm latency, peak RSS,
+output summaries, transport-sensitive consistency digests, inference-semantic
+prediction digests, and annotated images under a retained validation-results
+artifact. Prediction digests deliberately omit request IDs, source-file IDs, and
+timings so equal model output can be compared directly across operating systems.
+At least one landscape and one portrait result per family receive
+visual inspection. Linux, Windows, and macOS run the smallest redistributable
+artifact for each graph contract; multi-gigabyte variants run on resource-tagged
+workers with explicit memory evidence.
+
+| Order | Model capability                                                          | Distribution policy                                                      | Reason                                                            |
+| ----- | ------------------------------------------------------------------------- | ------------------------------------------------------------------------ | ----------------------------------------------------------------- |
+| 1     | ONNX models trained/exported by AnyLearning                               | Built in                                                                 | Close the train-to-prelabel loop with artifacts we already create |
+| 2     | User-supplied YOLOv5/v8/v9/v10/v11/v12/26 detection and segmentation ONNX | Generic decoder only; no external implementation code or weights bundled | Highest custom-model interoperability value                       |
+| 3     | YOLOX ONNX detection                                                      | Neutral ONNX adapter implemented; benchmark before offering weights      | Apache-2.0, CPU-friendly detector                                 |
+| 4     | SAM/MobileSAM compatibility, EfficientSAM, SAM2/2.1 validation, then SAM3 | Per-family policy in the audit above                                     | Close verified gaps in the maintained ONNX exporter we own        |
+| 5     | EfficientViT-SAM encoder/decoder ONNX                                     | Permissive optional/bundled weights after review                         | Faster promptable segmentation on CPU                             |
+| 6     | RF-DETR ONNX detection/instance segmentation                              | Reuse Apache-designated training artifacts                               | Accurate permissive family and existing AnyLearning investment    |
+| 7     | D-FINE ONNX detection                                                     | COCO-only weights confirmed Apache-2.0; exclude Objects365 lineage       | Official exporter; do not treat it as a segmentation model        |
+| 8     | ONNX detector-to-SAM refinement                                           | Workflow over existing adapters                                          | Converts detector boxes into editable high-quality masks          |
+| 9     | OWLv2 ONNX, then Grounding DINO ONNX                                      | Optional/server-first; Grounding DINO export remains gated               | Zero-shot prelabeling with a verified ONNX path first             |
+| 10    | OBB through a permissive RTMDet ONNX backend                              | Only after OBB editing and export are complete                           | Geometry must be correct before inference                         |
+| 11    | RapidOCR PP-OCR ONNX                                                      | Optional/server-first until workflow demand is validated                 | Permissive OCR without a new training framework                   |
 
 Ultralytics YOLO implementations and distributed weights remain rejected from
 the Apache-2.0 product under the current license policy. Supporting a documented
@@ -210,6 +392,10 @@ as optional examples or benchmark assets.
 
 - Code, weights, training data provenance, and redistribution terms are recorded
   separately.
+- Inference accepts ONNX only; native checkpoint conversion stays outside the
+  inference process and produces an integrity-addressed artifact.
+- Official exporter output is compared against the native reference on a fixed
+  corpus with recorded tolerances before its framework dependency is removed.
 - Configuration and tensor layouts are validated with actionable diagnostics.
 - Preprocessing and postprocessing use deterministic golden fixtures.
 - Malformed models, extreme shapes, external-data paths, and oversized outputs
@@ -340,17 +526,115 @@ non-loopback bind.
 ### P0: Inference platform
 
 I1. Define backend, session, cancellation, capabilities, and registry interfaces.
-I2. Adapt existing SAM/SAM2 behind the interfaces without output changes.
+I2. Correct and harden the existing SAM/MobileSAM adapter, preserve the verified
+SAM2 RGB behavior, and load all graph pairs through the shared safe ONNX path.
 I3. Add stable image identity and embedding cache keys including model revision.
-I4. Add deterministic SAM fixtures and load/infer/unload soak tests.
+I4. Add real SAM/MobileSAM/SAM2 visual parity and load/infer/unload soak tests,
+then add EfficientSAM and SAM3 according to the audited family gates above.
 I5. Implement a reusable YOLO decoder with tensor-layout diagnostics.
-I6. Add YOLOv5/v8/11 detection and v8/11 segmentation using ONNX.
+I6. Add YOLOv5/v8/v9/v10/v11/v12/26 detection and segmentation using raw and
+end-to-end ONNX output profiles.
 I7. Add confidence, IoU, class filters, dynamic shapes, and provider diagnostics.
 I8. Connect AnyLearning-trained artifacts to auto-labeling through the same
 contracts.
-I9. Add and benchmark permissive YOLOX, EfficientViT-SAM, RF-DETR, and D-FINE
-backends in that order, enabling only those that satisfy the model gate.
-I10. Verify custom exported models and packaged runtime behavior.
+
+- The desktop integration now consumes `anylearning.inference` through one
+  generic adapter instead of adding another per-model inference stack. The
+  picker is task-aware: promptable models expose point/box tools while
+  detection and instance-segmentation models expose a bounded one-click run
+  and return every matching editable result.
+- The bundled desktop catalog now uses immutable Hugging Face revisions and
+  exposes SAM 2/2.1, MobileSAM, EfficientViT-SAM L0, D-FINE N, and RF-DETR
+  Nano detection/instance segmentation. New bundles pin every installed
+  member; undeclared archive files are not extracted or executed.
+- Project-trained RF-DETR detection and instance-segmentation ONNX artifacts
+  are discovered beside bundled models. Picker discovery only stats the
+  graph; SHA-256 verification is deferred to model load, cached by exact file
+  identity, and rechecked by the inference backend before ONNX Runtime starts.
+- A fresh one-epoch RF-DETR Nano detection run now completes the real
+  train-to-label loop: GPU training, ONNX export, project-catalog discovery,
+  checksum verification, CPU ONNX Runtime load, and 25 editable predictions.
+  The exported graph's explicit no-object slot is mapped as background instead
+  of being mistaken for a missing class name. Inputs, outputs, visualization,
+  raw result, and graph SHA-256 are retained under
+  `/home/vietanhdev/Workspaces/anylearning-real-validation/all-project-types/288e496/trained-rfdetr-to-labeling`.
+- Automatic predictions are intersected with the project's label vocabulary
+  in the backend, retain protocol/model/revision/score/timing metadata in the
+  API result, and support multiple editable boxes or polygons in one run.
+  Shape scores, instance IDs, attributes, and model provenance survive the
+  canvas save/reload round trip so reruns and clearing do not duplicate or
+  discard inference identity.
+- The long-lived desktop process isolates project-trained model catalogs and
+  unloads removed/cross-project sessions. Inference, model swaps, prompts, and
+  output modes are serialized at the session boundary; rapid picker changes
+  retain only the latest queued model without cancelling a native load in an
+  unsafe state.
+- Real-model desktop-adapter and desktop-API evidence is retained under
+  `/home/vietanhdev/Workspaces/anylearning-real-validation/desktop-autolabeling-local`.
+  D-FINE, EfficientViT-SAM, RF-DETR detection, RF-DETR segmentation, clean
+  network install, and project-model discovery/load/inference passed visual
+  review without mocked model outputs. The same pinned D-FINE ONNX graph and
+  source image also passed on the physical Linux devbox and Apple Silicon
+  MacBook: each host passed all 77 focused desktop integration tests and
+  returned identical labels, scores, class IDs, and coordinates. The retained
+  cross-platform overlay passed visual review. The physical Windows desktop
+  gate remains required before this milestone merges; its SSH host was
+  reachable at the 2026-09-01 retry but rejected the configured public key and
+  non-interactive authentication, so hosted Windows results were not treated
+  as a replacement for that physical gate.
+- The complete 13-model desktop catalog passed two consecutive real ONNX runs
+  per model with identical decoded-result digests and visually reviewed
+  overlays. That sweep also closed two model-switch/download defects:
+  automatic models discard stale prompt geometry at every boundary, and
+  legacy bundle metadata cannot replace the catalog identity used by readiness
+  checks. Full-resolution evidence is retained in the same validation root
+  under `20260901-all-catalog-models`.
+- The desktop now imports user-selected single-file YOLOv5/v8/v9/v10/v11/v12/
+  26 and YOLOX ONNX graphs directly into the same `yolo_onnx` backend. Import
+  is an explicit native-file workflow: it bounds copies at 20 GiB, parses the
+  graph without execution, pins its SHA-256, requires an exact class order,
+  and does not load the model until the user confirms the import. Multi-file
+  external-data bundle import remains gated on copying and hashing every
+  referenced shard under I12; the runtime itself already supports those
+  verified bundles.
+- The complete native desktop workflow passed with the official 35 MB YOLOX-S
+  ONNX graph (`c5c2d13e...be998063`): native selection, bounded copy, graph
+  validation, persistent catalog registration, ONNX Runtime load, inference,
+  and three visually correct editable COCO boxes. The run also verifies that
+  no model loads implicitly and that Linux uses the compositor-owned frame
+  without duplicate controls or frameless hit regions. Full-resolution UI
+  screenshots and machine-readable results are retained under
+  `20260901-140748-ui-workflow` in the validation root above.
+- The same official YOLOX-S graph and source image passed on the physical
+  Apple Silicon MacBook and Linux devbox at revision `4eb370f`. Both decoded
+  bicycle, dog, and truck with visually aligned boxes; cross-platform
+  coordinate differences stayed below 0.5 px. Full overlays, HTML reports,
+  summaries, and raw decoded results are retained under
+  `/home/vietanhdev/Workspaces/anylearning-real-validation/cross-platform/4eb370f`.
+- Other trained exports are not mislabeled as usable: NanoDet, semantic
+  segmentation, Mask R-CNN, classification, handpose, and keypoint artifacts
+  enter this picker only after their ONNX graph contracts have a first-party
+  `anylearning.inference` adapter and real exporter-parity evidence.
+- RF-DETR native checkpoint previews now retry once on CPU when an advertised
+  accelerator fails during execution (for example, a driver-visible CUDA device
+  with missing NVRTC runtime components). The retry rebuilds the checkpoint on
+  CPU, releases failed accelerator state best-effort, and does not hide invalid
+  checkpoints or CPU failures. Real keypoint preview evidence is retained in
+  `keypoint-gpu-fallback.json` beside the all-project validation artifacts.
+
+I9. Benchmark the ONNX-only YOLOX adapter, close the audited SAMExporter matrix,
+then add EfficientViT-SAM, RF-DETR, and D-FINE backends in that order, enabling
+only those that satisfy the model and source gates in
+`docs/onnx_model_sources.md`.
+I10. Add OWLv2, Grounding DINO, RTMDet OBB, and RapidOCR only from validated ONNX
+artifacts; keep framework-native runtimes out of `anylearning.inference`.
+I11. Verify custom exported models and packaged runtime behavior.
+I12. Keep the shared external-data loader compatible with multi-gigabyte ONNX
+bundles: exact SHA-256 coverage, bounded relative references, no links, zero-copy
+read-only mappings, bundle-bound model revisions, and real-model validation on
+Linux, Windows, and macOS. The loader and official YOLOX-S single-file/external
+parity gate landed in PR #20; all three operating-system jobs and retained visual
+reports passed.
 
 ### P0: Workflow correctness and performance
 
@@ -364,6 +648,27 @@ W5. Add YOLO-box-to-SAM refinement.
 W6. Replace the growing training-log text field with appendable bounded storage
 and paged/tailing reads.
 W7. Complete import/export round trips for AnyLabeling, YOLO, COCO, and LabelMe.
+W8. Keep the real all-project native desktop matrix as a regression gate. The
+2026-09-01 baseline covers all eight supported project types, six image-labeling
+workspaces, every training/model screen, and real post-training inference for
+all six image types. It actively changes and restores image-classification and
+handpose classes, verifies the handpose landmark target remains synchronized,
+and records 37 full-resolution screenshots with no page errors or horizontal
+overflow. Results and reviewed contact sheets are retained under
+`/home/vietanhdev/Workspaces/anylearning-real-validation/all-project-types/288e496/ui-workflow-20260901-163516`.
+W9. Replace library-owned first-run backbone downloads with the managed artifact
+fetcher: immutable revision and SHA-256, bounded connect/read deadlines,
+retry/backoff, resumable staging where supported, atomic visibility, progress,
+cancellation, and an actionable offline error. A real semantic-segmentation
+first run stalled indefinitely at 93%, so an unbounded third-party downloader is
+not an acceptable fallback even when the final file checksum is correct.
+W10. Resolve the Python 3.13 RF-DETR/Lightning test-process teardown crash. All
+25 RF-DETR trainer assertions complete, and real application inference exits
+normally, but the local mixed native environment can segfault during
+`sentencepiece` interpreter finalization. Reproduce in a clean pinned
+environment, identify the incompatible native package pair, and make a clean
+process exit part of the supported-version gate rather than accepting a green
+pytest summary followed by exit 139.
 
 ### P1: Authenticated shared inference
 
@@ -398,7 +703,7 @@ gates.
 
 ## Existing backlog incorporated
 
-GitHub had no open issues at the 2026-08-30 audit. The following active items
+GitHub had no open issues at the 2026-09-01 re-audit. The following active items
 come from `docs/TODO.md` and are promoted into this plan:
 
 - Cross-platform packaged builds are not yet green on Windows and macOS.
@@ -413,6 +718,12 @@ come from `docs/TODO.md` and are promoted into this plan:
 - Training logs use one growing database field and become superlinear.
 - detectron2 CUDA extensions do not build against the current PyTorch version.
 - UI sizing, semantic colors, and spacing need a consistent system.
+- Classification and handpose labeling now bypass the drawable-shape loader and
+  auto-saver, handpose exposes the same image-level class controls as image
+  classification, relabeling atomically updates its landmark target, and dataset
+  dropdowns use stable label IDs rather than array positions. Keep this
+  classification-versus-canvas storage boundary covered as new project types are
+  added.
 - The default branch currently reports 60 open dependency alerts (including 23
   high severity, with duplicates between manifests and lockfiles). Website
   Next.js/PostCSS and frontend Effect alerts need immediate reachability review

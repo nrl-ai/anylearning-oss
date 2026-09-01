@@ -43,7 +43,9 @@ a loop this trainer does not own.
 from __future__ import annotations
 
 import contextlib
+import gc
 import json
+import logging
 import os
 import pathlib
 import shutil
@@ -65,6 +67,7 @@ from anylearning.training.trainers.base_trainer import BaseTrainer
 from anylearning.utils.resources import resource_path
 
 PACKAGE_NAME = "anylearning"
+logger = logging.getLogger(__name__)
 
 #: AnyLearning's subset index -> the folder name RF-DETR's loader looks for.
 #:
@@ -85,6 +88,52 @@ _PALETTE = (
     (255, 128, 0),
     (0, 255, 194),
 )
+
+
+def _predict_from_checkpoint(model_path: str, image: np.ndarray, threshold: float):
+    """Run RF-DETR on the preferred accelerator, retrying once on the CPU.
+
+    ``torch.cuda.is_available()`` proves that a driver sees the device, not that
+    every runtime component RF-DETR needs is installed.  In particular, its
+    first reduction may JIT-compile only after the checkpoint and image have
+    reached CUDA; a missing ``libnvrtc-builtins`` therefore used to turn the
+    Try Model action into a 500.  MPS can fail just as late on an unsupported
+    operator.  A CPU retry keeps inference available while preserving the fast
+    path on a healthy accelerator.
+
+    Only runtime execution failures are retried.  Invalid checkpoints and
+    configuration errors still fail immediately with their useful message.
+    """
+    from rfdetr import RFDETR
+
+    rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+    preferred_device = str(get_device())
+
+    def predict(device: str):
+        model = RFDETR.from_checkpoint(str(model_path), device=device)
+        return model.predict(rgb, threshold=threshold)
+
+    try:
+        return predict(preferred_device)
+    except RuntimeError as error:
+        if preferred_device == "cpu":
+            raise
+        failure = str(error).splitlines()[-1] if str(error) else type(error).__name__
+
+    logger.warning(
+        "RF-DETR inference failed on %s (%s); retrying on CPU",
+        preferred_device,
+        failure,
+    )
+    # Release the failed model before allocating a second copy.  These calls
+    # are best-effort because the accelerator runtime itself is what failed.
+    gc.collect()
+    with contextlib.suppress(Exception):
+        import torch
+
+        if preferred_device.startswith("cuda"):
+            torch.cuda.empty_cache()
+    return predict("cpu")
 
 
 def _loader_worker_count(
@@ -767,20 +816,13 @@ class RFDetrTrainer(BaseTrainer):
         reads everything it needs -- class names, colours, threshold -- from the
         config text stored on the model row.
         """
-        from rfdetr import RFDETR
-
         config = yaml.safe_load(config_data) or {}
         data = config.get("data", {})
         class_names = list(data.get("class_names") or [])
         class_colors = list(data.get("class_colors") or [])
         threshold = float(config.get("inference", {}).get("threshold", 0.35))
 
-        model = RFDETR.from_checkpoint(str(model_path), device=str(get_device()))
-        # predict() takes RGB; the router hands over BGR because that is what
-        # the rest of the application draws in.
-        detections = model.predict(
-            cv2.cvtColor(image, cv2.COLOR_BGR2RGB), threshold=threshold
-        )
+        detections = _predict_from_checkpoint(model_path, image, threshold)
 
         results = []
         visualisation = image.copy()
@@ -902,8 +944,6 @@ class RFDetrKeypointTrainer(RFDetrTrainer):
     @staticmethod
     def run_inference(config_data: str, model_path: str, image: np.ndarray):
         """Return named landmarks and draw the visible ones on the image."""
-        from rfdetr import RFDETR
-
         config = yaml.safe_load(config_data) or {}
         data = config.get("data", {})
         names = list(data.get("keypoint_names") or [])
@@ -919,10 +959,7 @@ class RFDetrKeypointTrainer(RFDetrTrainer):
         threshold = float(inference.get("threshold", 0.35))
         keypoint_threshold = float(inference.get("keypoint_threshold", 0.25))
 
-        model = RFDETR.from_checkpoint(str(model_path), device=str(get_device()))
-        predictions = model.predict(
-            cv2.cvtColor(image, cv2.COLOR_BGR2RGB), threshold=threshold
-        )
+        predictions = _predict_from_checkpoint(model_path, image, threshold)
 
         visualisation = image.copy()
         results = []

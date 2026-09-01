@@ -1,0 +1,334 @@
+# Headless inference
+
+`anylearning.inference` is the shared, UI-free inference boundary designed for
+the desktop application and authenticated inference server. Backends receive a
+decoded `uint8` RGB image and an `InferenceRequest`, and return versioned,
+identity-preserving editable shapes.
+
+Importing the package root does not import ONNX Runtime, OpenCV, PyTorch,
+FastAPI, or a desktop framework. Model runtimes are loaded only when a registry
+backend is selected.
+
+## Promptable ONNX segmentation
+
+`segment_anything` runs SAM, MobileSAM, SAM 2, and SAM 2.1 split ONNX pairs.
+The decoder graph selects the compatible SAM generation, or production
+manifests can pin `family` to `sam` or `sam2`. `efficient_sam` is a distinct
+backend for the official EfficientSAM-Ti/S split graph contract; it is not the
+similarly named EfficientViT-SAM architecture. `efficientvit_sam` is a third,
+separate backend for official EfficientViT-SAM L0/L1/L2/XL0/XL1 encoder and
+decoder pairs. All three accept point and box prompts, cache image embeddings
+by model revision and source identity, and select the highest-IoU candidate
+mask.
+
+EfficientViT-SAM keeps a 1024-pixel prompt/mask coordinate frame even when its
+L-series encoder input is 512 square. The backend applies the official RGB
+longest-side resize, normalization, bottom/right padding, point-only padding
+token, and resize/crop/resize mask flow. Official downloadable decoders discard
+the native three-candidate multimask result inside the graph. Run
+`scripts/prepare_efficientvit_sam_decoder.py` against an exact checksum-pinned
+official decoder to expose all four mask tokens deterministically; inference
+then chooses the highest-IoU candidate among native tokens 1–3. Static graph
+dimensions, prompt count, image pixels, intermediate mask elements, contours,
+shapes, and polygon points are bounded independently. Contour extraction uses a
+`1e-4` logit threshold for this backend so near-zero ONNX numerical noise does
+not change editable polygons across operating systems.
+
+Checksum-pinned, license-complete bundles for L0/L1/L2/XL0/XL1 are published
+in the [immutable AnyLearning model revision](https://huggingface.co/nrl-ai/anylearning-labeling-models/tree/e5848b5d032cc9b5f3a3af199325005c45e24b50).
+Each ZIP contains one encoder, the deterministically prepared decoder, the
+backend configuration, and the upstream Apache-2.0 license. The repository
+manifest records archive and member SHA-256 values; consumers must still verify
+those values before loading either graph.
+
+`sam3` is a separate three-graph backend for text-driven and geometrically
+guided segmentation. It accepts one bounded `TextPrompt`, plus point or box
+geometry up to the decoder graph's fixed exported capacity. Text-only requests
+discover matching instances; text plus geometry narrows the concept; a
+geometry-only request uses the graph's generic `visual` token. The image,
+language, and decoder graphs and both external tensor files have independent
+SHA-256 manifests and contribute to one triplet-bound model revision.
+
+SAM3 filtering stays bounded before full-resolution postprocessing: raw query
+count, NMS candidates, retained instances, mask elements, contours, shapes, and
+polygon points each have independent limits. Native mask-IoU NMS operates on
+bit-packed samples, and only retained masks are resized. The default one-item
+image-feature cache is intentionally small because a single ViT-H embedding is
+roughly 223 MB. On Linux/glibc, unload also returns released multi-gigabyte CPU
+allocations to the operating system; set
+`release_cpu_memory_on_unload=false` only after measuring a long-lived worker.
+
+SAM3 weights remain under Meta's separate SAM License. They are never bundled
+into the Apache-2.0 Python package; deployments must acquire them separately,
+retain the model license, and provide exact graph/external-data digests.
+
+Every graph is independently bounded and optionally digest-verified before
+ONNX Runtime sees it. Large pairs use separate
+`encoder_external_data_sha256` and `decoder_external_data_sha256` maps. SAM and
+MobileSAM apply the official longest-side resize and aspect-ratio-aware
+low-resolution mask crop; EfficientSAM preserves its dynamic native image size.
+All image boundaries are explicitly `uint8` RGB.
+
+SAM 2 and SAM 2.1 Tiny/Small/Base+/Large bundles are pinned in the
+[immutable AnyLearning model revision](https://huggingface.co/nrl-ai/anylearning-labeling-models/tree/90e36cbeec58d3f5273a101875e603c20d2cfed3).
+Their decoders are unchanged source exports. Their encoders pass through
+`scripts/prepare_sam2_encoder.py`, a checksum-gated ONNX-only transform that
+repairs exact stale shape metadata, removes only unreachable initializers, and
+requires strict type/shape inference before publishing. The manifest records
+both source and prepared graph digests plus every archive member's exact size
+and SHA-256; each bundle includes the upstream Apache-2.0 license.
+
+Promptable models disable ONNX Runtime's per-session CPU memory arena and memory
+pattern optimization by default. Memory patterns can preallocate one large
+activation buffer after observing the first run; disabling them keeps peak and
+repeated load/unload behavior bounded for large graphs on desktop and server
+hosts. A long-lived, throughput-oriented worker that has measured sufficient
+memory headroom may set `enable_cpu_mem_arena=true` and/or
+`enable_mem_pattern=true`; real-model validation should be rerun for that exact
+deployment profile.
+
+## RF-DETR ONNX detection and instance segmentation
+
+`rfdetr_onnx` consumes the official static ONNX export contract without
+importing RF-DETR, PyTorch, or a native checkpoint at inference time. Detection
+graphs expose normalized `dets` boxes and per-class `labels` logits;
+instance-segmentation graphs additionally expose raw `masks` logits. The
+backend reproduces the official float32, half-pixel bilinear resize, ImageNet
+normalization, sigmoid multiclass top-k selection, and mask resize flow.
+Thresholding and ranking use full runtime precision. Serialized scores are
+stabilized to four decimal places, box coordinates to three decimal places,
+and mask logits to three decimal places before contour extraction so equivalent
+CPU kernels produce consistent annotations across operating systems.
+
+Graph input/output names, float32 dtypes, static ranks and dimensions, opset,
+operator domains, query/class counts, mask elements, output elements, image
+pixels, detections, components, shapes, and polygon points are validated against
+independent bounds before or immediately after execution. Model and external
+tensor digests use the shared immutable ONNX loader. The authenticated server
+accepts the backend only through preconfigured startup manifests; clients
+cannot supply or alter graph paths.
+
+License-complete RF-DETR Nano detection and Segmentation Nano archives are in
+the [immutable AnyLearning model revision](https://huggingface.co/nrl-ai/anylearning-labeling-models/tree/dbe812f210253e50910eb26e465618e62b379111).
+They were exported with the official `rfdetr==1.9.4` API at source revision
+`9b009fa928d6218320439803d1da01869a85c072`, opset 17, static batch one, and
+float32 precision. Every archive pins its graph, provenance, checksum file, and
+verbatim Apache-2.0 license. The 91 exported COCO slots are sparse: use `null`
+for unused IDs, retain the official numeric IDs, and set
+`background_class_id` to `null`.
+
+## D-FINE ONNX detection
+
+`dfine_onnx` consumes the official static D-FINE deployment graph without
+importing D-FINE, PyTorch, torchvision, or a native checkpoint at inference
+time. The graph accepts float32 RGB `[1,3,H,W]` values divided by 255 plus the
+original int64 `[width,height]`, and returns contiguous class IDs, original-
+image `xyxy` boxes, and scores for the embedded top-k results. It intentionally
+uses the direct bilinear stretch from D-FINE's training and native inference
+path. The separate upstream ONNX letterbox example is not used because it
+changes the input distribution and has a documented accuracy regression. The
+official postprocessor does not apply NMS, so this backend does not add one.
+
+The backend validates static names, dtypes, dimensions, opset, standard
+operator domains, query/output counts, image pixels, class slots, and result
+counts before or immediately after execution. Scores and coordinates are
+stabilized to four and three decimal places respectively after full-precision
+thresholding and ordering. Only `CPUExecutionProvider` is currently accepted;
+accelerated providers remain disabled until their results pass the same real-
+model matrix.
+
+The [immutable COCO-N bundle](https://huggingface.co/nrl-ai/anylearning-labeling-models/tree/b71a0c8d3fc1219548e028afd8a192c6be1e574a)
+contains the static opset-16 graph, restricted conversion helper, native/ONNX
+parity report, checksums, provenance, and complete Apache-2.0 license. An
+official repository collaborator confirmed Apache-2.0 for COCO-only
+checkpoints. Objects365-derived weights are excluded from AnyLearning assets.
+
+## User-supplied YOLO ONNX models
+
+The `yolo_onnx` backend implements neutral output layouts for YOLOv5, YOLOv8,
+YOLOv9, YOLOv10, YOLO11, YOLO12, and YOLO26 detection and instance
+segmentation. It does not include model implementation code, configuration, or
+weights. The user is responsible for the rights to each supplied artifact.
+
+```python
+from anylearning.inference import InferenceRequest, get_default_registry
+
+config = {
+    "name": "local-detector",
+    "model_path": "/models/detector.onnx",
+    "sha256": "<verified 64-character digest>",
+    "task": "detection",
+    "format": "yolov8",
+    "class_names": ["person", "vehicle"],
+    "providers": ["CUDAExecutionProvider", "CPUExecutionProvider"],
+    "max_detections": 300,
+}
+
+session = get_default_registry().create_session("yolo_onnx", config)
+session.load()
+request = InferenceRequest(
+    request_id="request-1",
+    source_id="image-sha256:<decoded-pixel-digest>",
+    model_id=session.capabilities.model_id,
+    model_revision=session.capabilities.model_revision,
+    parameters={
+        "confidence": 0.35,
+        "iou": 0.45,
+        "class_names": ("person",),
+    },
+)
+result = session.predict(request, rgb_image)
+session.unload()
+```
+
+Models whose tensors are stored outside the graph add an exact digest map. Each
+key is the relative `location` recorded by the graph; the map must cover every
+referenced file and may not contain extras:
+
+```python
+config.update(
+    {
+        "model_path": "/models/large-detector/model.onnx",
+        "sha256": "<graph SHA-256>",
+        "external_data_sha256": {
+            "weights-0001.bin": "<file SHA-256>",
+            "weights-0002.bin": "<file SHA-256>",
+        },
+        "max_external_data_bytes": 100 * 1024**3,
+    }
+)
+```
+
+External files are read-only memory mapped and supplied to ONNX Runtime through
+its external-initializer buffer API. This avoids a second multi-gigabyte disk
+copy and avoids reading the complete bundle into Python memory. The graph and
+all external digests contribute to the model revision, so embedding and result
+caches cannot alias two bundles with different tensor data.
+
+`format="auto"` accepts a raw tensor only when its channel count and orientation
+identify one layout unambiguously. For actionable errors and stable deployment,
+production configuration should set the exact model family explicitly. The
+supported layouts are:
+
+- YOLOv5: `[x_center, y_center, width, height, objectness, classes..., masks...]`
+- YOLOv8/v9/v10/v11/v12/26 raw: `[x_center, y_center, width, height, classes..., masks...]`
+- YOLOv10/26 end-to-end: `[x1, y1, x2, y2, confidence, class_id, masks...]`
+- Either `batch × predictions × channels` or `batch × channels × predictions`
+- Segmentation prototypes: `batch × mask_channels × height × width`
+
+YOLOv10 and YOLO26 default to the end-to-end profile, whose graph has already
+selected detections. Set `end_to_end=false` only for an explicitly verified raw
+export. Conversely, set `end_to_end=true` for another family exported with the
+same end-to-end contract. Request-level IoU and class-agnostic NMS settings are
+ignored for end-to-end outputs and reported in result warnings.
+
+The `yolox` format implements the official P5 grid/stride ONNX profile and has
+an opt-in P6 mode. It performs the profile's top-left padding, RGB-contract to
+BGR conversion, unnormalized byte-range input, objectness/class composition,
+and bounded host NMS without importing its native framework. Its default NMS is
+class-agnostic, matching the official ONNX Runtime reference; requests may set
+`agnostic_nms=false` explicitly when preserving overlapping cross-class boxes is
+more important than reference parity.
+
+## Detector-to-SAM refinement
+
+`detector_sam` composes one registered detection backend with one registered
+promptable-segmentation backend. It runs the detector once, clamps and optionally
+pads each returned rectangle, then decodes one independent box prompt per
+object. The same source identity is used for every prompt, so the segmenter's
+bounded embedding cache encodes the image once and reuses that embedding for
+the remaining objects. This follows the official SAM predictor's
+[`set_image` then repeated prompt prediction](https://github.com/facebookresearch/segment-anything/blob/main/segment_anything/predictor.py)
+contract without copying external implementation code.
+
+```python
+config = {
+    "name": "detector-to-editable-masks",
+    "detector": {
+        "backend": "yolo_onnx",
+        "config": {
+            "name": "detector",
+            "model_path": "/models/detector.onnx",
+            "sha256": "<detector SHA-256>",
+            "task": "detection",
+            "format": "yolov8",
+            "class_names": ["person", "vehicle"],
+        },
+    },
+    "segmenter": {
+        "backend": "segment_anything",
+        "config": {
+            "name": "segmenter",
+            "encoder_model_path": "/models/sam-encoder.onnx",
+            "decoder_model_path": "/models/sam-decoder.onnx",
+            "encoder_sha256": "<encoder SHA-256>",
+            "decoder_sha256": "<decoder SHA-256>",
+            "family": "sam",
+        },
+    },
+    "max_refinements": 100,
+    "max_shapes": 1000,
+    "max_total_points": 100000,
+    "box_padding_pixels": 0,
+    "box_prompt_grid_pixels": 4,
+    "output_score_decimals": 3,
+    "fallback_to_box": false,
+}
+session = get_default_registry().create_session("detector_sam", config)
+```
+
+Requests do not accept caller-supplied prompts. Confidence, IoU, and class
+filters are forwarded only to the detector; results retain the detector label,
+score, class attributes, and a stable group ID for disconnected mask polygons.
+Detector selection and NMS remain at full model precision. After selection,
+box prompts expand outward to the configured pixel grid and serialized scores
+are rounded to the configured decimals. This prevents harmless CPU-kernel
+drift from changing prompts or wire results without shrinking a detected box or
+moving a threshold decision.
+Image pixels, detector refinements, output shapes, total polygon points, nested
+configuration depth, warnings, and child model artifacts are independently
+bounded. Cancellation and serialized lifecycle control cover both child
+sessions, and partial load failures unload both children before retry.
+
+## Real-model validation reports
+
+`scripts/validate_real_model.py` runs a manifest-defined local model and image
+at least twice through the public inference contract. It fails expectations or
+non-repeatable shapes, and writes `summary.json`, every contract result,
+per-stage timings, model/image SHA-256 values, annotated PNGs, and a local HTML
+visual report beneath `validation-results/`. Composite pipelines log every
+child graph and its component provenance. External bundles and SAM3 graph
+triplets additionally log each graph role and every tensor file's relative
+location, bytes, and verified digest. See
+`tests/fixtures/inference/real_models/README.md` for the manifest and opt-in
+pytest workflow. Weights remain outside the repository.
+
+Dynamic image inputs require an explicit bounded `input_size`. Multiple
+rank-2/rank-3 prediction outputs or rank-4 prototype outputs require
+`prediction_output` or `prototype_output` by name.
+
+Outputs must have static dimensions by default so their allocation can be
+bounded before execution. `allow_dynamic_outputs=true` exists for trusted local
+artifacts only; a future remote server must additionally isolate that execution
+in a deadline- and memory-bounded worker.
+
+## Resource and artifact safety
+
+The backend validates configuration and model size before parsing, verifies a
+configured SHA-256, and binds graph parsing plus runtime loading to the same
+opened artifact. On platforms without stable descriptor paths, it uses a private
+temporary snapshot and removes it immediately after session construction. It
+accepts external-data tensor references only with exact SHA-256 coverage and
+ONNX Runtime 1.29 or newer. Relative-path containment, metadata whitelisting,
+offset/length bounds, regular-file checks, symlink/hardlink rejection, secure
+post-open identity checks, and a total byte/file ceiling are enforced before
+runtime construction. Graph messages, nesting, inputs, outputs, nodes, decoded
+image pixels, runtime output elements, box-coordinate magnitude, mask polygon
+complexity, raw predictions, pre-NMS candidates, and final detections are also
+bounded. Provider fallback is explicit in result warnings and session
+capabilities.
+
+ONNX execution is cooperatively cancellable before and after the runtime call.
+An in-progress provider call is not preemptible in-process; the authenticated
+server therefore applies queue, image, result, concurrency, and deadline bounds
+around its per-model session worker.

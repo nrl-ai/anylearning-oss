@@ -19,6 +19,11 @@ export type StaticData = {
 
 export abstract class Shape {
     id: string
+    /** Neutral inference metadata retained across edit/save/reload. */
+    score?: number | null
+    group_id?: string | number | null
+    attributes?: Record<string, string | number | boolean | null>
+    auto_labeling_model?: string
     getCenterWithOffset = (): Point => ({ X: 0, Y: 0 })
     abstract type: string
     abstract labelPosition(): ArrayXY
@@ -47,6 +52,10 @@ export abstract class Shape {
         obj.id = this.id
         if (this.color) obj.color = this.color
         obj.phi = Math.round(this.phi)
+        obj.score = this.score
+        obj.group_id = this.group_id
+        obj.attributes = this.attributes ? { ...this.attributes } : undefined
+        obj.auto_labeling_model = this.auto_labeling_model
         obj.getCenterWithOffset = () => ({
             X: center[0] + svgBox.x,
             Y: center[1] + svgBox.y,

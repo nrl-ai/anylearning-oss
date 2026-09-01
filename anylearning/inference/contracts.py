@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import Annotated, Self
+from typing import Annotated, Literal, Self
 
 from pydantic import (
     BaseModel,
@@ -30,6 +30,9 @@ MetadataText = Annotated[str, Field(max_length=2048)]
 MetadataInteger = Annotated[int, Field(ge=-(2**63), le=2**63 - 1)]
 MetadataFloat = Annotated[float, Field(allow_inf_nan=False)]
 MetadataValue = MetadataText | bool | MetadataInteger | MetadataFloat | None
+ParameterTextList = Annotated[tuple[MetadataText, ...], Field(max_length=256)]
+ParameterIntegerList = Annotated[tuple[MetadataInteger, ...], Field(max_length=256)]
+ParameterValue = MetadataValue | ParameterTextList | ParameterIntegerList
 WarningText = Annotated[str, Field(max_length=2048)]
 
 
@@ -38,6 +41,52 @@ class Point(ContractModel):
 
     x: FiniteCoordinate
     y: FiniteCoordinate
+
+
+class PointPrompt(ContractModel):
+    """A positive or negative point used by an interactive model."""
+
+    type: Literal["point"] = "point"
+    point: Point
+    foreground: bool = True
+
+
+class BoxPrompt(ContractModel):
+    """An axis-aligned box used to constrain an interactive model."""
+
+    type: Literal["box"] = "box"
+    top_left: Point
+    bottom_right: Point
+
+    @model_validator(mode="after")
+    def validate_ordered_corners(self) -> Self:
+        if (
+            self.bottom_right.x <= self.top_left.x
+            or self.bottom_right.y <= self.top_left.y
+        ):
+            raise ValueError("Box prompt corners must have positive width and height")
+        return self
+
+
+class TextPrompt(ContractModel):
+    """A bounded natural-language concept used by open-vocabulary models."""
+
+    type: Literal["text"] = "text"
+    text: str = Field(min_length=1, max_length=1024)
+
+    @field_validator("text")
+    @classmethod
+    def validate_visible_text(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("Text prompts must contain non-whitespace characters")
+        if "\x00" in value:
+            raise ValueError("Text prompts must not contain NUL characters")
+        return value
+
+
+InferencePrompt = Annotated[
+    PointPrompt | BoxPrompt | TextPrompt, Field(discriminator="type")
+]
 
 
 class ShapeType(str, Enum):
@@ -129,6 +178,26 @@ class ModelCapabilities(ContractModel):
                 "max_batch_size must be 1 when batch inference is unsupported"
             )
         return self
+
+
+class InferenceRequest(ContractModel):
+    """A model-neutral prediction request, excluding the image transport."""
+
+    protocol_version: str = CURRENT_PROTOCOL_VERSION
+    request_id: str = Field(min_length=1, max_length=512)
+    source_id: str = Field(min_length=1, max_length=2048)
+    model_id: str = Field(min_length=1, max_length=512)
+    model_revision: str = Field(min_length=1, max_length=512)
+    prompts: tuple[InferencePrompt, ...] = Field(default=(), max_length=10_000)
+    output_shape: ShapeType | None = None
+    parameters: dict[MetadataKey, ParameterValue] = Field(
+        default_factory=dict, max_length=128
+    )
+
+    @field_validator("protocol_version")
+    @classmethod
+    def validate_protocol_version(cls, value: str) -> str:
+        return _validate_protocol_version(value)
 
 
 class InferenceResult(ContractModel):

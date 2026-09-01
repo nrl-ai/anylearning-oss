@@ -22,44 +22,68 @@ into Apache-2.0 source.
 | Component                         | Code       | Weights                      | Use for                                                         |
 | --------------------------------- | ---------- | ---------------------------- | --------------------------------------------------------------- |
 | RF-DETR (Nano/Small/Medium/Large) | Apache 2.0 | Apache 2.0                   | detection, instance seg, keypoint _(Nano/Small shipping today)_ |
-| D-FINE                            | Apache 2.0 | Apache 2.0                   | detection                                                       |
+| D-FINE COCO-only checkpoints      | Apache 2.0 | Apache 2.0                   | detection; Objects365-derived variants are excluded             |
 | YOLOX                             | Apache 2.0 | Apache 2.0                   | detection (CPU-friendly)                                        |
 | `timm`                            | Apache 2.0 | per-model, mostly Apache 2.0 | classification backbones                                        |
 | `segmentation_models_pytorch`     | MIT        | per-encoder                  | semantic segmentation                                           |
 | Anomalib                          | Apache 2.0 | n/a (trains from your data)  | anomaly detection                                               |
 | RTMPose / MMPose, MMRotate        | Apache 2.0 | Apache 2.0                   | pose, oriented boxes                                            |
-| RapidOCR (PP-OCR ONNX)            | Apache 2.0 | Apache 2.0                   | OCR                                                             |
 | ByteTrack                         | MIT        | n/a                          | tracking                                                        |
 | Grounding DINO, OWLv2             | Apache 2.0 | Apache 2.0                   | zero-shot pre-labeling                                          |
+| EfficientSAM-Ti / S               | Apache 2.0 | Apache 2.0                   | lightweight promptable segmentation                             |
 | EfficientViT-SAM                  | Apache 2.0 | Apache 2.0                   | fast CPU promptable segmentation                                |
+| RTMDet through MMDetection        | Apache 2.0 | Apache 2.0                   | detection and oriented boxes                                    |
 | Florence-2                        | MIT        | MIT                          | captioning / multi-task                                         |
 | MobileSAM, SAM 2                  | Apache 2.0 | Apache 2.0                   | promptable segmentation _(shipping today)_                      |
 | MediaPipe                         | Apache 2.0 | Apache 2.0                   | hand/pose landmarks _(shipping today)_                          |
 | detectron2                        | Apache 2.0 | Apache 2.0                   | instance seg _(shipping today)_                                 |
+
+D-FINE decision (2026-08-31): an official repository collaborator
+[confirmed](https://github.com/Peterande/D-FINE/issues/357#issuecomment-5344034723)
+that `*_coco.pth` checkpoints are Apache-2.0. The same response states that
+`*_obj365.pth` and `*_obj2coco.pth` checkpoints are not commercially cleared
+by that grant, so only COCO-only artifacts qualify for Tier A.
 
 ## Tier B — allowed only with sign-off
 
 Additional terms travel with distributions and bind downstream users. These
 require a written maintainer decision recorded in `LICENSES.md` before merge.
 
-| Component                        | License             | The catch                                                                                                                                                                                    |
-| -------------------------------- | ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **SAM 3 / SAM 3.1**              | Meta SAM License    | The SAM License must travel with the weights and adds field-of-use restrictions that Apache-2.0 does not.                                                                                    |
-| **DINOv3** backbones             | Meta DINOv3 License | Commercial use allowed, but downloads are gated behind a Meta approval form requiring personal data. Mirroring the weights inside our installer needs a licensing read before we rely on it. |
-| **RF-DETR XL / 2XL** (detection) | Roboflow PML 1.0    | Not Apache, and PML 1.0 requires each user to hold a Roboflow platform plan. The repository depends only on the Apache-2.0 `rfdetr` package and not `rfdetr_plus`.                           |
+| Component                        | License             | The catch                                                                                                                                                                                                                           |
+| -------------------------------- | ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **SAM 3 / SAM 3.1**              | Meta SAM License    | The SAM License must travel with the weights and adds field-of-use restrictions that Apache-2.0 does not.                                                                                                                           |
+| **DINOv3** backbones             | Meta DINOv3 License | Commercial use allowed, but downloads are gated behind a Meta approval form requiring personal data. Mirroring the weights inside our installer needs a licensing read before we rely on it.                                        |
+| **RF-DETR XL / 2XL** (detection) | Roboflow PML 1.0    | Not Apache, and PML 1.0 requires each user to hold a Roboflow platform plan. The repository depends only on the Apache-2.0 `rfdetr` package and not `rfdetr_plus`.                                                                  |
+| **RapidOCR PP-OCR weights**      | Unconfirmed         | RapidOCR's engineering code is Apache-2.0, but its README identifies Baidu as the model copyright holder. Official ONNX URLs and hashes are reusable as download metadata; do not mirror the weights until their grant is recorded. |
 
-## Tier C — rejected
+Maintainer decision for SAM3 (2026-08-31): the ONNX runtime adapter is approved,
+and a model bundle may be offered as an explicit optional/server-first download.
+It must not enter the default package or installer; every mirror must identify
+the artifact as `Meta SAM License`, include the complete license beside the
+weights, preserve immutable source/export revisions and SHA-256 values, and
+surface the separate terms before use. This approval does not relicense the
+weights as Apache-2.0.
 
-Do not integrate. Do not add as an optional extra. Do not add "just for benchmarking" —
-a benchmark script in the repo is still distribution.
+## Tier C — rejected for bundling or runtime dependencies
 
-| Component                                                                | License                     | Why rejected                                                                                                                                                                        |
-| ------------------------------------------------------------------------ | --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Ultralytics YOLO26 / YOLO11 / YOLOv12 / YOLOv8                           | AGPL-3.0 or paid enterprise | AGPL terms are incompatible with distributing the combined work as Apache-2.0.                                                                                                      |
-| YOLO-World                                                               | GPL-3.0                     | Copyleft, same problem.                                                                                                                                                             |
-| EdgeSAM                                                                  | S-Lab License 1.0           | **Non-commercial only.** "Redistribution and use for non-commercial purpose… are permitted". Verified directly against the repository's LICENSE file. Use EfficientViT-SAM instead. |
-| SegFormer (original NVIDIA weights)                                      | NVIDIA Source Code License  | Non-commercial. The _architecture_ is fine to reimplement; those checkpoints are not.                                                                                               |
-| Anything with a "research only" / "non-commercial" / "evaluation" clause | —                           | No exceptions without legal sign-off.                                                                                                                                               |
+Do not copy or vendor these implementations, depend on them at runtime, bundle
+their configuration, or distribute their weights. Do not add them as optional
+extras or "just for benchmarking". A license-neutral adapter for a documented
+public ONNX tensor contract is allowed when users supply their own artifact and
+accept responsibility for its license; this does not make the implementation or
+weights eligible for distribution by AnyLearning.
+
+| Component                                                                | License                     | Why rejected                                                                                                                                                                                                      |
+| ------------------------------------------------------------------------ | --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Ultralytics YOLO26 / YOLO11 / YOLOv8                                     | AGPL-3.0 or paid enterprise | AGPL terms are incompatible with distributing the combined work as Apache-2.0.                                                                                                                                    |
+| YOLOv12 official implementation                                          | AGPL-3.0                    | Copyleft implementation and weights are not bundled; only its user-supplied ONNX tensor contract is supported.                                                                                                    |
+| YOLOv10 official implementation                                          | AGPL-3.0                    | Copyleft implementation and weights are not bundled; only its user-supplied ONNX tensor contract is supported.                                                                                                    |
+| YOLOv9 official implementation                                           | GPL-3.0                     | Copyleft implementation and weights are not bundled; only its user-supplied ONNX tensor contract is supported.                                                                                                    |
+| YOLO-World                                                               | GPL-3.0                     | Copyleft, same problem.                                                                                                                                                                                           |
+| EdgeSAM                                                                  | S-Lab License 1.0           | **Non-commercial only.** "Redistribution and use for non-commercial purpose… are permitted". Verified directly against the repository's LICENSE file. Use EfficientViT-SAM instead.                               |
+| D-FINE Objects365 / Objects365+COCO checkpoints                          | Objects365 lineage          | The D-FINE maintainers explicitly state that their Apache-2.0 grant does not commercially clear `_obj365` or `_obj2coco` weights. Only the separately confirmed COCO-only checkpoints may be mirrored or offered. |
+| SegFormer (original NVIDIA weights)                                      | NVIDIA Source Code License  | Non-commercial. The _architecture_ is fine to reimplement; those checkpoints are not.                                                                                                                             |
+| Anything with a "research only" / "non-commercial" / "evaluation" clause | —                           | No exceptions without legal sign-off.                                                                                                                                                                             |
 
 ## Known grey area: COCO-pretrained weights
 

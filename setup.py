@@ -45,10 +45,17 @@ def get_install_requires():
         "tqdm>=4.70,<5",
         # Direct imports that were previously only satisfied transitively.
         "cryptography>=50,<60",
+        # Public server password verification. Argon2id is memory-hard and the
+        # server additionally bounds concurrent verification and login rates.
+        "argon2-cffi>=25.1,<26",
         "psutil>=7.2,<8",
         "PyYAML>=6.0.3,<7",
         "numpy>=2,<3",
         "Pillow>=12,<13",
+        # SAM3 text prompts use the small, framework-free CLIP BPE tokenizer.
+        # Both imports stay behind the lazy SAM3 backend boundary.
+        "ftfy>=6.3,<7",
+        "regex>=2025.11,<2027",
         # mediapipe depends on opencv-contrib-python, so both variants can end up
         # installed; keep the floor low enough that they can agree on a build.
         "opencv-python-headless>=4.11,<6",
@@ -73,7 +80,10 @@ def get_install_requires():
         "catboost>=1.2.8,<2",
         "scikit-learn>=1.8,<2",
         # --- ML runtime (pinned, see docstring) -------------------------
-        "onnxruntime>=1.28,<2",
+        # 1.29 adds zero-copy buffers for external-data files. The inference
+        # boundary uses those buffers to load multi-GB ONNX bundles without a
+        # second disk copy or reading the full tensor payload into Python RAM.
+        "onnxruntime>=1.29,<2",
         "torch==2.11.0",
         "torchvision==0.26.0",
         # Required by torch.onnx.export: from torch 2.6 the default exporter is
@@ -181,12 +191,14 @@ setup(
             "configs/*/*.yml",
             "models/*",
             "models/*/*",
+            "inference/assets/*",
         ]
     },
     include_package_data=True,
     entry_points={
         "console_scripts": [
             "anylearning=anylearning.app:main",
+            "anylearning-server=anylearning.server.cli:main",
         ],
     },
 )

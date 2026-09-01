@@ -1,17 +1,24 @@
 import { AiOutlineWarning } from "react-icons/ai";
 
-# Auto-label images with SAM 2
+# Auto-label images with local ONNX models
 
-Auto-labeling turns a point or box prompt into a segmentation mask. It is most
-useful as a fast first pass: prompt the object, inspect the preview, refine its
-edges, then assign a class and save. The three short recordings below use the
-current AnyLearning interface and a real construction-safety photograph.
+Auto-labeling has two workflows. **Interactive segmentation** turns point and
+box prompts into a mask. **Automatic models** find every supported object in an
+image in one run and return editable boxes or polygons. Both execute locally
+through the same bounded ONNX inference core. Predictions remain editable and
+follow the workspace's normal manual-save or auto-save setting.
+
+The three short recordings below show the interactive workflow with a real
+construction-safety photograph. Automatic detection and instance segmentation
+use the same model picker and annotation canvas.
 
 ## Step 1: Turn on AI and choose a model
 
-Open an **Object Detection** or **Image Segmentation** project, start labelling,
-then select the brain-shaped **AI** tool in the left toolbar. Choose a model in
-the new toolbar at the top of the canvas.
+Open an **Object Detection**, **Image Segmentation**, or **Instance
+Segmentation** project, start labelling, then select the brain-shaped **AI**
+tool in the left toolbar. The task-aware picker shows only compatible models
+and separates them into project models, interactive segmentation, object
+detection, and instance segmentation.
 
 <video
   aria-label="Turning on auto-labeling and choosing SAM 2 Hiera-Small"
@@ -25,16 +32,21 @@ the new toolbar at the top of the canvas.
   Your browser does not support embedded MP4 video.
 </video>
 
-- **SAM 2 Hiera-Small** is the recommended default for the cleanest masks.
-- **SAM 2 Hiera-Tiny** is a faster SAM 2 option on slower CPUs.
-- **MobileSAM** is the fastest and smallest choice when responsiveness matters
-  more than boundary detail.
-- **SAM 2 Hiera-Base+** and **Hiera-Large** are the slowest, largest options.
+The built-in catalog contains 13 immutable model entries:
 
-MobileSAM, Hiera-Tiny and Hiera-Small ship with AnyLearning and work offline.
-Base+ and Large are downloaded the first time you select them.
+- **Interactive segmentation:** MobileSAM; SAM 2 Tiny, Small, Base+, and Large;
+  SAM 2.1 Tiny, Small, Base+, and Large; and EfficientViT-SAM L0.
+- **Automatic object detection:** D-FINE N and RF-DETR Nano, using their COCO
+  label spaces.
+- **Automatic instance segmentation:** RF-DETR Segmentation Nano, producing
+  editable polygons or rectangles.
 
-## Step 2: Prompt and refine the object
+MobileSAM and SAM 2 Tiny/Small ship with the installer. Other entries show
+their download size in the picker and are fetched only when selected. Every
+archive and declared member is verified before ONNX Runtime loads it. A model
+already stored locally is marked **Ready**.
+
+## Step 2A: Prompt and refine an object
 
 Start with **Include box** when the object has a clear extent. Drag a box around
 the object, then use **Include point** on a missing region or **Exclude point**
@@ -63,16 +75,30 @@ The prompt controls also have keyboard shortcuts:
 - **Finish object**: `F`
 
 Image Segmentation projects can keep the generated **Polygon** or reduce it to
-a **Rectangle**. Object Detection projects always produce a rectangle because
-their annotations and trained models use bounding boxes. **Clear** removes the
-current prompts and preview without deleting labels you already finished.
+a **Rectangle**. Instance Segmentation projects can do the same. Object
+Detection projects always produce a rectangle because their annotations and
+trained models use bounding boxes. **Clear** removes the current prompts and
+preview without deleting labels you already finished.
+
+## Step 2B: Run an automatic model
+
+Choose an automatic detector or segmenter, wait for **Ready**, then select
+**Run model**. Predictions are added as editable proposals. **Clear
+predictions** removes proposals from that model without deleting manual shapes
+or accepted predictions from another model.
+
+The catalog detectors use COCO class names and request only classes whose names
+exist exactly in the project label list. If none match, the app asks you to add
+a supported label or choose an interactive model. This prevents a prediction
+from being silently assigned to the wrong project class.
 
 ## Step 3: Assign a class and save
 
-When the preview follows the object, select **Finish object**, choose its class,
-and save the annotations. The generated polygon or detection box then uses the
-class color and name like a manually drawn shape. Inspect it before moving to
-the next image; auto-labeling accelerates annotation, but it does not replace
+For an interactive preview, select **Finish object**, choose its class, and save
+the annotations. Automatic predictions already carry their matching class, but
+remain editable before saving. Generated polygons and boxes use the same class
+color and name as manually drawn shapes. Inspect every proposal before moving
+to the next image; auto-labeling accelerates annotation, but it does not replace
 review.
 
 <video
@@ -87,13 +113,36 @@ review.
   Your browser does not support embedded MP4 video.
 </video>
 
+## Reuse a model trained in the project
+
+Successful RF-DETR detection and instance-segmentation training runs export an
+ONNX graph. AnyLearning verifies that artifact and lists it under **Project
+models** for the same project, preserving the project's class order. Select it
+and use **Run model** like any other automatic model; no manual import or class
+remapping is required.
+
+## Import a YOLO-family ONNX model
+
+In the desktop app, choose **Import ONNX** beside the model picker. Import
+accepts a single-file detection or instance-segmentation graph up to 20 GiB and
+supports YOLOv5, YOLOv8, YOLOv9, YOLOv10, YOLO11, YOLO12, YOLO26, and YOLOX
+detection profiles. You can use the project labels, the COCO 80 order, or enter
+an explicit class list in the model's exact output order.
+
+Use **Auto-detect** unless you know the exporter profile. Set an input size only
+for a dynamic-input graph. External-data ONNX bundles are not imported through
+this dialog yet. The selected file is copied into AnyLearning's managed data
+directory and always runs through the same bounded inference core as catalog
+models.
+
 ## First-run behavior
 
 <div className="my-4 border-l-4 border-yellow-400 bg-yellow-50 p-4 dark:bg-yellow-900/30">
   <AiOutlineWarning className="mb-1 inline text-yellow-600 dark:text-yellow-400" /> The first
-  prediction on an image is slower because the model computes an image embedding. Later prompts on
-  that image reuse it and normally respond much faster. Wait for the status line to say the model is
-  ready before drawing your first prompt.
+  prompted prediction on an image is slower because the model computes an image embedding. Later
+  prompts on that image reuse it and normally respond much faster. Automatic models run a complete
+  inference each time. Wait for the status line to say the model is ready before prompting or
+  running it.
 </div>
 
 The demonstration image comes from the Safety Helmet and Reflective Jacket

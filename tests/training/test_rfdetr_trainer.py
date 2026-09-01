@@ -483,6 +483,66 @@ def test_a_segmentation_run_reports_its_mask_metric():
     assert writer.metrics[0]["Validation Mask mAP"] == 0.3
 
 
+def test_inference_retries_on_cpu_when_the_accelerator_runtime_fails(monkeypatch):
+    import rfdetr
+
+    from anylearning.training.trainers import rfdetr_trainer
+
+    calls = []
+    expected = object()
+
+    class FakeModel:
+        def __init__(self, device):
+            self.device = device
+
+        def predict(self, image, threshold):
+            calls.append(("predict", self.device, image.shape, threshold))
+            if self.device == "cuda":
+                raise RuntimeError("failed to open libnvrtc-builtins.so")
+            return expected
+
+    def load(_path, *, device):
+        calls.append(("load", device))
+        return FakeModel(device)
+
+    monkeypatch.setattr(rfdetr.RFDETR, "from_checkpoint", staticmethod(load))
+    monkeypatch.setattr(rfdetr_trainer, "get_device", lambda: "cuda")
+
+    result = rfdetr_trainer._predict_from_checkpoint(
+        "model.pth", np.zeros((16, 24, 3), dtype=np.uint8), 0.35
+    )
+
+    assert result is expected
+    assert calls == [
+        ("load", "cuda"),
+        ("predict", "cuda", (16, 24, 3), 0.35),
+        ("load", "cpu"),
+        ("predict", "cpu", (16, 24, 3), 0.35),
+    ]
+
+
+def test_inference_does_not_hide_a_cpu_runtime_failure(monkeypatch):
+    import rfdetr
+
+    from anylearning.training.trainers import rfdetr_trainer
+
+    class BrokenModel:
+        def predict(self, image, threshold):
+            raise RuntimeError("bad graph")
+
+    monkeypatch.setattr(
+        rfdetr.RFDETR,
+        "from_checkpoint",
+        staticmethod(lambda *args, **kwargs: BrokenModel()),
+    )
+    monkeypatch.setattr(rfdetr_trainer, "get_device", lambda: "cpu")
+
+    with pytest.raises(RuntimeError, match="bad graph"):
+        rfdetr_trainer._predict_from_checkpoint(
+            "model.pth", np.zeros((16, 24, 3), dtype=np.uint8), 0.35
+        )
+
+
 def test_training_output_goes_to_a_file_rather_than_to_stdout(
     project, monkeypatch, capsys
 ):

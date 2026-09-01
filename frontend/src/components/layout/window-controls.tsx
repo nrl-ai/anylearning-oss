@@ -65,8 +65,9 @@ function ControlButton({
 export function WindowControls({ className }: { className?: string }) {
     const platform = useWindowChrome((state) => state.platform)
     const maximized = useWindowChrome((state) => state.maximized)
+    const nativeFrame = useWindowChrome((state) => state.nativeFrame)
 
-    if (platform !== "windows" && platform !== "linux") return null
+    if (nativeFrame || (platform !== "windows" && platform !== "linux")) return null
 
     return (
         <div

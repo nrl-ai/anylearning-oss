@@ -10,11 +10,15 @@ which is the whole feature, broken from the user's first click.
 """
 
 import pickle
+from types import SimpleNamespace
 
 import pytest
 
 from anylearning.training.models.instance_segmentation.factory import (
     InstanceSegmentationModelFactory,
+)
+from anylearning.training.models.instance_segmentation.maskrcnn.inference import (
+    apply_interactive_prediction_limits,
 )
 
 CONFIG = {
@@ -86,3 +90,26 @@ def test_an_unknown_backbone_says_so(tmp_path):
     )
     with pytest.raises(ValueError, match="resnet9000"):
         InstanceSegmentationModelFactory.load_inference_config(config, str(model_path))
+
+
+def test_try_model_caps_the_evaluation_detection_settings():
+    predictor = SimpleNamespace(test_score_thresh=0.2, test_topk_per_image=1000)
+    model = SimpleNamespace(
+        roi_heads=SimpleNamespace(box_predictor=predictor),
+    )
+
+    assert apply_interactive_prediction_limits(model) is model
+    assert predictor.test_score_thresh == 0.5
+    assert predictor.test_topk_per_image == 100
+
+
+def test_try_model_preserves_stricter_prediction_settings():
+    predictor = SimpleNamespace(test_score_thresh=0.8, test_topk_per_image=25)
+    model = SimpleNamespace(
+        roi_heads=SimpleNamespace(box_predictor=predictor),
+    )
+
+    apply_interactive_prediction_limits(model)
+
+    assert predictor.test_score_thresh == 0.8
+    assert predictor.test_topk_per_image == 25

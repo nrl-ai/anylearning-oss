@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { useCallback } from "react"
 
 import { api, getJson } from "@/lib/api"
 import { POLL, qk } from "@/lib/query-keys"
@@ -8,11 +9,20 @@ export interface AutoLabelingModel {
     display_name: string
     has_downloaded: boolean
     is_custom_model: boolean
+    tasks: ("detection" | "instance_segmentation" | "promptable_segmentation")[]
+    interaction_mode: "prompted" | "automatic"
+    output_modes: ("polygon" | "rectangle")[]
+    project_types: string[]
+    archive_size_bytes: number
+    is_project_model?: boolean
 }
 
 interface AutoLabelingStatus {
     status: string
+    model_name: string | null
 }
+
+const isBusyStatus = (status: string): boolean => /^(Loading model:|Downloading |Queued )/i.test(status)
 
 const useAutoLabeling = (projectId: number | null) => {
     const queryClient = useQueryClient()
@@ -38,26 +48,39 @@ const useAutoLabeling = (projectId: number | null) => {
         // is working, then stop.
         refetchInterval: (query) => {
             const status = (query.state.data as AutoLabelingStatus | undefined)?.status ?? ""
-            return /download|load|prepar/i.test(status) ? POLL.autoLabeling : false
+            return isBusyStatus(status) ? POLL.autoLabeling : false
         },
     })
 
-    const loadModelMutation = useMutation({
+    const {
+        mutateAsync: loadModelAsync,
+        isPending: isLoadPending,
+        error: modelLoadError,
+    } = useMutation({
         mutationFn: (modelName: string) =>
             api.post(`/api/projects/${projectId}/auto_labeling/load_model`, { model_name: modelName }),
         onSuccess: () => queryClient.invalidateQueries({ queryKey: qk.autoLabelingStatus(projectId as number) }),
     })
 
+    const loadModel = useCallback(
+        async (modelName: string) => {
+            if (!enabled) return
+            await loadModelAsync(modelName)
+        },
+        [enabled, loadModelAsync]
+    )
+
     return {
         models: modelsData || [],
         status: statusData?.status || "",
-        loadModel: async (modelName: string) => {
-            if (!enabled) return
-            await loadModelMutation.mutateAsync(modelName)
-        },
+        loadedModel: statusData?.model_name ?? null,
+        loadModel,
+        loadError: modelLoadError instanceof Error ? modelLoadError.message : "",
+        isLoadingModel: isLoadPending || isBusyStatus(statusData?.status ?? ""),
         isLoading: enabled ? !modelsData && !modelsError : false,
         isError: enabled ? modelsError || statusError : null,
         mutateStatus: refetchStatus,
+        refreshModels: () => queryClient.invalidateQueries({ queryKey: qk.autoLabelingModels(projectId as number) }),
     }
 }
 

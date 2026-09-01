@@ -1,0 +1,76 @@
+{
+  "name": "official-efficient-sam-s-dog",
+  "backend": "efficient_sam",
+  "provenance": {
+    "source_url": "https://github.com/yformer/EfficientSAM",
+    "artifact_url": "https://huggingface.co/nrl-ai/samexporter-onnx-models/tree/5050a79cd4b912dd745fff83047c4ef6fbd97be5/efficient_sam_s",
+    "source_revision": "d53228e3f6dee607309453f54a22c40c2a10204c",
+    "code_license": "Apache-2.0",
+    "artifact_license": "Apache-2.0 official EfficientSAM ONNX model pair",
+    "license_url": "https://huggingface.co/nrl-ai/samexporter-onnx-models/blob/5050a79cd4b912dd745fff83047c4ef6fbd97be5/efficient_sam_s/LICENSE"
+  },
+  "config": {
+    "name": "official-efficient-sam-s",
+    "encoder_model_path": "efficientsam_s_encoder.onnx",
+    "decoder_model_path": "efficientsam_s_decoder.onnx",
+    "encoder_sha256": "3eea4544db4647570ca5bea8ab6bbe057f2fc767ad089c14b8f67f482a2493ed",
+    "decoder_sha256": "d40a537f617c8ced3b2034b6971bc16cc291c49d3d80f740a394cdb78f0e1d06",
+    "providers": ["CPUExecutionProvider"],
+    "intra_op_threads": 1,
+    "inter_op_threads": 1
+  },
+  "runs": 3,
+  "lifecycle_cycles": 3,
+  "maximum_steady_state_rss_growth_bytes": 268435456,
+  "images": [
+    {
+      "path": "dog.jpg",
+      "prompts": [
+        {
+          "type": "point",
+          "point": [240, 330],
+          "foreground": true
+        }
+      ],
+      "output_shape": "polygon",
+      "expected": {
+        "minimum_shapes": 1,
+        "maximum_shapes": 1,
+        "minimum_label_counts": {
+          "AUTOLABEL_OBJECT": 1
+        },
+        "detections": [
+          {
+            "label": "AUTOLABEL_OBJECT",
+            "box": [134, 223, 307, 537],
+            "minimum_iou": 0.95
+          }
+        ]
+      }
+    },
+    {
+      "path": "dog.jpg",
+      "prompts": [
+        {
+          "type": "box",
+          "box": [125, 215, 315, 550]
+        }
+      ],
+      "output_shape": "polygon",
+      "expected": {
+        "minimum_shapes": 1,
+        "maximum_shapes": 1,
+        "minimum_label_counts": {
+          "AUTOLABEL_OBJECT": 1
+        },
+        "detections": [
+          {
+            "label": "AUTOLABEL_OBJECT",
+            "box": [134, 223, 308, 538],
+            "minimum_iou": 0.95
+          }
+        ]
+      }
+    }
+  ]
+}

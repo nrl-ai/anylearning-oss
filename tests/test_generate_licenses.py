@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from generate_licenses import extract_vendored_licences
+from generate_licenses import extract_vendored_licences, render_vendored_licences
 
 
 def test_extract_vendored_licences_ignores_previous_generated_headers() -> None:
@@ -42,3 +42,22 @@ deeplab terms
 def test_extract_vendored_licences_fails_closed() -> None:
     with pytest.raises(RuntimeError, match="vendored licence payload"):
         extract_vendored_licences("# Third-party licences\n")
+
+
+def test_render_vendored_licences_keeps_clip_and_training_notices() -> None:
+    existing = """## Vendored components
+
+```
+NanoDet - Apache License 2.0
+nanodet terms
+```
+"""
+
+    rendered = render_vendored_licences(existing, "MIT License\nCLIP terms")
+
+    assert "OpenAI CLIP tokenizer vocabulary" in rendered
+    assert "MIT License\nCLIP terms" in rendered
+    assert "NanoDet - Apache License 2.0\nnanodet terms" in rendered
+
+    with pytest.raises(RuntimeError, match="CLIP"):
+        render_vendored_licences(existing, "  ")

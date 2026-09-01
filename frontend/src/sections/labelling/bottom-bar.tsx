@@ -13,12 +13,16 @@ type BottomBarProps = {
     dataItems: DataItem[]
 }
 
-const hintFor = (projectType: string) => {
+export const hintFor = (projectType: string, selectedTool: string) => {
     switch (projectType) {
         case "Object Detection":
-            return "Pick the rectangle tool to draw a box."
+            return selectedTool === "rectangle"
+                ? "Drag on the image to draw a box."
+                : "Choose the rectangle tool to draw a box."
         case "Image Segmentation":
-            return "Pick the polygon tool to outline a region."
+            return selectedTool === "polygon"
+                ? "Click around an object to outline it."
+                : "Choose the polygon tool to outline a region."
         case "Keypoint Detection":
             return "Place each named landmark and assign its instance number."
         default:
@@ -29,6 +33,7 @@ const hintFor = (projectType: string) => {
 export default function BottomBar({
     navigateImage,
     projectType,
+    selectedTool,
     currentImageIndex,
     currentPage,
     totalPages,
@@ -53,7 +58,9 @@ export default function BottomBar({
                 <span className="truncate font-mono text-xs">
                     {dataItems[currentImageIndex]?.original_name || "No image selected"}
                 </span>
-                <span className="text-muted-foreground truncate text-[0.6875rem]">{hintFor(projectType)}</span>
+                <span className="text-muted-foreground truncate text-[0.6875rem]">
+                    {hintFor(projectType, selectedTool)}
+                </span>
             </div>
 
             <Button
