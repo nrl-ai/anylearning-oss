@@ -7,6 +7,7 @@ from anylearning.config import (
     get_config,
     get_default_config,
     get_model_variant_name,
+    save_config,
     update_dict,
     validate_config_item,
 )
@@ -74,6 +75,14 @@ def test_get_config_with_args():
         mock_default.return_value = {"key1": "default"}
         config = get_config(config_from_args=args)
         assert config["key1"] == "arg_value"
+
+
+def test_saved_user_config_is_read_back_by_default(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    save_config({"custom_models": [{"name": "my-model"}]})
+
+    assert get_config()["custom_models"] == [{"name": "my-model"}]
+    assert list(tmp_path.glob(".anylearningrc.*.tmp")) == []
 
 
 def test_get_model_variant_name():

@@ -80,6 +80,7 @@ const useAutoLabeling = (projectId: number | null) => {
         isLoading: enabled ? !modelsData && !modelsError : false,
         isError: enabled ? modelsError || statusError : null,
         mutateStatus: refetchStatus,
+        refreshModels: () => queryClient.invalidateQueries({ queryKey: qk.autoLabelingModels(projectId as number) }),
     }
 }
 

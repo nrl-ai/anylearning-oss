@@ -581,6 +581,22 @@ contracts.
   legacy bundle metadata cannot replace the catalog identity used by readiness
   checks. Full-resolution evidence is retained in the same validation root
   under `20260901-all-catalog-models`.
+- The desktop now imports user-selected single-file YOLOv5/v8/v9/v10/v11/v12/
+  26 and YOLOX ONNX graphs directly into the same `yolo_onnx` backend. Import
+  is an explicit native-file workflow: it bounds copies at 20 GiB, parses the
+  graph without execution, pins its SHA-256, requires an exact class order,
+  and does not load the model until the user confirms the import. Multi-file
+  external-data bundle import remains gated on copying and hashing every
+  referenced shard under I12; the runtime itself already supports those
+  verified bundles.
+- The complete native desktop workflow passed with the official 35 MB YOLOX-S
+  ONNX graph (`c5c2d13e...be998063`): native selection, bounded copy, graph
+  validation, persistent catalog registration, ONNX Runtime load, inference,
+  and three visually correct editable COCO boxes. The run also verifies that
+  no model loads implicitly and that Linux uses the compositor-owned frame
+  without duplicate controls or frameless hit regions. Full-resolution UI
+  screenshots and machine-readable results are retained under
+  `20260901-140748-ui-workflow` in the validation root above.
 - Other trained exports are not mislabeled as usable: NanoDet, semantic
   segmentation, Mask R-CNN, classification, handpose, and keypoint artifacts
   enter this picker only after their ONNX graph contracts have a first-party

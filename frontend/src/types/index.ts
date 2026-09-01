@@ -245,13 +245,30 @@ declare global {
             platform?: string
             api?: {
                 download_file?: (url: string, filename: string) => void
+                import_onnx_auto_labeling_model?: (options: {
+                    display_name: string
+                    format: string
+                    task: "detection" | "instance_segmentation"
+                    label_space?: "coco80"
+                    class_names?: string[]
+                    input_size?: number
+                }) => Promise<{
+                    ok: boolean
+                    cancelled?: boolean
+                    error?: string
+                    model_name?: string
+                    display_name?: string
+                }>
                 /**
                  * The window controls behind the app-drawn title bar, exposed by
                  * `anylearning/window_chrome/`. Every one of them is absent in a
                  * browser, which is why they are all optional -- go through
                  * `@/lib/desktop` rather than reaching for them directly.
                  */
-                window_chrome_state?: () => Promise<{ maximized: boolean }>
+                window_chrome_state?: () => Promise<{
+                    maximized: boolean
+                    native_frame: boolean
+                }>
                 window_minimize?: () => Promise<void>
                 window_toggle_maximize?: () => Promise<boolean>
                 window_close?: () => Promise<void>

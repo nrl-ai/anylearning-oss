@@ -14,6 +14,7 @@ import {
     reportDragRegions,
     toggleWindowMaximized,
     usesNativeDomWindowDrag,
+    usesNativeDragRegionHitTest,
     windowState,
 } from "@/lib/desktop"
 
@@ -30,20 +31,26 @@ import {
  */
 export function DesktopChrome() {
     const platform = useWindowChrome((state) => state.platform)
+    const nativeFrame = useWindowChrome((state) => state.nativeFrame)
     const setPlatform = useWindowChrome((state) => state.setPlatform)
     const setMaximized = useWindowChrome((state) => state.setMaximized)
+    const setNativeFrame = useWindowChrome((state) => state.setNativeFrame)
 
     // Which shell is this? `data-desktop` carries the answer into CSS, where
     // the shell reserves the corner each platform needs (see globals.css).
     useEffect(
         () =>
-            onDesktopReady(() => {
+            onDesktopReady(async () => {
                 const detected = desktopPlatform()
+                const state = await windowState()
+                const framed = state?.native_frame ?? false
+                if (state) setMaximized(state.maximized)
+                setNativeFrame(framed)
                 setPlatform(detected)
                 if (detected) document.documentElement.dataset.desktop = detected
-                void windowState().then((state) => state && setMaximized(state.maximized))
+                if (framed) document.documentElement.dataset.nativeFrame = "true"
             }),
-        [setPlatform, setMaximized]
+        [setPlatform, setMaximized, setNativeFrame]
     )
 
     // The window manager has the last word on whether the window is maximised:
@@ -62,7 +69,7 @@ export function DesktopChrome() {
     // hit test reports the bar as the caption, so the press never reaches the
     // DOM and the drag, the double click and the snap are all the system's.
     useEffect(() => {
-        if (platform !== "macos" && platform !== "linux") return
+        if (nativeFrame || (platform !== "macos" && platform !== "linux")) return
 
         const onMouseDown = (event: MouseEvent) => {
             const target = event.target
@@ -92,13 +99,13 @@ export function DesktopChrome() {
 
         document.addEventListener("mousedown", onMouseDown, true)
         return () => document.removeEventListener("mousedown", onMouseDown, true)
-    }, [platform])
+    }, [platform, nativeFrame])
 
-    // Windows hit-tests geometry and cannot see the DOM, so the page has to
-    // keep it posted: a collapsed sidebar, a loaded project name and a resized
-    // window all move the bar.
+    // Windows cannot see the DOM, and Qt must decide inside the physical mouse
+    // event before a Wayland compositor will accept a move. Keep both native
+    // hit testers posted when layout moves the title bar.
     useEffect(() => {
-        if (platform !== "windows") return
+        if (nativeFrame || (platform !== "windows" && !usesNativeDragRegionHitTest())) return
 
         let timer = 0
         const schedule = () => {
@@ -116,9 +123,9 @@ export function DesktopChrome() {
             window.removeEventListener("resize", schedule)
             observer.disconnect()
         }
-    }, [platform])
+    }, [platform, nativeFrame])
 
-    if (!platform) return null
+    if (!platform || nativeFrame) return null
 
     return (
         <>

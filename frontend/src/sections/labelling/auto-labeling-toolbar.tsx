@@ -1,10 +1,21 @@
-import { BrainIcon, CheckCircle, Circle, CircleMinus, Play, Square as SquareIcon, X } from "lucide-react"
-import React, { useEffect, useMemo } from "react"
+import { BrainIcon, CheckCircle, Circle, CircleMinus, Loader2, Play, Square as SquareIcon, X } from "lucide-react"
+import React, { useMemo } from "react"
 
 import { Button } from "@/components/ui/button"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import {
+    Select,
+    SelectContent,
+    SelectGroup,
+    SelectItem,
+    SelectLabel,
+    SelectTrigger,
+    SelectValue,
+} from "@/components/ui/select"
+import { formatDownloadSize, groupAutoLabelingModels } from "@/lib/auto-labeling-models"
 import useAutoLabeling from "@/lib/use-auto-labeling"
 import { cn } from "@/lib/utils"
+
+import ImportOnnxModelDialog from "./import-onnx-model-dialog"
 
 type LabelingMode = "labeling" | "auto_labeling"
 interface LabelingScreenProps {
@@ -12,6 +23,7 @@ interface LabelingScreenProps {
     aiToolSelected: string
     projectId: number
     projectType: string
+    projectLabels: string[]
     aiShape: string
     model: string
     mode: LabelingMode
@@ -36,6 +48,7 @@ export default function AutoLabellingToolbar({
     aiToolSelected,
     projectId,
     projectType,
+    projectLabels,
     aiShape,
     model,
     mode,
@@ -48,23 +61,22 @@ export default function AutoLabellingToolbar({
     run,
     isInferencing,
 }: LabelingScreenProps) {
-    const { models, status, loadedModel, loadModel, loadError, isLoadingModel } = useAutoLabeling(projectId)
+    const { models, status, loadedModel, loadModel, loadError, isLoadingModel, isLoading, refreshModels } =
+        useAutoLabeling(projectId)
     const requiresBoundingBoxes = projectType === "Object Detection"
     const compatibleModels = useMemo(
         () => models.filter((candidate) => candidate.project_types?.includes(projectType)),
         [models, projectType]
     )
+    const modelGroups = useMemo(() => groupAutoLabelingModels(compatibleModels), [compatibleModels])
     const selectedModel = compatibleModels.find((candidate) => candidate.name === model)
     const isPromptable = selectedModel?.interaction_mode !== "automatic"
     const modelReady = loadedModel === model && !isLoadingModel
-
-    useEffect(() => {
-        if (compatibleModels.length > 0 && !selectedModel) {
-            const firstModel = compatibleModels[0].name
-            selectModel(firstModel, compatibleModels[0].interaction_mode)
-            void loadModel(firstModel).catch(() => undefined)
-        }
-    }, [compatibleModels, selectedModel, selectModel, loadModel])
+    const modelPlaceholder = isLoading
+        ? "Loading models…"
+        : compatibleModels.length
+          ? "Select a model"
+          : "No compatible models"
 
     const isArmed = (tool: string) => mode === "auto_labeling" && aiToolSelected === tool
 
@@ -75,31 +87,64 @@ export default function AutoLabellingToolbar({
                     <BrainIcon className="text-muted-foreground size-4 shrink-0" strokeWidth={2} />
                     <Select
                         value={model}
+                        disabled={isLoading || compatibleModels.length === 0}
                         onValueChange={(value) => {
-                            void loadModel(value).catch(() => undefined)
                             const candidate = compatibleModels.find((item) => item.name === value)
                             selectModel(value, candidate?.interaction_mode ?? "prompted")
                             setMode("auto_labeling")
+                            void loadModel(value).catch(() => undefined)
                         }}
                     >
-                        <SelectTrigger size="sm" className="w-[230px] truncate">
-                            <SelectValue placeholder="Select a model" />
+                        <SelectTrigger
+                            size="sm"
+                            className="w-[300px] truncate"
+                            aria-label="Auto-labeling model"
+                            title={selectedModel?.display_name}
+                        >
+                            <SelectValue placeholder={modelPlaceholder}>{selectedModel?.display_name}</SelectValue>
                         </SelectTrigger>
-                        <SelectContent>
-                            {compatibleModels.map((model) => (
-                                <SelectItem key={model.name} value={model.name} className="truncate">
-                                    {model.display_name}
-                                    {model.is_project_model ? " · This project" : ""}
-                                </SelectItem>
+                        <SelectContent className="w-[340px]">
+                            {modelGroups.map((group) => (
+                                <SelectGroup key={group.label}>
+                                    <SelectLabel>{group.label}</SelectLabel>
+                                    {group.models.map((candidate) => (
+                                        <SelectItem key={candidate.name} value={candidate.name}>
+                                            <span className="flex min-w-0 flex-1 items-center justify-between gap-3">
+                                                <span className="truncate">{candidate.display_name}</span>
+                                                <span
+                                                    className={cn(
+                                                        "shrink-0 text-[0.6875rem]",
+                                                        candidate.has_downloaded ? "text-ok" : "text-muted-foreground"
+                                                    )}
+                                                >
+                                                    {candidate.has_downloaded
+                                                        ? "Ready"
+                                                        : formatDownloadSize(candidate.archive_size_bytes)}
+                                                </span>
+                                            </span>
+                                        </SelectItem>
+                                    ))}
+                                </SelectGroup>
                             ))}
                         </SelectContent>
                     </Select>
                 </div>
 
+                <ImportOnnxModelDialog
+                    projectType={projectType}
+                    projectLabels={projectLabels}
+                    onImported={async (modelName) => {
+                        await refreshModels()
+                        selectModel(modelName, "automatic")
+                        setMode("auto_labeling")
+                        await loadModel(modelName)
+                    }}
+                />
+
                 <Select
                     value={requiresBoundingBoxes ? "rectangle" : aiShape}
                     onValueChange={setAiShape}
-                    disabled={requiresBoundingBoxes || selectedModel?.output_modes?.length === 1}
+                    disabled={!selectedModel || requiresBoundingBoxes || selectedModel.output_modes?.length === 1}
                 >
                     <SelectTrigger size="sm" className="w-[130px]">
                         <SelectValue placeholder="Shape" />
@@ -110,7 +155,11 @@ export default function AutoLabellingToolbar({
                     </SelectContent>
                 </Select>
 
-                {isPromptable ? (
+                {!selectedModel ? (
+                    <p className="text-muted-foreground text-xs">
+                        Choose a model to enable AI tools. It will load only after you select it.
+                    </p>
+                ) : isPromptable ? (
                     <div className="flex items-center gap-0.5">
                         <Button
                             size="sm"
@@ -174,9 +223,16 @@ export default function AutoLabellingToolbar({
                 )}
             </div>
 
-            {(loadError || status) && (
-                <p className="text-muted-foreground truncate border-t px-3 py-1 font-mono text-[0.6875rem]">
-                    {loadError || status}
+            {(loadError || (selectedModel && status)) && (
+                <p
+                    role="status"
+                    className={cn(
+                        "flex items-center gap-2 truncate border-t px-3 py-1 text-xs",
+                        loadError ? "text-fail" : "text-muted-foreground"
+                    )}
+                >
+                    {isLoadingModel && <Loader2 className="size-3.5 shrink-0 animate-spin" />}
+                    <span className="truncate">{loadError || status}</span>
                 </p>
             )}
         </div>

@@ -281,6 +281,14 @@
     --window-controls-width: 6.5rem;
 }
 
+/* Linux normally keeps the compositor's own frame. The app chrome must not
+   reserve room for duplicate controls inside the content area. */
+[data-native-frame="true"] {
+    --titlebar-inset: 0px;
+    --titlebar-inset-left: 0px;
+    --window-controls-width: 0px;
+}
+
 /* The labelling screen replaces the whole shell with its own 40px bar. */
 [data-titlebar="compact"] {
     --titlebar-height: 2.5rem;
@@ -308,6 +316,11 @@
 [data-desktop="linux"] body {
     background: transparent;
     clip-path: inset(0 round 0.75rem);
+}
+
+[data-desktop="linux"][data-native-frame="true"] body {
+    background: var(--background);
+    clip-path: none;
 }
 
 [data-desktop="linux"] .window-shell {

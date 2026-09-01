@@ -10,8 +10,10 @@ interface WindowChromeStore {
      */
     platform: DesktopPlatform | null
     maximized: boolean
+    nativeFrame: boolean
     setPlatform: (platform: DesktopPlatform | null) => void
     setMaximized: (maximized: boolean) => void
+    setNativeFrame: (nativeFrame: boolean) => void
 }
 
 /**
@@ -23,6 +25,8 @@ interface WindowChromeStore {
 export const useWindowChrome = create<WindowChromeStore>()((set) => ({
     platform: null,
     maximized: false,
+    nativeFrame: false,
     setPlatform: (platform) => set({ platform }),
     setMaximized: (maximized) => set({ maximized }),
+    setNativeFrame: (nativeFrame) => set({ nativeFrame }),
 }))

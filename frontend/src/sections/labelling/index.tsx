@@ -776,6 +776,7 @@ const LabelingScreen: React.FC<LabelingScreenProps> = ({ projectId, subset, onEx
                     aiToolSelected={aiToolSelected}
                     projectId={projectId}
                     projectType={project?.type || ""}
+                    projectLabels={(project?.labels || []).map((label) => label.name)}
                     handleToolSelect={handleToolSelect}
                     model={selectedModel}
                     selectModel={selectAutoLabelingModel}

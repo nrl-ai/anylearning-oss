@@ -427,26 +427,45 @@ class ModelManager:
             return
 
         # Check config file content
-        model_config = {}
         with open(config_file, "r") as f:
             model_config = yaml.safe_load(f)
-            model_config["config_file"] = os.path.abspath(config_file)
-        if not model_config:
+        if not isinstance(model_config, dict):
             self.notify_callbacks(
                 "model_status_changed", ModelStatus.ERROR_INVALID_CONFIG.value
             )
             return
+        model_config["config_file"] = os.path.abspath(config_file)
         if (
             "type" not in model_config
             or "display_name" not in model_config
             or "name" not in model_config
-            or model_config["type"]
-            not in ["segment_anything", "inference", "yolov5", "yolov8"]
+            or model_config["type"] not in ["segment_anything", "inference"]
         ):
             self.notify_callbacks(
                 "model_status_changed", ModelStatus.ERROR_INVALID_FORMAT.value
             )
             return
+
+        self.register_custom_model(model_config)
+
+        # Preserve the legacy method's explicit "load" behavior. New desktop
+        # imports call register_custom_model directly and load only after the
+        # user confirms a model selection.
+        self.load_model(model_config["config_file"])
+
+    def register_custom_model(self, model_config):
+        """Persist a validated custom config without doing expensive inference setup."""
+        model_config = copy.deepcopy(model_config)
+        config_file = os.path.normpath(
+            os.path.abspath(str(model_config.get("config_file", "")))
+        )
+        if not config_file or not os.path.isfile(config_file):
+            raise ValueError(ModelStatus.ERROR_INVALID_PATH.value)
+        if model_config.get("type") not in {"segment_anything", "inference"}:
+            raise ValueError(ModelStatus.ERROR_INVALID_FORMAT.value)
+        model_config["config_file"] = config_file
+        model_config["is_custom_model"] = True
+        model_config["has_downloaded"] = True
 
         # Add or replace custom model
         custom_models = get_config().get("custom_models", [])
@@ -463,10 +482,10 @@ class ModelManager:
                 custom_models.sort(key=lambda x: x.get("last_used", 0), reverse=True)
                 removed_model = custom_models.pop()
                 # Remove old model folder
-                config_file = removed_model["config_file"]
-                if os.path.exists(config_file):
+                removed_config_file = removed_model["config_file"]
+                if os.path.exists(removed_config_file):
                     try:
-                        pathlib.Path(config_file).parent.rmdir()
+                        pathlib.Path(removed_config_file).parent.rmdir()
                     except OSError:
                         pass
             custom_models = [model_config] + custom_models
@@ -478,9 +497,11 @@ class ModelManager:
 
         # Reload model configs
         self.load_model_configs()
-
-        # Load model
-        self.load_model(model_config["config_file"])
+        return next(
+            item
+            for item in self.model_configs
+            if item.get("config_file") == config_file
+        )
 
     def load_model(self, config_file):
         """Run model loading in a thread"""

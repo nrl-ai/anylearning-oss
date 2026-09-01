@@ -57,9 +57,16 @@ export function desktopPlatform(): DesktopPlatform | null {
 /** Whether a DOM press can be handed to a native Linux window-manager drag. */
 export function usesNativeDomWindowDrag(): boolean {
     if (typeof window === "undefined") return false
-    // The GTK adapter implements begin_move_drag. Qt has no AnyLearning native
-    // adapter, so its event must keep bubbling to pywebview's JS drag region.
-    return window.pywebview?.platform === "gtkwebkit2"
+    // GTK and Qt both hand the press to the window manager. That is required
+    // on Wayland and preserves native snapping on X11. Other renderers retain
+    // their own platform-specific path.
+    return ["gtkwebkit2", "qtwebengine", "qtwebkit"].includes(window.pywebview?.platform ?? "")
+}
+
+/** Whether the renderer needs DOM drag geometry for native GUI-thread hit testing. */
+export function usesNativeDragRegionHitTest(): boolean {
+    if (typeof window === "undefined") return false
+    return ["qtwebengine", "qtwebkit"].includes(window.pywebview?.platform ?? "")
 }
 
 function api() {
@@ -75,16 +82,44 @@ function api() {
  */
 export function onDesktopReady(callback: () => void): () => void {
     if (typeof window === "undefined") return () => {}
-    if (window.pywebview?.api) {
-        callback()
-        return () => {}
+    // pywebview injects an empty `api` object before it has registered any
+    // callable methods. Treating that shell as ready races the
+    // `pywebviewready` event and permanently leaves desktop-only state at its
+    // browser defaults (including whether the platform owns the frame).
+    let complete = false
+    let poll = 0
+    let timeout = 0
+
+    const cleanup = () => {
+        window.removeEventListener("pywebviewready", detect)
+        window.clearInterval(poll)
+        window.clearTimeout(timeout)
     }
-    const handler = () => callback()
-    window.addEventListener("pywebviewready", handler, { once: true })
-    return () => window.removeEventListener("pywebviewready", handler)
+    const detect = () => {
+        if (complete || typeof window.pywebview?.api?.window_chrome_state !== "function") return
+        complete = true
+        cleanup()
+        callback()
+    }
+
+    detect()
+    if (complete) return cleanup
+
+    window.addEventListener("pywebviewready", detect)
+    if (window.pywebview) {
+        // A full-page navigation can dispatch pywebviewready before React has
+        // mounted. Poll only inside an identified desktop shell to close that
+        // gap without doing work in normal browser/server builds.
+        poll = window.setInterval(detect, 50)
+        timeout = window.setTimeout(cleanup, 15_000)
+    }
+    return cleanup
 }
 
-export async function windowState(): Promise<{ maximized: boolean } | null> {
+export async function windowState(): Promise<{
+    maximized: boolean
+    native_frame: boolean
+} | null> {
     const state = await api()?.window_chrome_state?.()
     return state ?? null
 }
@@ -156,7 +191,9 @@ export function reportDragRegions(): void {
     const send = api()?.window_set_drag_regions
     if (!send) return
 
-    const scale = window.devicePixelRatio || 1
+    // Windows hit-tests in physical pixels. Qt mouse events and QWindow
+    // geometry are device-independent, the same units as CSS coordinates.
+    const scale = desktopPlatform() === "windows" ? window.devicePixelRatio || 1 : 1
     const regions: Rect[] = []
     const exclusions: Rect[] = []
 
