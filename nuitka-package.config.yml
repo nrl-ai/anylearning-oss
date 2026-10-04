@@ -14,3 +14,23 @@
     - description: "tensorflow is never bundled"
       change_function:
         "preload_tensorflow_before_onnx": "'(lambda: None)'"
+
+# torchvision 0.29 renamed its native libraries to _C_stable and image_stable
+# (built against libtorch's stable ABI). Nuitka's bundled config still names
+# the old '._C', so neither was copied and the packaged app died at startup with
+# "RuntimeError: operator torchvision::nms does not exist". They are plain
+# shared libraries (no PyInit) that torchvision finds next to its own __file__
+# and hands to torch.ops.load_library, so ship them as DLLs beside it. The
+# Windows wheel names them .pyd, the others .so. Keyed on the module that
+# resolves the path because Nuitka's own config already claims "torchvision";
+# relative_to puts them in the torchvision package directory.
+- module-name: "torchvision._internally_replaced_utils"
+  dlls:
+    - from_filenames:
+        relative_to: "torchvision"
+        prefixes:
+          - "_C_stable"
+          - "image_stable"
+        suffixes:
+          - "so"
+          - "pyd"

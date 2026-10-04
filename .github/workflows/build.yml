@@ -238,9 +238,18 @@ jobs:
         env:
           CUDA_VISIBLE_DEVICES: ""
           FORCE_CUDA: "0"
+          # macOS: _C's load commands are rewritten twice -- @rpath to
+          # @loader_path/../torch/lib by patch_detectron2_macos.py, then to
+          # @executable_path/torch/lib by Nuitka -- and each path is longer than
+          # the last. Linked with the default header padding, Nuitka's rewrite
+          # did not fit: "larger updated load commands do not fit (the program
+          # must be relinked ...)". Reserve the room at link time.
+          LDFLAGS: ${{ runner.os == 'macOS' && '-Wl,-headerpad_max_install_names' || '' }}
         run: |
           DETECTRON2_COMMIT=b4a4a3bd136852dae5fb1de37978dee412653e31
-          uv pip install --system --no-build-isolation \
+          # --no-cache: setup-uv restores a cache that may hold a wheel built
+          # without the LDFLAGS above, and uv would reuse it for the same commit.
+          uv pip install --system --no-build-isolation --no-cache \
             "git+https://github.com/facebookresearch/detectron2.git@${DETECTRON2_COMMIT}"
 
       # detectron2's _C extension links against torch's dylibs through @rpath.
