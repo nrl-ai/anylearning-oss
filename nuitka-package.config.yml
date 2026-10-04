@@ -1,0 +1,16 @@
+# Nuitka package configuration for the packaged AnyLearning build, passed by
+# build_app.sh through --user-package-configuration-file.
+---
+- module-name: "rfdetr.export._backend"
+  anti-bloat:
+    # rfdetr >= 1.11 preloads TensorFlow before ONNX with
+    # importlib.import_module("tensorflow"), to dodge an Abseil deadlock during
+    # TFLite conversion. Nuitka registers tensorflow as a hard module and
+    # asserts it can be located whenever it resolves that call, so with
+    # TensorFlow absent the compiler crashed with "AssertionError: tensorflow"
+    # on every platform. TensorFlow is never bundled, so in the packaged app
+    # the function always takes its "not installed" early return -- make that
+    # explicit.
+    - description: "tensorflow is never bundled"
+      change_function:
+        "preload_tensorflow_before_onnx": "'(lambda: None)'"
