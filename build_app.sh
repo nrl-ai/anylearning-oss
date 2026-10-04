@@ -250,6 +250,9 @@ NUITKA_ARGS=(
     # the trainer itself is only imported lazily -- neither is something
     # Nuitka's static analysis can follow to the modules underneath.
     --include-package=rfdetr
+    # rfdetr's TensorFlow preload crashes Nuitka when TensorFlow is absent;
+    # see nuitka-package.config.yml.
+    --user-package-configuration-file=nuitka-package.config.yml
     --include-package=anylearning.training.trainers
     # RF-DETR prediction imports supervision lazily. supervision imports PyAV,
     # whose compiled extension modules import av.utils through Cython rather
