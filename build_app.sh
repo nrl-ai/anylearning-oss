@@ -266,7 +266,11 @@ NUITKA_ARGS=(
     # a compiled binary at all: its @script decorator calls inspect.getsource()
     # to parse a function's AST, and compiled code has no source, so it raises
     # "Decorator script does not work on dynamically compiled function".
-    # torch.onnx does not import it eagerly, so it is left out entirely.
+    # It is still bundled -- torch's exporter package imports it -- but as
+    # bytecode rather than C: its generated onnx_opset modules are tens of
+    # thousands of lines each, and on Windows MSVC died on opset24/opset25
+    # with "C1002: compiler is out of heap space". Nothing in it runs hot.
+    --noinclude-custom-mode=onnxscript:bytecode
     # Nuitka's bundled config for torch sets 'triton': 'ignore', and its
     # deployment guard turns any use of an excluded module into a hard error.
     # torch probes for triton during lazy CUDA init and copes fine when it is
