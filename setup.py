@@ -86,6 +86,13 @@ def get_install_requires():
         "onnxruntime>=1.29,<2",
         "torch==2.14.0",
         "torchvision==0.29.0",
+        # detectron2's model_zoo imports pkg_resources, which setuptools
+        # removed in 82. torch 2.11 capped setuptools below 82 for its own
+        # reasons; torch 2.14 lifted that cap, and with setuptools 84
+        # installed every instance-segmentation path failed with
+        # "No module named 'pkg_resources'". Keep the cap until detectron2
+        # stops importing it.
+        "setuptools<82",
         # Required by torch.onnx.export: from torch 2.6 the default exporter is
         # the dynamo one, which imports onnxscript at module load. Without it
         # every trainer's ONNX export fails, and export is the last step of
