@@ -159,8 +159,8 @@ jobs:
           esac
           ccache --version | head -1
 
-      - name: Cache Nuitka's compiler cache
-        uses: actions/cache@v6
+      - name: Restore Nuitka's compiler cache
+        uses: actions/cache/restore@v6
         with:
           # Nuitka's whole cache root, not just ccache: it also holds
           # module-cache and adapted_headers, which cut the Python-compilation
@@ -186,6 +186,10 @@ jobs:
         env:
           CCACHE_DIR: ${{ matrix.nuitka_cache }}/ccache
         run: |
+          # The matrix path starts with "~", which bash does not expand inside a
+          # variable -- without this, ccache configured a literal ./~ directory
+          # and the cap never reached the cache Nuitka actually uses.
+          export CCACHE_DIR="${CCACHE_DIR/#\~/$HOME}"
           # GitHub allows 10 GB of cache per repository across every key, and a
           # full build's object cache is a couple of GB on its own. Capped so
           # three platforms can hold a cache at once instead of evicting each
@@ -309,7 +313,12 @@ jobs:
           du -sh weights
 
       - name: Build application
+        id: build
         shell: bash
+        # Below the job's 350 so a cold build that runs long still leaves time
+        # to save the compiler cache it got through -- the next run resumes
+        # from there instead of starting cold again.
+        timeout-minutes: 320
         env:
           # CI uses a standard CPython, not Anaconda's, so Nuitka's static
           # libpython detection does not apply; and it must never wait on a
@@ -322,7 +331,19 @@ jobs:
       - name: Report ccache statistics
         if: always() && runner.os != 'Windows'
         shell: bash
-        run: CCACHE_DIR="${{ matrix.nuitka_cache }}/ccache" ccache --show-stats -v
+        run: |
+          dir="${{ matrix.nuitka_cache }}/ccache"
+          CCACHE_DIR="${dir/#\~/$HOME}" ccache --show-stats -v
+
+      # Saved even when the build fails or times out. Restore-then-save-on-
+      # success meant a cold build that could not finish in time never saved
+      # anything, so every run started cold and macOS never finished at all.
+      - name: Save Nuitka's compiler cache
+        if: always() && steps.build.outcome != 'skipped'
+        uses: actions/cache/save@v6
+        with:
+          path: ${{ matrix.nuitka_cache }}
+          key: nuitka-cache-${{ matrix.os }}-${{ github.run_id }}
 
       - name: Package Windows installer
         if: runner.os == 'Windows'
@@ -355,11 +376,16 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          binary=dist-out/AnyLearning/app
-          [ "${{ runner.os }}" = "Windows" ] && binary=dist-out/AnyLearning/AnyLearning.exe
+          # Nuitka names the Linux standalone binary app.bin; the macOS build
+          # is an app bundle whose executable is named after the entry script.
+          case "${{ runner.os }}" in
+            Linux)   binary=dist-out/AnyLearning/app.bin ;;
+            Windows) binary=dist-out/AnyLearning/AnyLearning.exe ;;
+            macOS)   binary=dist-out/AnyLearning.app/Contents/MacOS/app ;;
+          esac
           if [ ! -f "$binary" ]; then
             echo "::error::no built binary at $binary"
-            find dist-out/AnyLearning -print | head -20
+            find dist-out -maxdepth 4 -print | head -40
             exit 1
           fi
           # Runs the app for real -- starts the server, exercises the routes and
