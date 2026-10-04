@@ -271,6 +271,10 @@ NUITKA_ARGS=(
     # thousands of lines each, and on Windows MSVC died on opset24/opset25
     # with "C1002: compiler is out of heap space". Nothing in it runs hot.
     --noinclude-custom-mode=onnxscript:bytecode
+    # Same for sympy, which torch imports for symbolic shapes: pure Python and
+    # never hot here, and sympy.polys.polyquinticconst alone sent MSVC out of
+    # heap space (C1002) and took Linux gcc over six minutes.
+    --noinclude-custom-mode=sympy:bytecode
     # Nuitka's bundled config for torch sets 'triton': 'ignore', and its
     # deployment guard turns any use of an excluded module into a hard error.
     # torch probes for triton during lazy CUDA init and copes fine when it is
