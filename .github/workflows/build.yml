@@ -244,12 +244,19 @@ jobs:
           # the last. Linked with the default header padding, Nuitka's rewrite
           # did not fit: "larger updated load commands do not fit (the program
           # must be relinked ...)". Reserve the room at link time.
-          LDFLAGS: ${{ runner.os == 'macOS' && '-Wl,-headerpad_max_install_names' || '' }}
         run: |
           DETECTRON2_COMMIT=b4a4a3bd136852dae5fb1de37978dee412653e31
-          # --no-cache: setup-uv restores a cache that may hold a wheel built
-          # without the LDFLAGS above, and uv would reuse it for the same commit.
-          uv pip install --system --no-build-isolation --no-cache \
+          extra=()
+          if [ "${{ runner.os }}" = "macOS" ]; then
+            export LDFLAGS="-Wl,-headerpad_max_install_names"
+            # setup-uv restores a cache that may hold a wheel linked without
+            # that flag, and uv would reuse it for the same commit. macOS only:
+            # on Windows --no-cache moves the build into a deep %TEMP% checkout
+            # path and MSVC failed with "C1083: Cannot open compiler generated
+            # file".
+            extra+=(--no-cache)
+          fi
+          uv pip install --system --no-build-isolation "${extra[@]}" \
             "git+https://github.com/facebookresearch/detectron2.git@${DETECTRON2_COMMIT}"
 
       # detectron2's _C extension links against torch's dylibs through @rpath.
