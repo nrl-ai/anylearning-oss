@@ -47,8 +47,9 @@ filterwarnings = [
     "ignore:torch.meshgrid:UserWarning",
     # fvcore (pulled in and version-pinned by detectron2) decorates its focal
     # loss with @torch.jit.script, which torch 2.11 deprecates. fvcore is
-    # commit-frozen upstream; clears when detectron2 moves off it.
-    "ignore:`torch.jit.script` is deprecated:DeprecationWarning",
+    # commit-frozen upstream; clears when detectron2 moves off it. No category:
+    # torch 2.11 raised it as DeprecationWarning, 2.14 as FutureWarning.
+    "ignore:`torch.jit.script` is deprecated",
     # Lightning's own device probe finds Apple MPS and calls it a GPU, then
     # points out that the trainer was built with accelerator="cpu". It is right:
     # device_utils.get_device() asks only about CUDA, so on Apple Silicon "GPU"
@@ -97,7 +98,8 @@ filterwarnings = [
     # warning is the price of a working packaged export, not a defect to fix.
     # It appeared with the torch 2.11 pin -- an environment still on 2.5 will
     # not see it, which is why this looked like a Windows-only failure.
-    "ignore:You are using the legacy TorchScript-based ONNX export:DeprecationWarning",
+    # No category, for the same torch 2.14 reclassification as jit.script.
+    "ignore:You are using the legacy TorchScript-based ONNX export",
     # detectron2's model_zoo imports pkg_resources; detectron2 is commit-pinned.
     "ignore:pkg_resources is deprecated as an API:UserWarning",
     # pkg_resources activates the sphinxcontrib namespace while detectron2 is
