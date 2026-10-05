@@ -261,6 +261,12 @@ NUITKA_ARGS=(
     # and register, then every inference request failed with
     # "No module named 'av.utils'". Name the hidden dependency explicitly.
     --include-module=av.utils
+    # huggingface_hub (1.x) resolves its utils submodules lazily, through
+    # importlib.import_module(f"{__name__}.{name}") -- a computed name Nuitka
+    # cannot follow. segmentation_models_pytorch imports it at module load, so
+    # the packaged server died on startup with "No module named
+    # 'huggingface_hub.utils._headers'". Pure Python; bundle all of it.
+    --include-package=huggingface_hub
     # Every torch.onnx.export call passes dynamo=False, so the dynamo exporter
     # -- and onnxscript with it -- is never reached. onnxscript cannot work in
     # a compiled binary at all: its @script decorator calls inspect.getsource()
