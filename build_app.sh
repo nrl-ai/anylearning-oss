@@ -281,6 +281,18 @@ NUITKA_ARGS=(
     # never hot here, and sympy.polys.polyquinticconst alone sent MSVC out of
     # heap space (C1002) and took Linux gcc over six minutes.
     --noinclude-custom-mode=sympy:bytecode
+    # The rest of the bytecode list is about build time, not correctness: on
+    # Windows MSVC compiled ~11k C files for over four hours and the job ran
+    # out of time. These are large, pure Python, and nothing in them is hot
+    # here -- transformers only supplies RF-DETR's DINOv2 backbone definition
+    # (the tensor work is torch's), plotly and networkx are pulled in
+    # transitively, and torch.testing._internal is test fixtures that torch's
+    # import graph drags along. Bytecode changes how a module is shipped, not
+    # whether it is.
+    --noinclude-custom-mode=transformers:bytecode
+    --noinclude-custom-mode=plotly:bytecode
+    --noinclude-custom-mode=networkx:bytecode
+    --noinclude-custom-mode=torch.testing._internal:bytecode
     # Nuitka's bundled config for torch sets 'triton': 'ignore', and its
     # deployment guard turns any use of an excluded module into a hard error.
     # torch probes for triton during lazy CUDA init and copes fine when it is

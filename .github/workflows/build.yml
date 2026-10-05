@@ -351,6 +351,17 @@ jobs:
           dir="${{ matrix.nuitka_cache }}/ccache"
           CCACHE_DIR="${dir/#\~/$HOME}" ccache --show-stats -v
 
+      # Lists every module Nuitka compiled, shipped as bytecode or left out --
+      # the data for "why is this build slow" and "why is this module missing"
+      # instead of guessing from the log.
+      - name: Upload Nuitka compilation report
+        if: always() && steps.build.outcome != 'skipped'
+        uses: actions/upload-artifact@v7
+        with:
+          name: compilation-report-${{ matrix.artifact }}
+          path: compilation-report.xml
+          if-no-files-found: ignore
+
       # Saved even when the build fails or times out. Restore-then-save-on-
       # success meant a cold build that could not finish in time never saved
       # anything, so every run started cold and macOS never finished at all.
