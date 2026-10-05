@@ -1,4 +1,4 @@
-"""Point detectron2's extension at the torch dylibs it actually loads.
+"""Point detectron2's (and torchvision's) extensions at the torch dylibs they load.
 
 detectron2 builds `_C.cpython-*-darwin.so` against torch and records the
 dependency as `@rpath/libc10.dylib` (and libtorch, libtorch_cpu,
@@ -89,28 +89,47 @@ def repoint(binary: pathlib.Path, torch_lib: pathlib.Path) -> list[str]:
     return changed
 
 
+# Packages whose compiled libraries link torch through an unresolvable @rpath.
+# torchvision joined in 0.29: its _C_stable/image_stable carry only the conda
+# lib directory of the machine that built the wheel as LC_RPATH, so Nuitka
+# failed on '@rpath/libc10.dylib' exactly as it did for detectron2.
+TARGETS = {
+    "detectron2": ("_C*.so",),
+    "torchvision": ("_C*.so", "image*.so"),
+}
+
+
 def main() -> int:
     if platform.system() != "Darwin":
         return 0
 
-    detectron2 = package_directory("detectron2")
     torch = package_directory("torch")
-    if detectron2 is None or torch is None:
-        print("detectron2 or torch is not installed; nothing to patch")
+    if torch is None:
+        print("torch is not installed; nothing to patch")
         return 0
-
     torch_lib = torch / "lib"
-    extensions = sorted(detectron2.glob("_C*.so"))
-    if not extensions:
-        print(f"No compiled extension in {detectron2}; nothing to patch")
-        return 0
 
-    for extension in extensions:
-        changed = repoint(extension, torch_lib)
-        if changed:
-            print(f"Repointed {extension.name} at torch/lib: {', '.join(changed)}")
-        else:
-            print(f"{extension.name} needs no patching")
+    for package, patterns in TARGETS.items():
+        directory = package_directory(package)
+        if directory is None:
+            print(f"{package} is not installed; nothing to patch")
+            continue
+
+        extensions = sorted(
+            {path for pattern in patterns for path in directory.glob(pattern)}
+        )
+        if not extensions:
+            print(f"No compiled extension in {directory}; nothing to patch")
+            continue
+
+        for extension in extensions:
+            changed = repoint(extension, torch_lib)
+            if changed:
+                print(
+                    f"Repointed {package}/{extension.name} at torch/lib: {', '.join(changed)}"
+                )
+            else:
+                print(f"{package}/{extension.name} needs no patching")
 
     return 0
 
